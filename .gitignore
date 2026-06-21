@@ -39,7 +39,7 @@ RimeVision/.DS_Store
 
 # Local Rime configs (not to be pushed)
 squirrel/
-rime setting/
+rime_setting/
 
 # Other agent-generated configs
 .codegraph/
