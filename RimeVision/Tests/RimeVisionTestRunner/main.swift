@@ -15,6 +15,11 @@ Task {
     await runner.run("theme editor sheet uses roomy layout metrics", testThemeEditorSheetUsesRoomyLayoutMetrics)
     await runner.run("scheme copy name uses next available suffix", testSchemeCopyNameUsesCopySuffixAndSkipsExistingNames)
     await runner.run("scheme copy name uses plain copy when available", testSchemeCopyNameUsesPlainCopyWhenAvailable)
+    await runner.run("scan gram files finds models", testScanGramFilesFindsModels)
+    await runner.run("mount writes grammar keys to custom yaml", testMountWritesGrammarKeys)
+    await runner.run("unmount removes only grammar keys", testUnmountRemovesOnlyGrammarKeys)
+    await runner.run("mount preserves other patch keys", testMountPreservesOtherPatchKeys)
+    await runner.run("load config reads existing custom yaml", testLoadConfigReadsExistingCustomYAML)
     runner.finish()
 }
 
@@ -35,7 +40,7 @@ struct TestRunner {
 
     func finish() -> Never {
         if failures.isEmpty {
-            print("All 12 tests passed")
+            print("All 17 tests passed")
             exit(0)
         }
         print("\nFailures:")

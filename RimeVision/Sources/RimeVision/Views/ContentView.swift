@@ -51,6 +51,8 @@ struct DetailView: View {
             SchemaManagerView()
         case .schemaSettings:
             SchemaSettingsView()
+        case .grammarModel:
+            GrammarModelView()
         case .keybinding:
             KeybindingEditorView()
         case .punctuation:

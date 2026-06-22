@@ -140,6 +140,7 @@ struct SchemaConfigDetail: View {
     @Binding var spellerAlgebra: [String]
     @Binding var translatorSettings: [String: Any]
     @Binding var grammarSettings: [String: Any]
+    @EnvironmentObject var appState: AppState
     @State private var selectedSection: Section = .switches
 
     enum Section: String, CaseIterable {
@@ -256,42 +257,47 @@ struct SchemaConfigDetail: View {
     }
 
     private var grammarSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if grammarSettings.isEmpty {
-                Text("该方案没有语法模型配置")
-                    .foregroundColor(.secondary)
-                Text("万象模型配置位于 rime_mint.custom.yaml")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            } else {
-                ForEach(Array(grammarSettings.keys.sorted()), id: \.self) { key in
-                    if let value = grammarSettings[key] {
-                        HStack(alignment: .top) {
-                            Text(key)
-                                .font(.system(.body, design: .monospaced))
-                                .foregroundColor(.accentColor)
-                                .frame(width: 200, alignment: .trailing)
-                            Text(": ")
-                                .foregroundColor(.secondary)
-                            Text("\(value)")
-                                .font(.system(.body, design: .monospaced))
+        VStack(alignment: .leading, spacing: 12) {
+            if !grammarSettings.isEmpty {
+                GroupBox("当前挂载") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let language = grammarSettings["language"] as? String {
+                            HStack {
+                                Text("模型:")
+                                    .foregroundColor(.secondary)
+                                Text(language)
+                                    .font(.system(.body, design: .monospaced))
+                            }
+                        }
+                        ForEach(Array(grammarSettings.keys.sorted().filter { $0 != "language" }), id: \.self) { key in
+                            if let value = grammarSettings[key] {
+                                HStack {
+                                    Text("\(key):")
+                                        .foregroundColor(.secondary)
+                                    Text("\(value)")
+                                        .font(.system(.caption, design: .monospaced))
+                                }
+                            }
                         }
                     }
+                    .padding(8)
                 }
             }
 
-            Divider()
-
-            GroupBox("万象模型说明") {
+            GroupBox {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("万象拼音语法模型 (wanxiang-lts-zh-hans)")
-                        .font(.headline)
-                    Text("• language: 语言模型名称")
-                    Text("• collocation_max_length: 最大搭配长度 (默认 5)")
-                    Text("• collocation_min_length: 最小搭配长度 (默认 2)")
-                    Text("• 影响词组搭配和智能联想")
+                    HStack {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.accentColor)
+                        Text("语法模型的挂载、参数调整和批量管理已移至「语言模型」页面")
+                            .font(.callout)
+                    }
+                    Button("前往语言模型管理") {
+                        appState.selectedSidebar = .grammarModel
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .font(.caption)
+                .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
