@@ -46,6 +46,7 @@ weasel_vision/node_modules/
 weasel_vision/dist/
 weasel_vision/src-tauri/target/
 weasel_vision/weasel/
+weasel_vision/DESIGN.md
 weasel_vision/.DS_Store
 
 # Build outputs
