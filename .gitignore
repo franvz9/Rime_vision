@@ -41,6 +41,16 @@ RimeVision/.DS_Store
 squirrel/
 rime_setting/
 
+# WeaselVision build artifacts
+weasel_vision/node_modules/
+weasel_vision/dist/
+weasel_vision/src-tauri/target/
+weasel_vision/weasel/
+weasel_vision/.DS_Store
+
+# Build outputs
+*.dmg
+
 # Other agent-generated configs
 .codegraph/
 .github/
