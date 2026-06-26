@@ -159,8 +159,10 @@ impl Default for RimeColorScheme {
 
 impl RimeColorScheme {
     pub fn from_dict(name: String, dict: &serde_yaml::Mapping) -> Self {
-        let mut scheme = Self::default();
-        scheme.name = name;
+        let mut scheme = Self {
+            name,
+            ..Default::default()
+        };
 
         if let Some(v) = dict.get("author").and_then(|v| v.as_str()) {
             scheme.author = v.to_string();
@@ -320,31 +322,29 @@ impl RimeColorScheme {
 }
 
 fn parse_color(dict: &serde_yaml::Mapping, key: &str) -> Option<RimeColor> {
-    dict.get(&serde_yaml::Value::String(key.into()))
+    dict.get(serde_yaml::Value::String(key.into()))
         .and_then(|v| v.as_str())
         .and_then(RimeColor::from_hex)
 }
 
 fn parse_string(dict: &serde_yaml::Mapping, key: &str) -> Option<String> {
-    dict.get(&serde_yaml::Value::String(key.into()))
+    dict.get(serde_yaml::Value::String(key.into()))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
 }
 
 fn parse_bool(dict: &serde_yaml::Mapping, key: &str) -> Option<bool> {
-    dict.get(&serde_yaml::Value::String(key.into()))
+    dict.get(serde_yaml::Value::String(key.into()))
         .and_then(|v| v.as_bool())
 }
 
 fn parse_f64(dict: &serde_yaml::Mapping, key: &str) -> Option<f64> {
-    dict.get(&serde_yaml::Value::String(key.into()))
+    dict.get(serde_yaml::Value::String(key.into()))
         .and_then(|v| {
             if let Some(f) = v.as_f64() {
                 Some(f)
-            } else if let Some(i) = v.as_i64() {
-                Some(i as f64)
             } else {
-                None
+                v.as_i64().map(|i| i as f64)
             }
         })
 }

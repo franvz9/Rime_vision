@@ -50,13 +50,13 @@ pub fn get_general_settings() -> Result<GeneralSettings, String> {
 
     let mut settings = GeneralSettings::default();
 
-    if let Some(menu) = dict.get(&Value::String("menu".into())) {
+    if let Some(menu) = dict.get(Value::String("menu".into())) {
         if let Some(menu_map) = menu.as_mapping() {
             settings.page_size = config::get_i64(menu_map, "page_size").unwrap_or(6);
         }
     }
 
-    if let Some(translator) = dict.get(&Value::String("translator".into())) {
+    if let Some(translator) = dict.get(Value::String("translator".into())) {
         if let Some(t_map) = translator.as_mapping() {
             settings.enable_encoder = config::get_bool(t_map, "enable_encoder").unwrap_or(true);
             settings.enable_sentence = config::get_bool(t_map, "enable_sentence").unwrap_or(true);
@@ -66,7 +66,7 @@ pub fn get_general_settings() -> Result<GeneralSettings, String> {
         }
     }
 
-    if let Some(switcher) = dict.get(&Value::String("switcher".into())) {
+    if let Some(switcher) = dict.get(Value::String("switcher".into())) {
         if let Some(s_map) = switcher.as_mapping() {
             settings.switcher_caption =
                 config::get_string(s_map, "caption").unwrap_or_else(|| "〔方案切换〕".into());
@@ -82,7 +82,7 @@ pub fn get_general_settings() -> Result<GeneralSettings, String> {
         }
     }
 
-    if let Some(composer) = dict.get(&Value::String("ascii_composer".into())) {
+    if let Some(composer) = dict.get(Value::String("ascii_composer".into())) {
         if let Some(c_map) = composer.as_mapping() {
             settings.good_old_caps_lock =
                 config::get_bool(c_map, "good_old_caps_lock").unwrap_or(true);
@@ -263,5 +263,8 @@ pub fn reset_config() -> Result<(), String> {
 
 #[tauri::command]
 pub fn deploy() -> Result<(), String> {
+    if let Err(e) = super::backup::create_deploy_backup() {
+        eprintln!("Warning: deploy backup failed: {}", e);
+    }
     crate::rime::deployer::deploy().map_err(|e| e.to_string())
 }

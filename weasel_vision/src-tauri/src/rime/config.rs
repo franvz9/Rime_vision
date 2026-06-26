@@ -67,6 +67,11 @@ impl RimeConfig {
     }
 
     pub fn schema_custom_path(&self, schema_id: &str) -> PathBuf {
+        assert!(
+            !schema_id.contains('/') && !schema_id.contains('\\') && !schema_id.contains(".."),
+            "schema_id contains path traversal characters: {}",
+            schema_id
+        );
         self.user_dir.join(format!("{}.custom.yaml", schema_id))
     }
 
@@ -93,7 +98,7 @@ impl RimeConfig {
             }
         };
 
-        if let Some(patch_map) = custom.get(&Value::String("patch".into())) {
+        if let Some(patch_map) = custom.get(Value::String("patch".into())) {
             if let Some(patch_mapping) = patch_map.as_mapping() {
                 if let Some(base_mapping) = base.as_mapping() {
                     return Ok(Value::Mapping(patch::merge(base_mapping, patch_mapping)));
@@ -110,7 +115,7 @@ impl RimeConfig {
     {
         let existing = self.load_yaml(custom_path)?;
         let mut patch_map = existing
-            .get(&Value::String("patch".into()))
+            .get(Value::String("patch".into()))
             .and_then(|v| v.as_mapping())
             .cloned()
             .unwrap_or_default();
@@ -166,25 +171,25 @@ pub fn value_as_mapping(value: &Value) -> &Mapping {
 }
 
 pub fn get_string(dict: &Mapping, key: &str) -> Option<String> {
-    dict.get(&Value::String(key.into()))
+    dict.get(Value::String(key.into()))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
 }
 
 pub fn get_bool(dict: &Mapping, key: &str) -> Option<bool> {
-    dict.get(&Value::String(key.into()))
+    dict.get(Value::String(key.into()))
         .and_then(|v| v.as_bool())
 }
 
 #[allow(dead_code)]
 pub fn get_f64(dict: &Mapping, key: &str) -> Option<f64> {
-    dict.get(&Value::String(key.into())).and_then(|v| {
+    dict.get(Value::String(key.into())).and_then(|v| {
         v.as_f64().or_else(|| v.as_i64().map(|i| i as f64))
     })
 }
 
 pub fn get_i64(dict: &Mapping, key: &str) -> Option<i64> {
-    dict.get(&Value::String(key.into())).and_then(|v| {
+    dict.get(Value::String(key.into())).and_then(|v| {
         v.as_i64().or_else(|| v.as_f64().map(|f| f as i64))
     })
 }
@@ -192,7 +197,7 @@ pub fn get_i64(dict: &Mapping, key: &str) -> Option<i64> {
 pub fn get_mapping<'a>(dict: &'a Mapping, key: &str) -> &'a Mapping {
     static EMPTY: std::sync::OnceLock<Mapping> = std::sync::OnceLock::new();
     let empty = EMPTY.get_or_init(Mapping::new);
-    dict.get(&Value::String(key.into()))
+    dict.get(Value::String(key.into()))
         .and_then(|v| v.as_mapping())
         .unwrap_or(empty)
 }
@@ -200,7 +205,7 @@ pub fn get_mapping<'a>(dict: &'a Mapping, key: &str) -> &'a Mapping {
 pub fn get_sequence<'a>(dict: &'a Mapping, key: &str) -> &'a Vec<Value> {
     static EMPTY: std::sync::OnceLock<Vec<Value>> = std::sync::OnceLock::new();
     let empty = EMPTY.get_or_init(Vec::new);
-    dict.get(&Value::String(key.into()))
+    dict.get(Value::String(key.into()))
         .and_then(|v| v.as_sequence())
         .unwrap_or(empty)
 }

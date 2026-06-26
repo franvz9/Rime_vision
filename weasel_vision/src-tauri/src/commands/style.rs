@@ -29,7 +29,7 @@ pub fn get_style_data() -> Result<StyleData, String> {
         .map_err(|e| e.to_string())?;
 
     let base = config::value_as_mapping(&base_value);
-    let merged_value = if let Some(patch_map) = custom_value.get(&Value::String("patch".into())) {
+    let merged_value = if let Some(patch_map) = custom_value.get(Value::String("patch".into())) {
         if let Some(pm) = patch_map.as_mapping() {
             Value::Mapping(patch::merge(base, pm))
         } else {
@@ -171,9 +171,9 @@ pub fn save_color_scheme(
 pub fn delete_color_scheme(name: String) -> Result<(), String> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
-        if let Some(schemes) = patch.get_mut(&Value::String("preset_color_schemes".into())) {
+        if let Some(schemes) = patch.get_mut(Value::String("preset_color_schemes".into())) {
             if let Some(schemes_map) = schemes.as_mapping_mut() {
-                schemes_map.remove(&Value::String(name.clone()));
+                schemes_map.remove(Value::String(name.clone()));
             }
         }
 
@@ -183,7 +183,7 @@ pub fn delete_color_scheme(name: String) -> Result<(), String> {
             .as_mapping_mut()
             .ok_or_else(|| anyhow::anyhow!("style is not a mapping"))?;
 
-        if style_section.get(&Value::String("color_scheme".into()))
+        if style_section.get(Value::String("color_scheme".into()))
             .and_then(|v| v.as_str())
             == Some(&name)
         {
@@ -192,7 +192,7 @@ pub fn delete_color_scheme(name: String) -> Result<(), String> {
                 Value::String("native".into()),
             );
         }
-        if style_section.get(&Value::String("color_scheme_dark".into()))
+        if style_section.get(Value::String("color_scheme_dark".into()))
             .and_then(|v| v.as_str())
             == Some(&name)
         {

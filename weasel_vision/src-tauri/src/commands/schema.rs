@@ -21,15 +21,15 @@ pub fn get_schemas() -> Result<SchemaListData, String> {
     let mut schemas = Vec::new();
     let schema_list = config::get_sequence(dict, "schema_list");
     for item in schema_list {
-        if let Some(schema_id) = item.get(&Value::String("schema".into())) {
+        if let Some(schema_id) = item.get(Value::String("schema".into())) {
             if let Some(id) = schema_id.as_str() {
                 schemas.push(RimeSchema::new(id.to_string()));
             }
         }
     }
 
-    let page_size = config::get_mapping(&dict, "menu")
-        .get(&Value::String("page_size".into()))
+    let page_size = config::get_mapping(dict, "menu")
+        .get(Value::String("page_size".into()))
         .and_then(|v| v.as_i64())
         .unwrap_or(6);
 
@@ -62,16 +62,15 @@ pub fn save_schemas(schemas: Vec<RimeSchema>, page_size: Option<i64>) -> Result<
         );
 
         if let Some(ps) = page_size {
-            let mut menu = patch
-                .get(&Value::String("menu".into()))
-                .and_then(|v| v.as_mapping())
-                .cloned()
-                .unwrap_or_default();
+            let menu = patch
+                .entry(Value::String("menu".into()))
+                .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
+                .as_mapping_mut()
+                .ok_or_else(|| anyhow::anyhow!("menu is not a mapping"))?;
             menu.insert(
                 Value::String("page_size".into()),
                 Value::Number(ps.into()),
             );
-            patch.insert(Value::String("menu".into()), Value::Mapping(menu));
         }
 
         Ok(())

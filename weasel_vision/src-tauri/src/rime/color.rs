@@ -44,7 +44,7 @@ impl RimeColor {
         None
     }
 
-    pub fn to_hex(&self) -> String {
+    pub fn to_hex(self) -> String {
         if self.a < 255 {
             format!(
                 "0x{:02X}{:02X}{:02X}{:02X}",
@@ -56,7 +56,7 @@ impl RimeColor {
     }
 
     #[allow(dead_code)]
-    pub fn to_css(&self) -> String {
+    pub fn to_css(self) -> String {
         if self.a < 255 {
             format!(
                 "rgba({}, {}, {}, {:.2})",

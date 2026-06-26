@@ -30,12 +30,12 @@ pub fn get_keybindings() -> Result<Vec<KeyBinding>, String> {
     for item in bindings_seq {
         if let Some(mapping) = item.as_mapping() {
             let when = mapping
-                .get(&Value::String("when".into()))
+                .get(Value::String("when".into()))
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
             let accept = mapping
-                .get(&Value::String("accept".into()))
+                .get(Value::String("accept".into()))
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
@@ -45,17 +45,17 @@ pub fn get_keybindings() -> Result<Vec<KeyBinding>, String> {
                     when,
                     accept,
                     send: mapping
-                        .get(&Value::String("send".into()))
+                        .get(Value::String("send".into()))
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string(),
                     toggle: mapping
-                        .get(&Value::String("toggle".into()))
+                        .get(Value::String("toggle".into()))
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string(),
                     select: mapping
-                        .get(&Value::String("select".into()))
+                        .get(Value::String("select".into()))
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string(),
