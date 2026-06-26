@@ -6,6 +6,9 @@ import GeneralSettings from './components/GeneralSettings.vue'
 import KeybindingEditor from './components/KeybindingEditor.vue'
 import PunctuationSettings from './components/PunctuationSettings.vue'
 import GrammarModel from './components/GrammarModel.vue'
+import BackupManager from './components/BackupManager.vue'
+import DictManager from './components/DictManager.vue'
+import SyncManager from './components/SyncManager.vue'
 import AdvancedSettings from './components/AdvancedSettings.vue'
 import { invoke } from '@tauri-apps/api/core'
 
@@ -19,6 +22,9 @@ const tabs = [
   { id: 'grammar', label: '语言模型', icon: '🧠' },
   { id: 'keybinding', label: '快捷键', icon: '⌨' },
   { id: 'punctuation', label: '标点符号', icon: '🔤' },
+  { id: 'backup', label: '备份管理', icon: '💾' },
+  { id: 'dict', label: '词典管理', icon: '📖' },
+  { id: 'sync', label: '同步管理', icon: '🔄' },
   { id: 'advanced', label: '高级设置', icon: '🔧' },
 ]
 
@@ -28,10 +34,9 @@ async function deploy() {
     await invoke('deploy')
   } catch (e) {
     console.error('Deploy failed:', e)
-  }
-  setTimeout(() => {
+  } finally {
     isDeploying.value = false
-  }, 1500)
+  }
 }
 
 
@@ -77,6 +82,9 @@ async function deploy() {
         <GrammarModel v-else-if="selectedTab === 'grammar'" />
         <KeybindingEditor v-else-if="selectedTab === 'keybinding'" />
         <PunctuationSettings v-else-if="selectedTab === 'punctuation'" />
+        <BackupManager v-else-if="selectedTab === 'backup'" />
+        <DictManager v-else-if="selectedTab === 'dict'" />
+        <SyncManager v-else-if="selectedTab === 'sync'" />
         <AdvancedSettings v-else-if="selectedTab === 'advanced'" />
       </div>
     </main>

@@ -62,7 +62,7 @@ fn load_mount_config(
     let mut config = SchemaGrammarConfig::default_for(schema_id);
 
     if let Ok(dict_value) = cfg.load_yaml(custom_url) {
-        if let Some(patch_map) = dict_value.get(&Value::String("patch".into())) {
+        if let Some(patch_map) = dict_value.get(Value::String("patch".into())) {
             if let Some(patch_mapping) = patch_map.as_mapping() {
                 let expanded = patch::expanded_patch(patch_mapping);
                 let grammar = config::get_mapping(&expanded, "grammar");
@@ -170,7 +170,7 @@ pub fn unmount_grammar(schema_id: String) -> Result<(), String> {
         }
 
         // Remove grammar-related keys from translator section
-        if let Some(translator) = patch.get_mut(&Value::String("translator".into())) {
+        if let Some(translator) = patch.get_mut(Value::String("translator".into())) {
             if let Some(t_map) = translator.as_mapping_mut() {
                 let remove_keys: Vec<Value> = t_map
                     .keys()
@@ -189,7 +189,7 @@ pub fn unmount_grammar(schema_id: String) -> Result<(), String> {
                     t_map.remove(&key);
                 }
                 if t_map.is_empty() {
-                    patch.remove(&Value::String("translator".into()));
+                    patch.remove(Value::String("translator".into()));
                 }
             }
         }

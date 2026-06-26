@@ -24,10 +24,10 @@ pub fn expanded_patch(patch: &Mapping) -> Mapping {
         }
     }
 
-    if let Some(deletions) = patch.get(&Value::String("__delete__".into())) {
+    if let Some(deletions) = patch.get(Value::String("__delete__".into())) {
         result.insert(Value::String("__delete__".into()), deletions.clone());
     }
-    if let Some(appends) = patch.get(&Value::String("__append__".into())) {
+    if let Some(appends) = patch.get(Value::String("__append__".into())) {
         result.insert(Value::String("__append__".into()), appends.clone());
     }
 
@@ -38,7 +38,7 @@ pub fn merge(base: &Mapping, patch: &Mapping) -> Mapping {
     let mut result = base.clone();
     let expanded = expanded_patch(patch);
 
-    if let Some(deletions) = expanded.get(&Value::String("__delete__".into())) {
+    if let Some(deletions) = expanded.get(Value::String("__delete__".into())) {
         if let Some(keys) = deletions.as_sequence() {
             for key in keys {
                 if let Some(key_str) = key.as_str() {
@@ -48,7 +48,7 @@ pub fn merge(base: &Mapping, patch: &Mapping) -> Mapping {
         }
     }
 
-    if let Some(appends) = expanded.get(&Value::String("__append__".into())) {
+    if let Some(appends) = expanded.get(Value::String("__append__".into())) {
         if let Some(append_map) = appends.as_mapping() {
             for (key, value) in append_map {
                 if let Some(key_str) = key.as_str() {
@@ -90,9 +90,9 @@ pub fn value_at<'a>(dict: &'a Mapping, path: &[String]) -> Option<&'a Value> {
         return None;
     }
     if path.len() == 1 {
-        return dict.get(&Value::String(path[0].clone()));
+        return dict.get(Value::String(path[0].clone()));
     }
-    if let Some(Value::Mapping(nested)) = dict.get(&Value::String(path[0].clone())) {
+    if let Some(Value::Mapping(nested)) = dict.get(Value::String(path[0].clone())) {
         value_at(nested, &path[1..])
     } else {
         None
@@ -123,14 +123,19 @@ pub fn remove_value(dict: &mut Mapping, path: &[String]) {
         return;
     }
     if path.len() == 1 {
-        dict.remove(&Value::String(path[0].clone()));
+        dict.remove(Value::String(path[0].clone()));
         return;
     }
     let key = Value::String(path[0].clone());
     if let Some(Value::Mapping(nested)) = dict.get(&key) {
         let mut new_nested = nested.clone();
         remove_value(&mut new_nested, &path[1..]);
-        dict.insert(key, Value::Mapping(new_nested));
+        // Clean up empty mappings to keep the tree tidy
+        if new_nested.is_empty() {
+            dict.remove(&key);
+        } else {
+            dict.insert(key, Value::Mapping(new_nested));
+        }
     }
 }
 

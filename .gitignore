@@ -48,6 +48,7 @@ weasel_vision/src-tauri/target/
 weasel_vision/weasel/
 weasel_vision/DESIGN.md
 weasel_vision/.DS_Store
+weasel_vision/app/
 
 # Build outputs
 *.dmg

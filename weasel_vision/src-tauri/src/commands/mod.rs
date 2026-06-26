@@ -4,3 +4,6 @@ pub mod grammar;
 pub mod keybinding;
 pub mod settings;
 pub mod punctuation;
+pub mod backup;
+pub mod dict;
+pub mod sync;

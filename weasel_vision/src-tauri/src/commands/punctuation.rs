@@ -73,12 +73,12 @@ fn parse_punct_dict(dict: &serde_yaml::Mapping) -> Vec<PunctRule> {
             };
 
             if let Some(mapping) = value.as_mapping() {
-                if let Some(commit) = mapping.get(&Value::String("commit".into())) {
+                if let Some(commit) = mapping.get(Value::String("commit".into())) {
                     if let Some(s) = commit.as_str() {
                         rule.commit = s.to_string();
                     }
                 }
-                if let Some(pair) = mapping.get(&Value::String("pair".into())) {
+                if let Some(pair) = mapping.get(Value::String("pair".into())) {
                     if let Some(seq) = pair.as_sequence() {
                         rule.pair = seq
                             .iter()
