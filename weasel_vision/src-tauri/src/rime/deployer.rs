@@ -24,23 +24,31 @@ pub fn deploy() -> Result<()> {
 
     #[cfg(target_os = "windows")]
     {
-        let deployer_paths = [
-            std::env::var("ProgramFiles").ok().map(|p| std::path::PathBuf::from(p).join("Rime/WeaselDeployer.exe")),
-            std::env::var("ProgramFiles(x86)").ok().map(|p| std::path::PathBuf::from(p).join("Rime/WeaselDeployer.exe")),
-        ];
+        // Try multiple possible paths for WeaselDeployer.exe
+        let mut deployer_paths: Vec<std::path::PathBuf> = Vec::new();
+        
+        // Method 1: Use environment variables
+        if let Ok(pf) = std::env::var("ProgramFiles") {
+            deployer_paths.push(std::path::PathBuf::from(pf).join("Rime/WeaselDeployer.exe"));
+        }
+        if let Ok(pfx86) = std::env::var("ProgramFiles(x86)") {
+            deployer_paths.push(std::path::PathBuf::from(pfx86).join("Rime/WeaselDeployer.exe"));
+        }
+        
+        // Method 2: Fallback to common default paths
+        deployer_paths.push(std::path::PathBuf::from("C:\\Program Files\\Rime\\WeaselDeployer.exe"));
+        deployer_paths.push(std::path::PathBuf::from("C:\\Program Files (x86)\\Rime\\WeaselDeployer.exe"));
 
-        for path_opt in deployer_paths {
-            if let Some(path) = path_opt {
-                if path.exists() {
-                    let output = std::process::Command::new(&path)
-                        .arg("/deploy")
-                        .output()?;
-                    if !output.status.success() {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        anyhow::bail!("WeaselDeployer /deploy failed: {}", stderr);
-                    }
-                    return Ok(());
+        for path in &deployer_paths {
+            if path.exists() {
+                let output = std::process::Command::new(path)
+                    .arg("/deploy")
+                    .output()?;
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    anyhow::bail!("WeaselDeployer /deploy failed: {}", stderr);
                 }
+                return Ok(());
             }
         }
 
@@ -58,23 +66,31 @@ pub fn deploy() -> Result<()> {
 pub fn sync() -> Result<bool> {
     #[cfg(target_os = "windows")]
     {
-        let deployer_paths = [
-            std::env::var("ProgramFiles").ok().map(|p| std::path::PathBuf::from(p).join("Rime/WeaselDeployer.exe")),
-            std::env::var("ProgramFiles(x86)").ok().map(|p| std::path::PathBuf::from(p).join("Rime/WeaselDeployer.exe")),
-        ];
+        // Try multiple possible paths for WeaselDeployer.exe
+        let mut deployer_paths: Vec<std::path::PathBuf> = Vec::new();
+        
+        // Method 1: Use environment variables
+        if let Ok(pf) = std::env::var("ProgramFiles") {
+            deployer_paths.push(std::path::PathBuf::from(pf).join("Rime/WeaselDeployer.exe"));
+        }
+        if let Ok(pfx86) = std::env::var("ProgramFiles(x86)") {
+            deployer_paths.push(std::path::PathBuf::from(pfx86).join("Rime/WeaselDeployer.exe"));
+        }
+        
+        // Method 2: Fallback to common default paths
+        deployer_paths.push(std::path::PathBuf::from("C:\\Program Files\\Rime\\WeaselDeployer.exe"));
+        deployer_paths.push(std::path::PathBuf::from("C:\\Program Files (x86)\\Rime\\WeaselDeployer.exe"));
 
-        for path_opt in deployer_paths {
-            if let Some(path) = path_opt {
-                if path.exists() {
-                    let output = std::process::Command::new(&path)
-                        .arg("/sync")
-                        .output()?;
-                    if !output.status.success() {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        anyhow::bail!("WeaselDeployer /sync failed: {}", stderr);
-                    }
-                    return Ok(true);
+        for path in &deployer_paths {
+            if path.exists() {
+                let output = std::process::Command::new(path)
+                    .arg("/sync")
+                    .output()?;
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    anyhow::bail!("WeaselDeployer /sync failed: {}", stderr);
                 }
+                return Ok(true);
             }
         }
         anyhow::bail!("WeaselDeployer.exe not found");
