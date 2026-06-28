@@ -6,6 +6,10 @@
 
 ## 功能特性
 
+### 界面预览
+
+![WeaselVision 主界面](docs/screenshots/main-ui.png)
+
 ### 核心功能
 
 | 模块 | 功能 |
