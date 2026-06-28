@@ -63,18 +63,6 @@ npm run tauri dev      # 开发模式
 npm run tauri build    # 构建安装包
 ```
 
-### 跨平台构建
-
-```bash
-# macOS arm64
-npm run tauri build -- --target aarch64-apple-darwin
-
-# macOS x64
-npm run tauri build -- --target x86_64-apple-darwin
-
-# Windows x64 / ARM64（通过 GitHub Actions 自动构建）
-```
-
 ## 技术栈
 
 | 组件 | 技术 |
