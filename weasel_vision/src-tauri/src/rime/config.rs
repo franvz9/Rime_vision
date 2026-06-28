@@ -102,6 +102,16 @@ impl RimeConfig {
         self.user_dir.join(&self.default_custom)
     }
 
+    /// Get path to user.yaml file
+    /// On Windows with build/ dir, user.yaml is in rime_root, not build/
+    pub fn user_yaml_path(&self) -> PathBuf {
+        #[cfg(target_os = "windows")]
+        if let Some(ref root) = self.rime_root {
+            return root.join("user.yaml");
+        }
+        self.user_dir.join("user.yaml")
+    }
+
     /// Get the custom config path for a given schema_id
     /// Returns None if schema_id contains path traversal characters
     pub fn schema_custom_path(&self, schema_id: &str) -> PathBuf {
