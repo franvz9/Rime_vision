@@ -21,12 +21,19 @@ pub struct StyleData {
 pub fn get_style_data() -> Result<StyleData, String> {
     let cfg = RimeConfig::detect();
 
+    // Gracefully handle missing or malformed base/custom files
     let base_value = cfg
         .load_yaml(&cfg.style_path())
-        .map_err(|e| e.to_string())?;
+        .unwrap_or_else(|e| {
+            eprintln!("Warning: failed to load {}: {}, using empty config", cfg.style_path().display(), e);
+            Value::Mapping(serde_yaml::Mapping::new())
+        });
     let custom_value = cfg
         .load_yaml(&cfg.style_custom_path())
-        .map_err(|e| e.to_string())?;
+        .unwrap_or_else(|e| {
+            eprintln!("Warning: failed to load {}: {}, using empty config", cfg.style_custom_path().display(), e);
+            Value::Mapping(serde_yaml::Mapping::new())
+        });
 
     let base = config::value_as_mapping(&base_value);
     let merged_value = if let Some(patch_map) = custom_value.get(Value::String("patch".into())) {
@@ -150,6 +157,7 @@ pub fn save_selected_schemes(light: String, dark: String) -> Result<(), String> 
 pub fn save_color_scheme(
     name: String,
     scheme: RimeColorScheme,
+    original_name: Option<String>,
 ) -> Result<(), String> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
@@ -158,6 +166,12 @@ pub fn save_color_scheme(
             .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()));
 
         if let Some(schemes_map) = schemes.as_mapping_mut() {
+            // If renaming, remove the old key first
+            if let Some(ref orig) = original_name {
+                if orig != &name {
+                    schemes_map.remove(&Value::String(orig.clone()));
+                }
+            }
             let scheme_value = scheme.to_dict();
             schemes_map.insert(Value::String(name), scheme_value);
         }
@@ -205,4 +219,58 @@ pub fn delete_color_scheme(name: String) -> Result<(), String> {
         Ok(())
     })
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn import_color_scheme(file_path: String) -> Result<(), String> {
+    // Validate file path
+    if file_path.is_empty() {
+        return Err("File path is empty".to_string());
+    }
+    if file_path.contains("..") {
+        return Err("Invalid file path: path traversal not allowed".to_string());
+    }
+    let path = std::path::Path::new(&file_path);
+    if !path.exists() {
+        return Err(format!("File not found: {}", file_path));
+    }
+    if !path.is_file() {
+        return Err("Path is not a file".to_string());
+    }
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if ext != "yaml" && ext != "yml" {
+        return Err("Invalid file extension: only .yaml and .yml are supported".to_string());
+    }
+    // Read the YAML file
+    let content = std::fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+    
+    // Parse YAML
+    let yaml_value: Value = serde_yaml::from_str(&content)
+        .map_err(|e| format!("Invalid YAML format: {}", e))?;
+    
+    // Check for preset_color_schemes
+    if let Some(schemes) = yaml_value.get(Value::String("preset_color_schemes".into())) {
+        if let Some(schemes_map) = schemes.as_mapping() {
+            // Merge into custom config
+            let cfg = RimeConfig::detect();
+            cfg.save_patch(&cfg.style_custom_path(), |patch| {
+                let existing_schemes = patch
+                    .entry(Value::String("preset_color_schemes".into()))
+                    .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()));
+                
+                if let Some(existing_map) = existing_schemes.as_mapping_mut() {
+                    for (key, value) in schemes_map {
+                        existing_map.insert(key.clone(), value.clone());
+                    }
+                }
+                
+                Ok(())
+            }).map_err(|e| e.to_string())?;
+            
+            return Ok(());
+        }
+    }
+    
+    Err("No color schemes found in file".to_string())
 }

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import DeployNotice from './DeployNotice.vue'
 
-const emit = defineEmits(['changed'])
 
 interface GeneralSettings {
   page_size: number
@@ -38,6 +38,35 @@ const settings = ref<GeneralSettings>({
 
 const showSaved = ref(false)
 
+// 按键名称映射（用于显示）
+const keyDisplayMap: Record<string, string> = {
+  'grave': '` (反引号)',
+  'minus': '- (减号)',
+  'equal': '= (等号)',
+  'bracketleft': '[ (左方括号)',
+  'bracketright': '] (右方括号)',
+  'backslash': '\\ (反斜杠)',
+  'semicolon': '; (分号)',
+  'apostrophe': "' (单引号)",
+  'comma': ', (逗号)',
+  'period': '. (句号)',
+  'slash': '/ (斜杠)',
+}
+
+// 将按键名转换为显示文本
+function formatKeyDisplay(keyName: string): string {
+  if (!keyName) return ''
+  const keys = keyName.split(/[,\s]+/).filter(k => k.trim())
+  return keys.map(key => {
+    // 处理组合键，如 Control+grave
+    const parts = key.split('+')
+    return parts.map(part => {
+      const lowerPart = part.toLowerCase()
+      return keyDisplayMap[lowerPart] || part
+    }).join('+')
+  }).join(', ')
+}
+
 onMounted(async () => {
   try {
     settings.value = await invoke('get_general_settings')
@@ -46,14 +75,25 @@ onMounted(async () => {
   }
 })
 
-const capsLockOptions = ['commit_code', 'inline_ascii', 'noop', 'clear']
-const shiftOptions = ['commit_code', 'inline_ascii', 'noop']
+// Caps Lock 动作选项（后端参数 -> 显示文本）
+const capsLockOptions = [
+  { value: 'commit_code', label: 'commit_code (上屏原始编码)' },
+  { value: 'inline_ascii', label: 'inline_ascii (临时英文模式)' },
+  { value: 'noop', label: 'noop (无操作)' },
+  { value: 'clear', label: 'clear (清空输入)' },
+]
+
+// Shift 动作选项（后端参数 -> 显示文本）
+const shiftOptions = [
+  { value: 'commit_code', label: 'commit_code (上屏原始编码)' },
+  { value: 'inline_ascii', label: 'inline_ascii (临时英文模式)' },
+  { value: 'noop', label: 'noop (无操作)' },
+]
 
 async function save() {
   try {
     await invoke('save_general_settings', { settings: settings.value })
     showSaved.value = true
-    emit('changed')
     setTimeout(() => { showSaved.value = false }, 2000)
   } catch (e) {
     console.error('Failed to save settings:', e)
@@ -63,6 +103,8 @@ async function save() {
 
 <template>
   <div class="general-settings">
+    <DeployNotice />
+
     <div class="section">
       <h3>候选词</h3>
       <div class="form-row">
@@ -99,7 +141,10 @@ async function save() {
       </div>
       <div class="form-row">
         <label>快捷键:</label>
-        <input v-model="settings.switcher_hotkeys" />
+        <div class="hotkey-display">
+          <input v-model="settings.switcher_hotkeys" class="hotkey-input" />
+          <span class="hotkey-hint">{{ formatKeyDisplay(settings.switcher_hotkeys) }}</span>
+        </div>
       </div>
       <label class="checkbox">
         <input type="checkbox" v-model="settings.switcher_fold_options" />
@@ -120,19 +165,19 @@ async function save() {
       <div class="form-row">
         <label>Caps Lock:</label>
         <select v-model="settings.caps_lock_action">
-          <option v-for="opt in capsLockOptions" :key="opt" :value="opt">{{ opt }}</option>
+          <option v-for="opt in capsLockOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
       </div>
       <div class="form-row">
         <label>左 Shift:</label>
         <select v-model="settings.shift_left_action">
-          <option v-for="opt in shiftOptions" :key="opt" :value="opt">{{ opt }}</option>
+          <option v-for="opt in shiftOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
       </div>
       <div class="form-row">
         <label>右 Shift:</label>
         <select v-model="settings.shift_right_action">
-          <option v-for="opt in shiftOptions" :key="opt" :value="opt">{{ opt }}</option>
+          <option v-for="opt in shiftOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
       </div>
     </div>
@@ -152,7 +197,7 @@ async function save() {
 .section {
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #e5e5e5;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .section h3 {
@@ -176,9 +221,37 @@ async function save() {
 .form-row select {
   flex: 1;
   padding: 6px 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   font-size: 14px;
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+}
+
+.hotkey-display {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.hotkey-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: monospace;
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+}
+
+.hotkey-hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-tertiary);
+  padding: 4px 8px;
+  border-radius: 4px;
 }
 
 .checkbox {
@@ -203,15 +276,17 @@ async function save() {
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
 }
 
 .btn-primary {
-  background: #007aff;
+  background: var(--color-accent);
   color: white;
 }
 
 .saved-hint {
-  color: #34c759;
+  color: var(--color-success);
   font-size: 14px;
 }
 </style>

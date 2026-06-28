@@ -6,6 +6,10 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "dialog:default"
+    "opener:allow-open-path",
+    "dialog:default",
+    "dialog:allow-confirm",
+    "shell:allow-execute",
+    "shell:allow-open"
   ]
 }

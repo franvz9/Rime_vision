@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
+import DeployNotice from './DeployNotice.vue'
 
-const emit = defineEmits(['changed'])
 
 interface GrammarModel {
   filename: string
@@ -36,6 +37,7 @@ const selectedModel = ref<GrammarModel | null>(null)
 const schemaIds = ref<string[]>([])
 const showBatchModal = ref(false)
 const selectedSchemaIds = ref<Set<string>>(new Set())
+const pendingDeleteModels = ref<Set<string>>(new Set())
 const batchConfig = ref<SchemaGrammarConfig>({
   schema_id: '',
   mounted_model: null,
@@ -64,7 +66,26 @@ async function loadData() {
   }
 }
 
+async function importGrammar() {
+  const selected = await dialogOpen({
+    directory: false,
+    multiple: false,
+    title: '选择语言模型文件',
+    filters: [{ name: 'Grammar Files', extensions: ['gram'] }]
+  })
+  if (selected && typeof selected === 'string') {
+    try {
+      await invoke('import_grammar', { filePath: selected })
+      alert('✅ 语言模型导入成功！')
+      await loadData()
+    } catch (e: any) {
+      alert('导入失败：' + e.toString())
+    }
+  }
+}
+
 function selectModel(model: GrammarModel) {
+  if (pendingDeleteModels.value.has(model.filename)) return
   selectedModel.value = model
 }
 
@@ -113,7 +134,6 @@ async function batchMount() {
   }
   showBatchModal.value = false
   await loadData()
-  emit('changed')
 }
 
 async function batchUnmount() {
@@ -126,7 +146,6 @@ async function batchUnmount() {
   }
   showBatchModal.value = false
   await loadData()
-  emit('changed')
 }
 
 function toggleSchemaId(id: string) {
@@ -137,13 +156,43 @@ function toggleSchemaId(id: string) {
   }
   selectedSchemaIds.value = new Set(selectedSchemaIds.value)
 }
+
+function canDeleteModel(model: GrammarModel): boolean {
+  // Cannot delete a model that is mounted by any schema
+  if (mountedCount(model) > 0) return false
+  return true
+}
+
+function toggleDeleteModel(model: GrammarModel) {
+  if (!canDeleteModel(model)) return
+  const filename = `${model.filename}.gram`
+  if (pendingDeleteModels.value.has(model.filename)) {
+    pendingDeleteModels.value.delete(model.filename)
+    window.dispatchEvent(new CustomEvent('remove-pending-delete', {
+      detail: { delete_type: 'model', identifier: filename }
+    }))
+  } else {
+    pendingDeleteModels.value.add(model.filename)
+    window.dispatchEvent(new CustomEvent('add-pending-delete', {
+      detail: { delete_type: 'model', identifier: filename, label: `模型: ${model.display_name}` }
+    }))
+    // If this model is selected, deselect it
+    if (selectedModel.value?.filename === model.filename) {
+      selectedModel.value = null
+    }
+  }
+  pendingDeleteModels.value = new Set(pendingDeleteModels.value)
+}
 </script>
 
 <template>
   <div class="grammar-model">
+    <DeployNotice />
+
     <div class="toolbar">
       <button class="btn btn-outline" @click="openBatchModal" :disabled="!selectedModel">批量挂载</button>
       <button class="btn btn-outline" @click="loadData">刷新</button>
+      <button class="btn btn-primary" @click="importGrammar">📥 导入模型</button>
     </div>
 
     <div class="layout">
@@ -157,12 +206,15 @@ function toggleSchemaId(id: string) {
           <div
             v-for="model in data.models"
             :key="model.filename"
-            :class="['model-item', { selected: selectedModel?.filename === model.filename }]"
+            :class="['model-item', { selected: selectedModel?.filename === model.filename, 'is-deleting': pendingDeleteModels.has(model.filename) }]"
             @click="selectModel(model)"
           >
             <div class="model-icon">📦</div>
             <div class="model-info">
-              <div class="model-name">{{ model.display_name }}</div>
+              <div class="model-name">
+                {{ model.display_name }}
+                <span v-if="pendingDeleteModels.has(model.filename)" class="badge badge-deleting">待删除</span>
+              </div>
               <div class="model-meta">
                 {{ model.formatted_size }}
                 <span v-if="mountedCount(model) > 0" class="mounted-count">
@@ -170,6 +222,18 @@ function toggleSchemaId(id: string) {
                 </span>
               </div>
             </div>
+            <button
+              v-if="pendingDeleteModels.has(model.filename)"
+              class="btn-cancel-delete-sm"
+              @click.stop="toggleDeleteModel(model)"
+            >取消</button>
+            <button
+              v-else
+              class="btn-delete-sm"
+              :disabled="!canDeleteModel(model)"
+              :title="!canDeleteModel(model) ? '已挂载不可删除' : '删除'"
+              @click.stop="toggleDeleteModel(model)"
+            >🗑</button>
           </div>
         </div>
       </div>
@@ -298,8 +362,8 @@ function toggleSchemaId(id: string) {
 
 .model-list {
   width: 280px;
-  background: white;
-  border: 1px solid #e5e5e5;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 16px;
 }
@@ -325,11 +389,11 @@ function toggleSchemaId(id: string) {
 }
 
 .model-item:hover {
-  background: #f5f5f5;
+  background: var(--color-bg-hover);
 }
 
 .model-item.selected {
-  background: #e3f2fd;
+  background: var(--color-accent-light);
 }
 
 .model-icon {
@@ -343,17 +407,17 @@ function toggleSchemaId(id: string) {
 
 .model-meta {
   font-size: 11px;
-  color: #999;
+  color: var(--color-text-tertiary);
 }
 
 .mounted-count {
-  color: #34c759;
+  color: var(--color-success);
 }
 
 .model-detail {
   flex: 1;
-  background: white;
-  border: 1px solid #e5e5e5;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 16px;
 }
@@ -366,7 +430,7 @@ function toggleSchemaId(id: string) {
 }
 
 .detail-row .label {
-  color: #666;
+  color: var(--color-text-secondary);
   min-width: 60px;
 }
 
@@ -385,15 +449,15 @@ function toggleSchemaId(id: string) {
 }
 
 .mount-row:nth-child(odd) {
-  background: #f9f9f9;
+  background: var(--color-bg-tertiary);
 }
 
 .mount-status {
-  color: #999;
+  color: var(--color-text-tertiary);
 }
 
 .mount-status.mounted {
-  color: #34c759;
+  color: var(--color-success);
 }
 
 .empty-state,
@@ -403,25 +467,26 @@ function toggleSchemaId(id: string) {
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: #999;
+  color: var(--color-text-tertiary);
 }
 
 .hint {
   font-size: 12px;
-  color: #ccc;
+  color: var(--color-text-tertiary);
 }
 
 .btn {
   padding: 6px 14px;
-  border: 1px solid #ddd;
-  background: white;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
 }
 
 .btn-primary {
-  background: #007aff;
+  background: var(--color-accent);
   color: white;
   border: none;
 }
@@ -432,13 +497,14 @@ function toggleSchemaId(id: string) {
 }
 
 .btn-outline {
-  background: white;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
 }
 
 .link-btn {
   background: none;
   border: none;
-  color: #007aff;
+  color: var(--color-accent);
   cursor: pointer;
   font-size: 12px;
 }
@@ -446,7 +512,7 @@ function toggleSchemaId(id: string) {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-bg-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -454,7 +520,7 @@ function toggleSchemaId(id: string) {
 }
 
 .modal {
-  background: white;
+  background: var(--color-bg-modal);
   border-radius: 12px;
   padding: 24px;
   width: 600px;
@@ -470,7 +536,7 @@ function toggleSchemaId(id: string) {
 
 .schema-select {
   width: 240px;
-  border: 1px solid #e5e5e5;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 8px;
   max-height: 300px;
@@ -483,7 +549,7 @@ function toggleSchemaId(id: string) {
   gap: 8px;
   margin-bottom: 8px;
   font-size: 13px;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .schema-check {
@@ -500,7 +566,7 @@ function toggleSchemaId(id: string) {
 
 .mounted-tag {
   font-size: 11px;
-  color: #34c759;
+  color: var(--color-success);
 }
 
 .param-config {
@@ -509,7 +575,7 @@ function toggleSchemaId(id: string) {
 
 .param-config h4 {
   font-size: 13px;
-  color: #666;
+  color: var(--color-text-secondary);
   margin-bottom: 8px;
 }
 
@@ -522,16 +588,18 @@ function toggleSchemaId(id: string) {
 
 .param-row label {
   font-size: 12px;
-  color: #666;
+  color: var(--color-text-secondary);
   min-width: 100px;
 }
 
 .param-row input {
   width: 80px;
   padding: 4px 6px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   font-size: 12px;
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
 }
 
 .checkbox {
@@ -546,5 +614,62 @@ function toggleSchemaId(id: string) {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+/* Pending delete styles */
+.model-item.is-deleting {
+  opacity: 0.5;
+  background: var(--color-bg-tertiary);
+  border: 1px dashed var(--color-border-dark);
+}
+
+.badge-deleting {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--color-danger);
+  color: white;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.btn-delete-sm {
+  background: none;
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.btn-delete-sm:hover:not(:disabled) {
+  background: var(--color-danger);
+  color: white;
+}
+
+.btn-delete-sm:disabled {
+  color: var(--color-text-tertiary);
+  border-color: var(--color-border);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.btn-cancel-delete-sm {
+  background: none;
+  border: 1px solid var(--color-success);
+  color: var(--color-success);
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.btn-cancel-delete-sm:hover {
+  background: var(--color-success);
+  color: white;
 }
 </style>

@@ -25,6 +25,11 @@
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },
+  "plugins": {
+    "shell": {
+      "open": "^https?://"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

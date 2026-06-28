@@ -243,7 +243,45 @@ pub fn get_config_files() -> Result<Vec<ConfigFileInfo>, String> {
 
 #[tauri::command]
 pub fn sync() -> Result<(), String> {
-    crate::rime::deployer::sync().map_err(|e| e.to_string())
+    crate::rime::deployer::sync().map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn open_dir(path: String) -> Result<(), String> {
+    if !std::path::Path::new(&path).exists() {
+        return Err(format!("目录不存在: {}", path));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open directory: {}", e))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open directory: {}", e))?;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open directory: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_rime_dir() -> Result<(), String> {
+    let cfg = RimeConfig::detect();
+    let dir = cfg.user_dir.to_string_lossy().to_string();
+    open_dir(dir)
 }
 
 #[tauri::command]
@@ -252,19 +290,107 @@ pub fn reset_config() -> Result<(), String> {
     let style_custom = cfg.style_custom_path();
     let default_custom = cfg.default_custom_path();
 
+    // Backup before deleting, so user can recover
+    if style_custom.exists() || default_custom.exists() {
+        if let Err(e) = super::backup::create_deploy_backup(false) {
+            eprintln!("Warning: backup before reset failed: {}", e);
+        }
+    }
+
     if style_custom.exists() {
         std::fs::remove_file(&style_custom).map_err(|e| e.to_string())?;
     }
     if default_custom.exists() {
         std::fs::remove_file(&default_custom).map_err(|e| e.to_string())?;
     }
+
+    // Trigger deploy so Rime picks up the changes
+    if let Err(e) = crate::rime::deployer::deploy() {
+        eprintln!("Warning: deploy after reset failed: {}", e);
+    }
+
     Ok(())
 }
 
+#[derive(serde::Deserialize)]
+pub struct PendingDelete {
+    pub delete_type: String, // "theme", "schema", "model"
+    pub identifier: String,  // theme name, schema file name, or model filename
+}
+
 #[tauri::command]
-pub fn deploy() -> Result<(), String> {
-    if let Err(e) = super::backup::create_deploy_backup() {
+pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), String> {
+    // Determine if any model deletion is planned
+    let has_model_delete = pending_deletes.as_ref()
+        .map_or(false, |deletes| deletes.iter().any(|d| d.delete_type == "model"));
+
+    // Backup before deploy: include models only if model deletion is planned
+    if let Err(e) = super::backup::create_deploy_backup(has_model_delete) {
         eprintln!("Warning: deploy backup failed: {}", e);
     }
+
+    // Execute pending deletes after backup
+    if let Some(deletes) = pending_deletes {
+        let cfg = RimeConfig::detect();
+        for delete in &deletes {
+            match delete.delete_type.as_str() {
+                "theme" => {
+                    // Remove theme from squirrel.custom.yaml
+                    let _ = super::style::delete_color_scheme(delete.identifier.clone());
+                }
+                "schema" => {
+                    // Delete schema file from user directory
+                    let file_path = cfg.user_dir.join(&delete.identifier);
+                    if file_path.exists() {
+                        if let Err(e) = std::fs::remove_file(&file_path) {
+                            eprintln!("Warning: failed to delete schema {}: {}", delete.identifier, e);
+                        }
+                    }
+                    // Also remove from schema_list in default.custom.yaml
+                    let _ = remove_schema_from_list(&cfg, &delete.identifier);
+                }
+                "model" => {
+                    // Delete grammar model file from user directory
+                    let file_path = cfg.user_dir.join(&delete.identifier);
+                    if file_path.exists() {
+                        if let Err(e) = std::fs::remove_file(&file_path) {
+                            eprintln!("Warning: failed to delete model {}: {}", delete.identifier, e);
+                        }
+                    }
+                }
+                _ => {
+                    eprintln!("Warning: unknown delete type: {}", delete.delete_type);
+                }
+            }
+        }
+    }
+
     crate::rime::deployer::deploy().map_err(|e| e.to_string())
+}
+
+fn remove_schema_from_list(cfg: &RimeConfig, schema_filename: &str) -> Result<(), String> {
+    // Extract schema_id from filename (e.g., "my_schema.schema.yaml" -> "my_schema")
+    let schema_id = schema_filename
+        .strip_suffix(".schema.yaml")
+        .or_else(|| schema_filename.strip_suffix(".schema.yml"))
+        .unwrap_or(schema_filename);
+
+    cfg.save_patch(&cfg.default_custom_path(), |patch| {
+        if let Some(schema_list) = patch.get_mut(Value::String("schema_list".into())) {
+            if let Some(list) = schema_list.as_sequence_mut() {
+                list.retain(|item| {
+                    if let Some(map) = item.as_mapping() {
+                        let id = map
+                            .get(Value::String("schema".into()))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        id != schema_id
+                    } else {
+                        true
+                    }
+                });
+            }
+        }
+        Ok(())
+    }).map_err(|e| e.to_string())
 }

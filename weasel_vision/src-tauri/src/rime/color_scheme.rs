@@ -322,9 +322,25 @@ impl RimeColorScheme {
 }
 
 fn parse_color(dict: &serde_yaml::Mapping, key: &str) -> Option<RimeColor> {
-    dict.get(serde_yaml::Value::String(key.into()))
-        .and_then(|v| v.as_str())
-        .and_then(RimeColor::from_hex)
+    let value = dict.get(serde_yaml::Value::String(key.into()))?;
+    // Handle string format: "0xBBGGRR" or "0xAABBGGRR"
+    if let Some(s) = value.as_str() {
+        return RimeColor::from_hex(s);
+    }
+    // Handle integer format: 0xBBGGRR (serde_yaml parses unquoted 0x... as integers)
+    if let Some(i) = value.as_i64() {
+        if i >= 0 && i <= 0xFFFFFF {
+            // 6-digit: 0xBBGGRR -> pad with alpha=FF
+            let hex = format!("0xFF{:06X}", i as u32);
+            return RimeColor::from_hex(&hex);
+        }
+        if i > 0xFFFFFF && i <= 0xFFFFFFFF {
+            // 8-digit: 0xAABBGGRR
+            let hex = format!("0x{:08X}", i as u32);
+            return RimeColor::from_hex(&hex);
+        }
+    }
+    None
 }
 
 fn parse_string(dict: &serde_yaml::Mapping, key: &str) -> Option<String> {

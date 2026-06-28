@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 
 interface SyncSettings {
   sync_dir: string | null
@@ -81,6 +82,27 @@ async function saveSettings() {
     console.error('Failed to save sync settings:', e)
   }
 }
+
+async function selectFolder() {
+  const selected = await dialogOpen({
+    directory: true,
+    multiple: false,
+    title: '选择同步目录'
+  })
+  if (selected && typeof selected === 'string') {
+    editingDir.value = selected
+  }
+}
+
+async function openSyncDir() {
+  if (!settings.value.sync_dir) return
+  try {
+    await invoke('open_dir', { path: settings.value.sync_dir })
+  } catch (e) {
+    console.error('Failed to open sync directory:', e)
+    alert('打开目录失败：' + String(e))
+  }
+}
 </script>
 
 <template>
@@ -93,7 +115,9 @@ async function saveSettings() {
       </div>
       <div class="status-row">
         <span class="label">同步目录:</span>
-        <span class="value mono">{{ settings.sync_dir || '未配置' }}</span>
+        <span class="value mono clickable" @click="openSyncDir" v-if="settings.sync_dir" title="点击打开此目录">{{ settings.sync_dir }}</span>
+        <span class="value mono" v-else>未配置</span>
+        <button v-if="settings.sync_dir" type="button" class="btn btn-small" @click="openSyncDir">📂 打开</button>
       </div>
       <div class="status-row">
         <span class="label">上次同步:</span>
@@ -155,9 +179,28 @@ async function saveSettings() {
     <div v-if="showSettings" class="modal-overlay" @click.self="showSettings = false">
       <div class="modal">
         <h3>同步设置</h3>
+        
+        <div class="info-box">
+          <p><strong>ℹ️ 说明：</strong></p>
+          <ul>
+            <li>Rime 的同步功能<strong>没有自带同步服务</strong>，只是将用户内容读写到指定文件夹</li>
+            <li>这个文件夹配合 <strong>iCloud、WebDAV、坚果云</strong>等文件同步服务可实现多设备同步</li>
+            <li>如果不配置同步服务，只是读写到这个指定文件夹而已</li>
+          </ul>
+          <p class="small">同步内容包括：</p>
+          <ul class="small">
+            <li>用户自定义配置（*.custom.yaml，如 default.custom.yaml 等）</li>
+            <li>用户词典快照（*.userdb.txt，即用户词库的文本导出）</li>
+          </ul>
+          <p class="small">注意：同步不会备份方案主配置文件（如 rime_mint.schema.yaml）和系统词典文件。</p>
+        </div>
+        
         <div class="form-group">
           <label>同步目录</label>
-          <input v-model="editingDir" placeholder="/path/to/sync/folder" class="input" />
+          <div style="display: flex; gap: 8px;">
+            <input v-model="editingDir" placeholder="/path/to/sync/folder" class="input" style="flex: 1;" />
+            <button type="button" class="btn btn-secondary" @click="selectFolder">📁 选择文件夹</button>
+          </div>
           <p class="hint">例如: /Users/fred/Dropbox/RimeSync 或 D:\Dropbox\RimeSync</p>
         </div>
         <div class="form-group">
@@ -183,8 +226,8 @@ async function saveSettings() {
 }
 
 .status-card {
-  background: white;
-  border: 1px solid #e5e5e5;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 16px;
 }
@@ -198,7 +241,7 @@ async function saveSettings() {
 }
 
 .status-row .label {
-  color: #666;
+  color: var(--color-text-secondary);
   min-width: 80px;
 }
 
@@ -210,12 +253,12 @@ async function saveSettings() {
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 10px;
-  background: #ff3b30;
+  background: var(--color-danger);
   color: white;
 }
 
 .status-badge.ok {
-  background: #34c759;
+  background: var(--color-success);
 }
 
 .status-actions {
@@ -225,18 +268,18 @@ async function saveSettings() {
 }
 
 .result-card {
-  background: white;
-  border: 1px solid #e5e5e5;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 16px;
 }
 
 .result-card.success {
-  border-color: #34c759;
+  border-color: var(--color-success);
 }
 
 .result-card.error {
-  border-color: #ff3b30;
+  border-color: var(--color-danger);
 }
 
 .result-card h4 {
@@ -250,7 +293,7 @@ async function saveSettings() {
 }
 
 .result-label {
-  color: #666;
+  color: var(--color-text-secondary);
   margin-right: 8px;
 }
 
@@ -259,19 +302,19 @@ async function saveSettings() {
   margin-right: 8px;
   font-family: monospace;
   font-size: 12px;
-  background: #f5f5f5;
+  background: var(--color-bg-tertiary);
   padding: 1px 6px;
   border-radius: 3px;
 }
 
 .result-section.errors .result-item {
-  background: #ffebee;
-  color: #c62828;
+  background: var(--color-danger-light);
+  color: var(--color-danger-hover);
 }
 
 .devices-section {
-  background: white;
-  border: 1px solid #e5e5e5;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 16px;
 }
@@ -293,7 +336,7 @@ async function saveSettings() {
   gap: 10px;
   padding: 8px;
   border-radius: 6px;
-  background: #f9f9f9;
+  background: var(--color-bg-tertiary);
 }
 
 .device-icon {
@@ -311,27 +354,28 @@ async function saveSettings() {
 
 .device-meta {
   font-size: 11px;
-  color: #999;
+  color: var(--color-text-tertiary);
 }
 
 .empty-state {
   text-align: center;
-  color: #999;
+  color: var(--color-text-tertiary);
   padding: 20px;
   font-size: 13px;
 }
 
 .btn {
   padding: 6px 14px;
-  border: 1px solid #ddd;
-  background: white;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
 }
 
 .btn-primary {
-  background: #007aff;
+  background: var(--color-accent);
   color: white;
   border: none;
 }
@@ -344,7 +388,7 @@ async function saveSettings() {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-bg-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -352,7 +396,7 @@ async function saveSettings() {
 }
 
 .modal {
-  background: white;
+  background: var(--color-bg-modal);
   border-radius: 12px;
   padding: 24px;
   width: 450px;
@@ -376,21 +420,69 @@ async function saveSettings() {
 .input {
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   font-size: 13px;
   font-family: monospace;
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
 }
 
 .hint {
   font-size: 11px;
-  color: #999;
+  color: var(--color-text-tertiary);
   margin-top: 4px;
+}
+
+.info-box {
+  background: var(--color-accent-muted);
+  border-left: 3px solid var(--color-accent);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 4px;
+}
+
+.info-box p {
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.info-box ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.info-box li {
+  margin: 4px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.info-box .small {
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.status-row .mono.clickable:hover {
+  color: var(--color-accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.btn-small {
+  padding: 4px 12px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
 }
 </style>

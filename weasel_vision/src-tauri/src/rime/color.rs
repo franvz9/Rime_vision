@@ -55,6 +55,8 @@ impl RimeColor {
         }
     }
 
+    /// Convert RGBA color to CSS rgba() string format
+    /// Reserved for future CSS color output support.
     #[allow(dead_code)]
     pub fn to_css(self) -> String {
         if self.a < 255 {
@@ -70,6 +72,7 @@ impl RimeColor {
         }
     }
 
+    /// Pure white color (255, 255, 255, 255)
     #[allow(dead_code)]
     pub const WHITE: Self = Self {
         r: 255,
@@ -77,6 +80,7 @@ impl RimeColor {
         b: 255,
         a: 255,
     };
+    /// Pure black color (0, 0, 0, 255)
     #[allow(dead_code)]
     pub const BLACK: Self = Self {
         r: 0,
@@ -84,6 +88,7 @@ impl RimeColor {
         b: 0,
         a: 255,
     };
+    /// Fully transparent color (0, 0, 0, 0)
     #[allow(dead_code)]
     pub const CLEAR: Self = Self {
         r: 0,

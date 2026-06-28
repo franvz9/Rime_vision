@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
@@ -23,6 +24,8 @@ dirs = "5"
 chrono = "0.4"
 regex = "1"
 anyhow = "1"
+tokio = { version = "1", features = ["time"] }
+uuid = { version = "1", features = ["v4"] }
 
 [profile.release]
 codegen-units = 1
