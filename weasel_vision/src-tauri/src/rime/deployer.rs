@@ -25,8 +25,8 @@ pub fn deploy() -> Result<()> {
     #[cfg(target_os = "windows")]
     {
         let deployer_paths = [
-            dirs::program_files().map(|p| p.join("Rime/WeaselDeployer.exe")),
-            dirs::program_files_x86().map(|p| p.join("Rime/WeaselDeployer.exe")),
+            std::env::var("ProgramFiles").ok().map(|p| std::path::PathBuf::from(p).join("Rime/WeaselDeployer.exe")),
+            std::env::var("ProgramFiles(x86)").ok().map(|p| std::path::PathBuf::from(p).join("Rime/WeaselDeployer.exe")),
         ];
 
         for path_opt in deployer_paths {
@@ -59,8 +59,8 @@ pub fn sync() -> Result<bool> {
     #[cfg(target_os = "windows")]
     {
         let deployer_paths = [
-            dirs::program_files().map(|p| p.join("Rime/WeaselDeployer.exe")),
-            dirs::program_files_x86().map(|p| p.join("Rime/WeaselDeployer.exe")),
+            std::env::var("ProgramFiles").ok().map(|p| std::path::PathBuf::from(p).join("Rime/WeaselDeployer.exe")),
+            std::env::var("ProgramFiles(x86)").ok().map(|p| std::path::PathBuf::from(p).join("Rime/WeaselDeployer.exe")),
         ];
 
         for path_opt in deployer_paths {
