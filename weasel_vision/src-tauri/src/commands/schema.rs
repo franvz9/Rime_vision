@@ -17,7 +17,7 @@ pub fn get_schemas() -> Result<SchemaListData, String> {
     
     // Get current schema from user.yaml (var/previously_selected_schema)
     let user_value = cfg
-        .load_yaml(&cfg.user_dir.join("user.yaml"))
+        .load_yaml(&cfg.user_yaml_path())
         .unwrap_or_else(|e| {
             eprintln!("Warning: failed to load user.yaml: {}, using empty config", e);
             Value::Mapping(serde_yaml::Mapping::new())

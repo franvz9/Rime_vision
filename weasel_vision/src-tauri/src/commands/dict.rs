@@ -319,14 +319,36 @@ fn find_snapshot(dict_id: &str) -> Result<PathBuf, String> {
     
     // Priority 1: Check sync directory (Rime native sync output)
     // Path: ~/Library/Rime/sync/<device_id>/<dict_id>.userdb.txt
+    // IMPORTANT: Scan ALL device folders in sync dir, not just current device,
+    // because other devices' synced data is stored in their respective folders.
     if let Ok(installation_content) = std::fs::read_to_string(cfg.user_dir.join("installation.yaml")) {
         if let Ok(installation) = serde_yaml::from_str::<serde_yaml::Value>(&installation_content) {
             if let Some(sync_dir) = installation.get("sync_dir").and_then(|v| v.as_str()) {
-                if let Some(device_id) = installation.get("installation_id").and_then(|v| v.as_str()) {
-                    let sync_device_dir = std::path::PathBuf::from(sync_dir).join(device_id);
-                    let snapshot_path = sync_device_dir.join(format!("{}.userdb.txt", dict_id));
-                    if snapshot_path.exists() {
-                        return Ok(snapshot_path);
+                let sync_base = std::path::PathBuf::from(sync_dir);
+                if sync_base.exists() {
+                    // Scan all device folders to find the most recent snapshot
+                    let mut candidates: Vec<(PathBuf, std::time::SystemTime)> = Vec::new();
+                    
+                    if let Ok(entries) = std::fs::read_dir(&sync_base) {
+                        for entry in entries.flatten() {
+                            if entry.path().is_dir() {
+                                let snapshot_path = entry.path().join(format!("{}.userdb.txt", dict_id));
+                                if snapshot_path.exists() {
+                                    if let Ok(meta) = std::fs::metadata(&snapshot_path) {
+                                        if let Ok(modified) = meta.modified() {
+                                            candidates.push((snapshot_path, modified));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Sort by modification time (most recent first)
+                    candidates.sort_by_key(|(_, m)| std::cmp::Reverse(*m));
+                    
+                    if let Some((latest_path, _)) = candidates.first() {
+                        return Ok(latest_path.clone());
                     }
                 }
             }
