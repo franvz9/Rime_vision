@@ -214,14 +214,31 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<usize, String> {
     if let Ok(entries) = std::fs::read_dir(src) {
         for entry in entries.flatten() {
             let src_path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
             let dst_path = dst.join(entry.file_name());
+            
+            // Skip locked LevelDB files on Windows (os error 32)
+            #[cfg(target_os = "windows")]
+            if name.ends_with(".log") || name == "LOCK" || name.starts_with("MANIFEST-") || name == "CURRENT" {
+                eprintln!("Skipping locked file in subdirectory: {}", name);
+                continue;
+            }
             
             if src_path.is_dir() {
                 count += copy_dir_recursive(&src_path, &dst_path)?;
             } else {
-                std::fs::copy(&src_path, &dst_path)
-                    .map_err(|e| format!("Failed to copy {:?} to {:?}: {}", src_path, dst_path, e))?;
-                count += 1;
+                match std::fs::copy(&src_path, &dst_path) {
+                    Ok(_) => count += 1,
+                    Err(e) => {
+                        // Skip locked files on Windows
+                        #[cfg(target_os = "windows")]
+                        if e.raw_os_error() == Some(32) {
+                            eprintln!("Skipping locked file: {:?}", src_path);
+                            continue;
+                        }
+                        return Err(format!("Failed to copy {:?} to {:?}: {}", src_path, dst_path, e));
+                    }
+                }
             }
         }
     }
