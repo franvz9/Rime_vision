@@ -256,7 +256,7 @@ async function deploy() {
     --color-text-secondary: #a0a0a0;
     --color-text-tertiary: #8e8e93;
     --color-text-placeholder: #666666;
-    --color-text-inverse: #1c1c1e;
+    --color-text-inverse: #ffffff;
     
     /* 边框与分割线 */
     --color-border: #38383a;
