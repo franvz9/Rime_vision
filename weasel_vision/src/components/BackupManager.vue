@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { formatSize } from '../utils'
 
 interface BackupInfo {
   id: string
@@ -39,6 +40,30 @@ const compareDiff = ref<FileDiff | null>(null)
 const createNote = ref('')
 const isCreating = ref(false)
 const isRestoring = ref(false)
+const showCreateDialog = ref(false)
+const selectedCategories = ref<string[]>(['core', 'schemas', 'themes', 'dicts'])
+const fullBackupMode = ref(false)
+const allIndividualCategories = ['core', 'schemas', 'themes', 'dicts', 'models', 'opencc', 'lua']
+
+function toggleFullBackup(e: Event) {
+  const checked = (e.target as HTMLInputElement).checked
+  fullBackupMode.value = checked
+  if (checked) {
+    // Select all individual categories (UI only) and set backend param to 'full'
+    selectedCategories.value = ['full', ...allIndividualCategories]
+  } else {
+    selectedCategories.value = ['core', 'schemas', 'themes', 'dicts']
+  }
+}
+
+function onIndividualCategoryChange() {
+  // When any individual category changes, exit full backup mode
+  if (fullBackupMode.value) {
+    fullBackupMode.value = false
+    // Remove 'full' from selectedCategories
+    selectedCategories.value = selectedCategories.value.filter(c => c !== 'full')
+  }
+}
 
 onMounted(async () => {
   await loadBackups()
@@ -63,13 +88,26 @@ async function selectBackup(backup: BackupInfo) {
 }
 
 async function createBackup() {
+  showCreateDialog.value = true
+}
+
+async function confirmCreateBackup() {
   isCreating.value = true
   try {
-    await invoke('create_backup', { note: createNote.value || null })
+    // When full backup mode, only send ["full"] to backend
+    const categories = fullBackupMode.value ? ['full'] : selectedCategories.value.filter(c => c !== 'full')
+    await invoke('create_backup', { 
+      categories,
+      note: createNote.value || null 
+    })
     createNote.value = ''
+    selectedCategories.value = ['core', 'schemas', 'themes', 'dicts'] // reset to default
+    fullBackupMode.value = false
+    showCreateDialog.value = false
     await loadBackups()
   } catch (e) {
     console.error('Failed to create backup:', e)
+    alert('创建备份失败：' + String(e))
   } finally {
     isCreating.value = false
   }
@@ -125,12 +163,6 @@ async function confirmDelete() {
   }
 }
 
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${bytes} B`
-}
-
 function typeName(type: string): string {
   const map: Record<string, string> = { manual: '手动', deploy: '部署前', auto: '自动' }
   return map[type] || type
@@ -146,6 +178,14 @@ function typeName(type: string): string {
           <button class="btn btn-primary btn-sm" @click="createBackup" :disabled="isCreating">
             {{ isCreating ? '创建中...' : '+ 创建备份' }}
           </button>
+        </div>
+
+        <div class="auto-backup-hint">
+          <p>💡 每次部署前会自动备份，最多保留 10 个，滚动更新。</p>
+          <p class="hint-sub">
+            <strong>备份规则：</strong>默认包含配置、主题、方案等文件；若本次部署涉及模型删除，则自动升级为全量备份（含 .gram 模型文件），确保可恢复。
+          </p>
+          <p class="hint-sub">此备份功能独立于 Rime 原生同步，不会被 Rime 同步到其他设备。</p>
         </div>
 
         <div v-if="backups.length === 0" class="empty-state">
@@ -252,6 +292,86 @@ function typeName(type: string): string {
         </div>
       </div>
     </div>
+
+    <!-- Create backup dialog -->
+    <div v-if="showCreateDialog" class="modal-overlay" @click.self="showCreateDialog = false">
+      <div class="modal modal-wide">
+        <h3>创建备份</h3>
+        <p class="hint-text" style="color: var(--color-danger); font-weight: bold;">
+          ⚠️ 注意：此备份不是 Rime 原生备份功能，不会被 Rime 原生同步同步
+        </p>
+        
+        <h4>选择备份类别：</h4>
+        <div class="category-list" :class="{ disabled: fullBackupMode }">
+          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+            <input type="checkbox" value="core" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+            <div>
+              <strong>核心配置</strong>
+              <span class="desc">default.yaml, installation.yaml, user.yaml, squirrel.yaml 等</span>
+            </div>
+          </label>
+          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+            <input type="checkbox" value="schemas" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+            <div>
+              <strong>方案定义</strong>
+              <span class="desc">*.schema.yaml 文件</span>
+            </div>
+          </label>
+          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+            <input type="checkbox" value="themes" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+            <div>
+              <strong>主题配色</strong>
+              <span class="desc">squirrel.custom.yaml, weasel.custom.yaml 等</span>
+            </div>
+          </label>
+          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+            <input type="checkbox" value="dicts" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+            <div>
+              <strong>用户词典</strong>
+              <span class="desc">user_dictionaries/*.userdb.txt</span>
+            </div>
+          </label>
+          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+            <input type="checkbox" value="models" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+            <div>
+              <strong>语言模型</strong>
+              <span class="desc">*.gram 文件</span>
+            </div>
+          </label>
+          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+            <input type="checkbox" value="opencc" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+            <div>
+              <strong>OpenCC 数据</strong>
+              <span class="desc">opencc/ 目录</span>
+            </div>
+          </label>
+          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+            <input type="checkbox" value="lua" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+            <div>
+              <strong>Lua 脚本</strong>
+              <span class="desc">lua/ 目录</span>
+            </div>
+          </label>
+          <label class="checkbox-item full-backup">
+            <input type="checkbox" :checked="fullBackupMode" @change="toggleFullBackup" />
+            <div>
+              <strong> 整个配置文件夹</strong>
+              <span class="desc">包含所有文件（自动排除 backups/ 和 build/ 目录）</span>
+            </div>
+          </label>
+        </div>
+
+        <h4>备注（可选）：</h4>
+        <textarea v-model="createNote" placeholder="例如：修改主题前的备份" rows="2"></textarea>
+
+        <div class="modal-actions">
+          <button class="btn" @click="showCreateDialog = false">取消</button>
+          <button class="btn btn-primary" @click="confirmCreateBackup" :disabled="isCreating || selectedCategories.length === 0">
+            {{ isCreating ? '创建中...' : '确认创建' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -269,8 +389,8 @@ function typeName(type: string): string {
 
 .backup-list {
   width: 320px;
-  background: white;
-  border: 1px solid #e5e5e5;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
@@ -281,12 +401,31 @@ function typeName(type: string): string {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid #e5e5e5;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .list-header h3 {
   font-size: 14px;
   margin: 0;
+}
+
+.auto-backup-hint {
+  padding: 10px 16px;
+  background: var(--color-accent-muted);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.auto-backup-hint p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  line-height: 1.5;
+}
+
+.auto-backup-hint .hint-sub {
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  margin-top: 4px;
 }
 
 .backup-items {
@@ -305,11 +444,11 @@ function typeName(type: string): string {
 }
 
 .backup-item:hover {
-  background: #f5f5f5;
+  background: var(--color-bg-hover);
 }
 
 .backup-item.selected {
-  background: #e3f2fd;
+  background: var(--color-accent-light);
 }
 
 .backup-icon {
@@ -328,13 +467,13 @@ function typeName(type: string): string {
 
 .backup-meta {
   font-size: 11px;
-  color: #999;
+  color: var(--color-text-tertiary);
 }
 
 .backup-detail {
   flex: 1;
-  background: white;
-  border: 1px solid #e5e5e5;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 16px;
 }
@@ -354,8 +493,8 @@ function typeName(type: string): string {
 .backup-type-badge {
   font-size: 11px;
   padding: 2px 8px;
-  background: #e3f2fd;
-  color: #1976d2;
+  background: var(--color-accent-light);
+  color: var(--color-accent);
   border-radius: 10px;
 }
 
@@ -365,7 +504,7 @@ function typeName(type: string): string {
 }
 
 .detail-meta .label {
-  color: #666;
+  color: var(--color-text-secondary);
   margin-right: 8px;
 }
 
@@ -386,7 +525,7 @@ function typeName(type: string): string {
   gap: 8px;
   padding: 6px 8px;
   font-size: 13px;
-  background: #f9f9f9;
+  background: var(--color-bg-tertiary);
   border-radius: 4px;
 }
 
@@ -400,7 +539,7 @@ function typeName(type: string): string {
 }
 
 .file-size {
-  color: #999;
+  color: var(--color-text-tertiary);
   font-size: 12px;
 }
 
@@ -415,18 +554,19 @@ function typeName(type: string): string {
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: #999;
+  color: var(--color-text-tertiary);
 }
 
 .hint {
   font-size: 12px;
-  color: #ccc;
+  color: var(--color-text-tertiary);
 }
 
 .btn {
   padding: 6px 14px;
-  border: 1px solid #ddd;
-  background: white;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
@@ -438,13 +578,13 @@ function typeName(type: string): string {
 }
 
 .btn-primary {
-  background: #007aff;
+  background: var(--color-accent);
   color: white;
   border: none;
 }
 
 .btn-danger {
-  background: #ff3b30;
+  background: var(--color-danger);
   color: white;
   border: none;
 }
@@ -460,16 +600,17 @@ function typeName(type: string): string {
   cursor: pointer;
   font-size: 12px;
   padding: 2px 4px;
+  color: var(--color-text-primary);
 }
 
 .icon-btn.danger {
-  color: #ff3b30;
+  color: var(--color-danger);
 }
 
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-bg-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -477,7 +618,7 @@ function typeName(type: string): string {
 }
 
 .modal {
-  background: white;
+  background: var(--color-bg-modal);
   border-radius: 12px;
   padding: 24px;
   width: 400px;
@@ -524,7 +665,7 @@ function typeName(type: string): string {
 }
 
 .diff-view pre {
-  background: #f5f5f5;
+  background: var(--color-bg-tertiary);
   padding: 8px;
   border-radius: 4px;
   font-size: 11px;
@@ -534,19 +675,94 @@ function typeName(type: string): string {
 }
 
 .diff-current {
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border);
 }
 
 .diff-backup {
-  border: 1px solid #007aff;
-  background: #e3f2fd;
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent-light);
 }
 
 .diff-note {
   grid-column: 1 / -1;
-  color: #999;
+  color: var(--color-text-tertiary);
   font-size: 13px;
   text-align: center;
   padding: 20px;
+}
+
+/* Category list styles */
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.checkbox-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.checkbox-item input[type="checkbox"] {
+  margin-top: 4px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.checkbox-item strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.checkbox-item .desc {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.checkbox-item.full-backup {
+  background: var(--color-warning-light);
+  border-color: var(--color-warning);
+  margin-top: 8px;
+}
+
+.checkbox-item.full-backup:hover {
+  background: var(--color-warning-muted);
+}
+
+.category-list.disabled .checkbox-item:not(.full-backup) {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  resize: vertical;
+}
+
+.hint-text {
+  font-size: 12px;
+  margin-bottom: 12px;
 }
 </style>

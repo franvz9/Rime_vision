@@ -198,3 +198,47 @@ pub fn unmount_grammar(schema_id: String) -> Result<(), String> {
     })
     .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn import_grammar(file_path: String) -> Result<(), String> {
+    // Security validation: prevent path traversal attacks
+    if file_path.contains("..") {
+        return Err("Invalid file path: path traversal not allowed".to_string());
+    }
+    
+    let cfg = RimeConfig::detect();
+    
+    // Read the source file as binary (gram files can be binary)
+    let content = std::fs::read(&file_path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+    
+    // Get filename without extension
+    let path = std::path::Path::new(&file_path);
+    let filename = path.file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("Invalid filename")?
+        .to_string();
+    
+    // Basic validation: check if file is not empty and has reasonable size
+    if content.is_empty() {
+        return Err("Grammar file is empty".to_string());
+    }
+    
+    // For text-based gram files, do additional validation
+    // Try to convert to string for validation, but don't fail if it's binary
+    if let Ok(content_str) = std::str::from_utf8(&content) {
+        // If it's valid UTF-8, check for expected markers
+        if !content_str.contains("# Rime grammar") && !content_str.contains("language:") {
+            // Allow binary gram files without these markers
+            eprintln!("Warning: Grammar file may not have standard Rime format, but importing anyway");
+        }
+    }
+    // If conversion fails, it's likely a binary file, which is acceptable
+    
+    // Copy to user directory using binary write
+    let dest_path = cfg.user_dir.join(format!("{}.gram", filename));
+    std::fs::write(&dest_path, content)
+        .map_err(|e| format!("Failed to copy file: {}", e))?;
+    
+    Ok(())
+}

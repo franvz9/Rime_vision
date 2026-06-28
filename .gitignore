@@ -29,13 +29,14 @@ dist/
 build/
 *.egg-info/
 
-# Swift build artifacts
-RimeVision/.build/
-RimeVision/*.d
-RimeVision/*.o
-RimeVision/*.swiftdeps
-RimeVision/*.swiftdeps~
-RimeVision/.DS_Store
+# Swift build artifacts (archived)
+archive/RimeVision/.build/
+archive/RimeVision/*.d
+archive/RimeVision/*.o
+archive/RimeVision/*.swiftdeps
+archive/RimeVision/*.swiftdeps~
+archive/RimeVision/.DS_Store
+archive/RimeVision/Tests/
 
 # Local Rime configs (not to be pushed)
 squirrel/
@@ -52,10 +53,11 @@ weasel_vision/app/
 
 # Build outputs
 *.dmg
+*.exe
+*.app
 
 # Other agent-generated configs
 .codegraph/
-.github/
 .reasonix/
 reasonix.toml
-RimeVision/docs/
+archive/RimeVision/docs/

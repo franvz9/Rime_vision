@@ -3,29 +3,21 @@ use anyhow::Result;
 pub fn deploy() -> Result<()> {
     #[cfg(target_os = "macos")]
     {
-        let script = r#"
-        tell application "System Events"
-            set procList to do shell script "ps -A | grep -i squirrel | grep -v grep | head -1"
-            if procList is not "" then
-                set pid to do shell script "ps -A | grep -i squirrel | grep -v grep | awk '{print $1}' | head -1"
-                do shell script "kill -HUP " & pid
-            end if
-        end tell
-        "#;
-        let output = std::process::Command::new("osascript")
-            .args(["-e", script])
-            .output();
-
-        match output {
-            Ok(o) if o.status.success() => return Ok(()),
-            Ok(o) => {
-                let stderr = String::from_utf8_lossy(&o.stderr);
-                if !stderr.is_empty() {
-                    eprintln!("WeaselVision: deploy signal failed: {}", stderr);
+        // Use pkill for atomic process matching and signaling (avoids TOCTOU race condition)
+        // -f matches against full process name, -HUP sends reload signal
+        // Exit code 0 = signal sent, 1 = no matching process (both are acceptable)
+        match std::process::Command::new("pkill")
+            .args(["-HUP", "-f", "Squirrel"])
+            .output()
+        {
+            Ok(output) => {
+                if !output.status.success() && output.status.code() != Some(1) {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    eprintln!("WeaselVision: pkill returned unexpected error: {}", stderr);
                 }
             }
             Err(e) => {
-                eprintln!("WeaselVision: failed to run osascript: {}", e);
+                eprintln!("WeaselVision: failed to execute pkill: {}", e);
             }
         }
     }
@@ -40,9 +32,13 @@ pub fn deploy() -> Result<()> {
         for path_opt in deployer_paths {
             if let Some(path) = path_opt {
                 if path.exists() {
-                    std::process::Command::new(&path)
+                    let output = std::process::Command::new(&path)
                         .arg("/deploy")
                         .output()?;
+                    if !output.status.success() {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        anyhow::bail!("WeaselDeployer /deploy failed: {}", stderr);
+                    }
                     return Ok(());
                 }
             }
@@ -59,7 +55,7 @@ pub fn deploy() -> Result<()> {
     Ok(())
 }
 
-pub fn sync() -> Result<()> {
+pub fn sync() -> Result<bool> {
     #[cfg(target_os = "windows")]
     {
         let deployer_paths = [
@@ -70,10 +66,14 @@ pub fn sync() -> Result<()> {
         for path_opt in deployer_paths {
             if let Some(path) = path_opt {
                 if path.exists() {
-                    std::process::Command::new(&path)
+                    let output = std::process::Command::new(&path)
                         .arg("/sync")
                         .output()?;
-                    return Ok(());
+                    if !output.status.success() {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        anyhow::bail!("WeaselDeployer /sync failed: {}", stderr);
+                    }
+                    return Ok(true);
                 }
             }
         }
@@ -82,14 +82,24 @@ pub fn sync() -> Result<()> {
 
     #[cfg(target_os = "macos")]
     {
-        // macOS: sync via notification (same as deploy)
-        deploy()?;
+        // Check if Squirrel is running before sending signal
+        let is_running = std::process::Command::new("pkill")
+            .args(["-0", "-f", "Squirrel"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if is_running {
+            deploy()?;
+            Ok(true)
+        } else {
+            eprintln!("WeaselVision: Squirrel process not found, sync signal not sent");
+            Ok(false)
+        }
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         anyhow::bail!("Sync is only supported on macOS and Windows");
     }
-
-    Ok(())
 }

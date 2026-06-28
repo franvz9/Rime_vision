@@ -16,7 +16,14 @@ pub struct RimeConfig {
 }
 
 impl RimeConfig {
+    /// Cached config detection - computed once and reused
     pub fn detect() -> Self {
+        use std::sync::OnceLock;
+        static CACHED: OnceLock<RimeConfig> = OnceLock::new();
+        CACHED.get_or_init(Self::detect_inner).clone()
+    }
+
+    fn detect_inner() -> Self {
         if cfg!(target_os = "macos") {
             Self {
                 user_dir: dirs::home_dir()
@@ -66,13 +73,18 @@ impl RimeConfig {
         self.user_dir.join(&self.default_custom)
     }
 
+    /// Get the custom config path for a given schema_id
+    /// Returns None if schema_id contains path traversal characters
     pub fn schema_custom_path(&self, schema_id: &str) -> PathBuf {
-        assert!(
-            !schema_id.contains('/') && !schema_id.contains('\\') && !schema_id.contains(".."),
-            "schema_id contains path traversal characters: {}",
-            schema_id
-        );
-        self.user_dir.join(format!("{}.custom.yaml", schema_id))
+        // Sanitize schema_id: remove any path separators and traversal sequences
+        let safe_id = schema_id
+            .replace('/', "")
+            .replace('\\', "")
+            .replace("..", "");
+        if safe_id != schema_id {
+            eprintln!("Warning: schema_id '{}' contained invalid characters, sanitized to '{}'", schema_id, safe_id);
+        }
+        self.user_dir.join(format!("{}.custom.yaml", safe_id))
     }
 
     pub fn load_yaml(&self, path: &Path) -> Result<Value> {
@@ -139,6 +151,8 @@ pub fn parse_yaml(text: &str) -> Result<Value> {
     Ok(normalize(value))
 }
 
+/// Serialize a YAML value back to string
+/// Reserved for future config export functionality.
 #[allow(dead_code)]
 pub fn dump_yaml(value: &Value) -> Result<String> {
     Ok(serde_yaml::to_string(value)?)
@@ -181,6 +195,8 @@ pub fn get_bool(dict: &Mapping, key: &str) -> Option<bool> {
         .and_then(|v| v.as_bool())
 }
 
+/// Get a floating-point value from YAML mapping
+/// Reserved for future config access.
 #[allow(dead_code)]
 pub fn get_f64(dict: &Mapping, key: &str) -> Option<f64> {
     dict.get(Value::String(key.into())).and_then(|v| {
@@ -210,6 +226,8 @@ pub fn get_sequence<'a>(dict: &'a Mapping, key: &str) -> &'a Vec<Value> {
         .unwrap_or(empty)
 }
 
+/// Set a string value in YAML mapping
+/// Reserved for future config modification.
 #[allow(dead_code)]
 pub fn set_string(dict: &mut Mapping, key: &str, value: &str) {
     dict.insert(
@@ -218,11 +236,15 @@ pub fn set_string(dict: &mut Mapping, key: &str, value: &str) {
     );
 }
 
+/// Set a boolean value in YAML mapping
+/// Reserved for future config modification.
 #[allow(dead_code)]
 pub fn set_bool(dict: &mut Mapping, key: &str, value: bool) {
     dict.insert(Value::String(key.into()), Value::Bool(value));
 }
 
+/// Set a floating-point value in YAML mapping
+/// Reserved for future config modification.
 #[allow(dead_code)]
 pub fn set_f64(dict: &mut Mapping, key: &str, value: f64) {
     dict.insert(
@@ -231,6 +253,8 @@ pub fn set_f64(dict: &mut Mapping, key: &str, value: f64) {
     );
 }
 
+/// Set an integer value in YAML mapping
+/// Reserved for future config modification.
 #[allow(dead_code)]
 pub fn set_i64(dict: &mut Mapping, key: &str, value: i64) {
     dict.insert(

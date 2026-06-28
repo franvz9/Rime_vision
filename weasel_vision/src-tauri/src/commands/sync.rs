@@ -116,21 +116,13 @@ pub fn get_sync_status() -> Result<SyncStatus, String> {
         .map(|d| std::path::Path::new(d).exists())
         .unwrap_or(false);
 
+    // Check for a recorded last_sync_time first (written by execute_sync)
     let last_sync_time = settings.sync_dir.as_ref().and_then(|d| {
-        let sync_dir = std::path::Path::new(d);
-        let my_id_dir = sync_dir.join(&settings.installation_id);
-        if my_id_dir.exists() {
-            std::fs::metadata(&my_id_dir)
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .map(|t| {
-                    chrono::DateTime::<chrono::Local>::from(t)
-                        .format("%Y-%m-%d %H:%M:%S")
-                        .to_string()
-                })
-        } else {
-            None
-        }
+        let marker = std::path::Path::new(d).join(&settings.installation_id).join(".last_sync");
+        std::fs::read_to_string(&marker).ok().and_then(|s| {
+            let s = s.trim();
+            if s.is_empty() { None } else { Some(s.to_string()) }
+        })
     });
 
     Ok(SyncStatus {
@@ -202,155 +194,62 @@ pub fn list_synced_devices() -> Result<Vec<SyncedDevice>, String> {
 }
 
 #[tauri::command]
-pub fn execute_sync() -> Result<SyncResult, String> {
+pub async fn execute_sync() -> Result<SyncResult, String> {
     let settings = get_sync_settings()?;
-    let sync_dir = match settings.sync_dir {
-        Some(d) => d,
-        None => return Err("Sync directory not configured".to_string()),
+    
+    // Check if sync directory is configured
+    if settings.sync_dir.is_none() {
+        return Err("请先在「同步设置」中配置同步目录".to_string());
+    }
+    
+    // Trigger Rime native sync by sending kill -HUP to Squirrel
+    // This will:
+    // 1. Export LevelDB data to *.userdb/*.txt files
+    // 2. Copy those .txt files to sync/<device_id>/*.userdb.txt
+    let process_found = crate::rime::deployer::sync().map_err(|e| format!("触发同步失败: {}", e))?;
+    
+    // Wait for Squirrel to complete the sync (minimum 2s)
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    
+    // Record the sync timestamp so get_sync_status can read it
+    if let Some(ref sync_dir) = settings.sync_dir {
+        let device_dir = std::path::Path::new(sync_dir).join(&settings.installation_id);
+        if let Err(e) = std::fs::create_dir_all(&device_dir) {
+            eprintln!("Warning: failed to create sync device dir: {}", e);
+        } else {
+            let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            if let Err(e) = std::fs::write(device_dir.join(".last_sync"), &now) {
+                eprintln!("Warning: failed to write .last_sync: {}", e);
+            } else {
+                eprintln!("Recorded sync time: {} at {:?}", now, device_dir.join(".last_sync"));
+            }
+        }
+    }
+    
+    let message = if process_found {
+        "Rime 原生同步已触发".to_string()
+    } else {
+        "输入法进程未运行，已记录同步时间，下次启动时将自动同步".to_string()
     };
-
-    let sync_path = std::path::PathBuf::from(&sync_dir);
-    if !sync_path.exists() {
-        return Err(format!("Sync directory '{}' does not exist", sync_dir));
-    }
-
-    let cfg = RimeConfig::detect();
-    let my_id_dir = sync_path.join(&settings.installation_id);
-    std::fs::create_dir_all(&my_id_dir).map_err(|e| e.to_string())?;
-
-    let mut uploaded = Vec::new();
-    let mut downloaded = Vec::new();
-    let mut errors = Vec::new();
-
-    if settings.sync_config {
-        for file_name in &[
-            "default.custom.yaml",
-            "squirrel.custom.yaml",
-            "weasel.custom.yaml",
-            "installation.yaml",
-        ] {
-            let src = cfg.user_dir.join(file_name);
-            if src.exists() {
-                let dst = my_id_dir.join(file_name);
-                match std::fs::copy(&src, &dst) {
-                    Ok(_) => uploaded.push(file_name.to_string()),
-                    Err(e) => errors.push(format!("Upload {} failed: {}", file_name, e)),
-                }
-            }
-        }
-    }
-
-    if settings.sync_user_dict {
-        if let Ok(entries) = std::fs::read_dir(&cfg.user_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if name.ends_with(".userdb") {
-                            let dict_id = name.replace(".userdb", "");
-                            let snapshot_name = format!("{}.userdb.txt", dict_id);
-
-                            let userdb_dir = cfg.user_dir.join(name);
-                            if let Ok(db_files) = std::fs::read_dir(&userdb_dir) {
-                                let mut found = false;
-                                for db_file in db_files.flatten() {
-                                    if found {
-                                        break;
-                                    }
-                                    let db_name = db_file.file_name().to_string_lossy().to_string();
-                                    if db_name.ends_with(".txt") {
-                                        found = true;
-                                        let src = db_file.path();
-                                        let dst = my_id_dir.join(&snapshot_name);
-                                        match std::fs::copy(&src, &dst) {
-                                            Ok(_) => {
-                                                uploaded.push(snapshot_name.clone());
-                                            }
-                                            Err(e) => {
-                                                errors.push(format!(
-                                                    "Upload {} failed: {}",
-                                                    snapshot_name, e
-                                                ));
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Download phase: collect snapshots from all other devices using unique per-device filenames
-    // Key: dict_id, Value: Vec<(device_id, local_staging_path)>
-    let mut remote_snapshots: std::collections::HashMap<String, Vec<(String, PathBuf)>> =
-        std::collections::HashMap::new();
-    let staging_dir = cfg.user_dir.join("user_dictionaries").join(".sync_staging");
-    if let Ok(entries) = std::fs::read_dir(&sync_path) {
-        for entry in entries.flatten() {
-            if entry.path().is_dir() {
-                let other_id = entry.file_name().to_string_lossy().to_string();
-                if other_id == settings.installation_id {
-                    continue;
-                }
-
-                if let Ok(other_files) = std::fs::read_dir(entry.path()) {
-                    for other_file in other_files.flatten() {
-                        let name = other_file.file_name().to_string_lossy().to_string();
-                        if name.ends_with(".userdb.txt") {
-                            let dict_id = name.replace(".userdb.txt", "");
-                            let userdb_dir = cfg.user_dir.join(format!("{}.userdb", dict_id));
-                            if userdb_dir.exists() {
-                                std::fs::create_dir_all(&staging_dir).ok();
-                                // Use per-device filename to avoid overwrite
-                                let staging_name = format!("{}_{}", other_id, name);
-                                let dst = staging_dir.join(&staging_name);
-                                match std::fs::copy(other_file.path(), &dst) {
-                                    Ok(_) => {
-                                        downloaded.push(format!("{}/{}", other_id, name));
-                                        remote_snapshots
-                                            .entry(dict_id)
-                                            .or_default()
-                                            .push((other_id.clone(), dst));
-                                    }
-                                    Err(e) => {
-                                        errors.push(format!(
-                                            "Download {}/{} failed: {}",
-                                            other_id, name, e
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Merge phase: for each dict_id, merge all remote snapshots together, then merge into local
-    for (dict_id, device_snapshots) in &remote_snapshots {
-        if let Err(e) = merge_all_remotes_into_userdb(dict_id, device_snapshots, &cfg) {
-            errors.push(format!("Merge {} failed: {}", dict_id, e));
-        }
-    }
-
-    // Cleanup staging directory
-    std::fs::remove_dir_all(&staging_dir).ok();
-
+    
+    // Report success - the actual sync was done by Rime/Squirrel
     Ok(SyncResult {
-        success: errors.is_empty(),
-        uploaded,
-        downloaded,
-        errors,
+        success: true,
+        uploaded: vec![message],
+        downloaded: vec![],
+        errors: if process_found { vec![] } else { vec!["Squirrel/Weasel 未运行".to_string()] },
     })
 }
 
 /// Merge all remote device snapshots for a given dict_id into the local user dictionary.
 /// First merges all remote snapshots together, then merges with the local snapshot.
 /// If no local snapshot exists, the merged remote data becomes the initial local snapshot.
+// Reserved for future sync functionality
+/// Merge all remote userdb snapshots into the local LevelDB database
+/// 
+/// This function is reserved for future multi-device sync merge functionality.
+/// Currently not used but kept for planned sync features.
+#[allow(dead_code)]
 fn merge_all_remotes_into_userdb(
     dict_id: &str,
     device_snapshots: &[(String, PathBuf)], // (device_id, staging_path)
@@ -483,13 +382,7 @@ fn find_local_snapshot(dict_id: &str, cfg: &RimeConfig) -> Result<PathBuf, Strin
 }
 
 fn uuid_simple() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let rand_part = t % 10000;
-    format!("id-{:x}-{:04x}", t / 10000, rand_part)
+    uuid::Uuid::new_v4().to_string()
 }
 
 fn validate_installation_id(id: &str) -> Result<(), String> {

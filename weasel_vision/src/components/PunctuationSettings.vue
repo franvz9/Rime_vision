@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import DeployNotice from './DeployNotice.vue'
 
-const emit = defineEmits(['changed'])
 
 interface PunctRule {
   key: string
@@ -64,7 +64,6 @@ function deleteRule(key: string) {
   } else {
     data.value.full_shape = data.value.full_shape.filter((r) => r.key !== key)
   }
-  emit('changed')
 }
 
 function saveEditedRule(rule: PunctRule) {
@@ -80,7 +79,6 @@ function saveEditedRule(rule: PunctRule) {
   showEditor.value = false
   editingRule.value = null
   originalKey.value = ''
-  emit('changed')
 }
 
 async function save() {
@@ -92,7 +90,6 @@ async function save() {
     })
     showSaved.value = true
     setTimeout(() => { showSaved.value = false }, 2000)
-    emit('changed')
   } catch (e) {
     console.error('Failed to save punctuation:', e)
   }
@@ -103,6 +100,8 @@ async function save() {
 
 <template>
   <div class="punctuation-settings">
+    <DeployNotice />
+
     <div class="tabs">
       <button :class="['tab', { active: activeTab === 'half' }]" @click="activeTab = 'half'">半角标点</button>
       <button :class="['tab', { active: activeTab === 'full' }]" @click="activeTab = 'full'">全角标点</button>
@@ -120,7 +119,7 @@ async function save() {
           {{ rule.commit ? 'commit' : rule.pair.length ? 'pair' : 'list' }}
         </span>
         <span class="rule-actions">
-          <button class="icon-btn" @click="editRule(rule)">✏</button>
+          <button class="icon-btn" @click="editRule(rule)">📝</button>
           <button class="icon-btn danger" @click="deleteRule(rule.key)">🗑</button>
         </span>
       </div>
@@ -142,9 +141,18 @@ async function save() {
         <div class="form-group">
           <label>类型:</label>
           <div class="radio-group">
-            <label><input type="radio" value="commit" v-model="editType" /> 直接上屏</label>
-            <label><input type="radio" value="pair" v-model="editType" /> 配对输入</label>
-            <label><input type="radio" value="list" v-model="editType" /> 候选列表</label>
+            <label class="radio-item">
+              <input type="radio" value="commit" v-model="editType" />
+              <span>直接上屏</span>
+            </label>
+            <label class="radio-item">
+              <input type="radio" value="pair" v-model="editType" />
+              <span>配对输入</span>
+            </label>
+            <label class="radio-item">
+              <input type="radio" value="list" v-model="editType" />
+              <span>候选列表</span>
+            </label>
           </div>
         </div>
         <div class="form-group" v-if="editType === 'commit'">
@@ -181,7 +189,7 @@ async function save() {
 .tabs {
   display: flex;
   gap: 4px;
-  background: #e9e9eb;
+  background: var(--color-bg-active);
   padding: 4px;
   border-radius: 8px;
   width: fit-content;
@@ -191,21 +199,23 @@ async function save() {
   padding: 6px 16px;
   border: none;
   background: none;
+  color: var(--color-text-primary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
 }
 
 .tab.active {
-  background: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: var(--color-bg-secondary);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-add {
   width: 32px;
   height: 32px;
-  border: 1px dashed #ccc;
-  background: white;
+  border: 1px dashed var(--color-border-dark);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 16px;
@@ -218,8 +228,8 @@ async function save() {
   gap: 2px;
   max-height: 400px;
   overflow-y: auto;
-  background: white;
-  border: 1px solid #e5e5e5;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
@@ -232,7 +242,7 @@ async function save() {
 }
 
 .rule-item:nth-child(even) {
-  background: #f9f9f9;
+  background: var(--color-bg-tertiary);
 }
 
 .rule-key {
@@ -243,7 +253,7 @@ async function save() {
 }
 
 .arrow {
-  color: #999;
+  color: var(--color-text-tertiary);
 }
 
 .rule-value {
@@ -253,7 +263,7 @@ async function save() {
 
 .rule-type {
   font-size: 11px;
-  color: #999;
+  color: var(--color-text-tertiary);
   min-width: 40px;
 }
 
@@ -266,12 +276,13 @@ async function save() {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 12px;
-  padding: 2px 4px;
+  font-size: 18px;
+  padding: 4px 6px;
+  line-height: 1;
 }
 
 .icon-btn.danger {
-  color: #ff3b30;
+  color: var(--color-danger);
 }
 
 .actions {
@@ -282,15 +293,16 @@ async function save() {
 
 .btn {
   padding: 8px 16px;
-  border: 1px solid #ddd;
-  background: white;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
 }
 
 .btn-primary {
-  background: #007aff;
+  background: var(--color-accent);
   color: white;
   border: none;
 }
@@ -301,14 +313,14 @@ async function save() {
 }
 
 .saved-hint {
-  color: #34c759;
+  color: var(--color-success);
   font-size: 13px;
 }
 
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-bg-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -316,10 +328,10 @@ async function save() {
 }
 
 .modal {
-  background: white;
+  background: var(--color-bg-modal);
   border-radius: 12px;
   padding: 24px;
-  width: 400px;
+  min-width: 420px;
 }
 
 .modal h3 {
@@ -333,29 +345,33 @@ async function save() {
 .form-group label {
   display: block;
   font-size: 13px;
-  color: #666;
+  color: var(--color-text-secondary);
   margin-bottom: 4px;
 }
 
 .form-group input {
   width: 100%;
   padding: 6px 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   font-size: 14px;
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
 }
 
 .radio-group {
   display: flex;
-  gap: 16px;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.radio-group label {
+.radio-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   font-size: 13px;
   cursor: pointer;
+  padding: 4px 0;
 }
 
 .modal-actions {
