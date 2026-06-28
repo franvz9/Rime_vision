@@ -791,11 +791,10 @@ function hexToRimeHex(hex: string, a: number = 255): string {
 
 .candidate-window {
   margin-top: 8px;
-  /* 确保预览始终在白色背景上显示 */
-  background: #ffffff;
   padding: 16px;
   border-radius: 8px;
   border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
 }
 
 .candidate-bg {
