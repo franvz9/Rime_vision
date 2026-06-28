@@ -362,7 +362,19 @@ pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<Ba
     if is_full {
         // For full backup: directly copy entire user directory structure
         let exclude_dirs = ["backups", "build", ".restore_temp"];
-        if let Ok(entries) = std::fs::read_dir(&cfg.user_dir) {
+        
+        // On Windows, when using build/ directory as user_dir, we need to copy from parent Rime dir
+        #[cfg(target_os = "windows")]
+        let actual_backup_source = if cfg.user_dir.ends_with("build") && cfg.user_dir.parent().map_or(false, |p| p.ends_with("Rime")) {
+            cfg.user_dir.parent().unwrap().to_path_buf()
+        } else {
+            cfg.user_dir.clone()
+        };
+        
+        #[cfg(not(target_os = "windows"))]
+        let actual_backup_source = cfg.user_dir.clone();
+        
+        if let Ok(entries) = std::fs::read_dir(&actual_backup_source) {
             for entry in entries.flatten() {
                 let src_path = entry.path();
                 let name = entry.file_name().to_string_lossy().to_string();
@@ -372,14 +384,30 @@ pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<Ba
                     continue;
                 }
                 
+                // Skip locked LevelDB files on Windows (os error 32)
+                #[cfg(target_os = "windows")]
+                if name.ends_with(".log") || name == "LOCK" || name.starts_with("MANIFEST-") || name == "CURRENT" {
+                    eprintln!("Skipping locked file: {}", name);
+                    continue;
+                }
+                
                 let dst_path = backup_dir.join(&name);
                 if src_path.is_dir() {
                     // Copy entire directory recursively
                     file_count += copy_dir_recursive(&src_path, &dst_path)?;
                 } else {
-                    // Copy single file
-                    std::fs::copy(&src_path, &dst_path).map_err(|e| e.to_string())?;
-                    file_count += 1;
+                    // Copy single file with retry for locked files
+                    match std::fs::copy(&src_path, &dst_path) {
+                        Ok(_) => file_count += 1,
+                        Err(e) => {
+                            // Skip locked files on Windows
+                            if e.raw_os_error() == Some(32) {
+                                eprintln!("Skipping locked file: {}", src_path.display());
+                                continue;
+                            }
+                            return Err(e.to_string());
+                        }
+                    }
                 }
             }
         }

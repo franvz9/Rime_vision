@@ -9,6 +9,8 @@ use super::patch;
 #[derive(Debug, Clone)]
 pub struct RimeConfig {
     pub user_dir: PathBuf,
+    /// Root Rime directory (parent of build/ on Windows)
+    pub rime_root: Option<PathBuf>,
     pub style_file: String,
     pub style_custom: String,
     pub default_yaml: String,
@@ -29,16 +31,32 @@ impl RimeConfig {
                 user_dir: dirs::home_dir()
                     .unwrap_or_else(|| PathBuf::from("~"))
                     .join("Library/Rime"),
+                rime_root: None,
                 style_file: "squirrel.yaml".into(),
                 style_custom: "squirrel.custom.yaml".into(),
                 default_yaml: "default.yaml".into(),
                 default_custom: "default.custom.yaml".into(),
             }
         } else if cfg!(target_os = "windows") {
+            // On Windows, check if build/ directory exists (compiled configs)
+            let base_dir = dirs::config_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("Rime");
+            
+            let has_build_dir = base_dir.join("build").exists();
+            
             Self {
-                user_dir: dirs::config_dir()
-                    .unwrap_or_else(|| PathBuf::from("."))
-                    .join("Rime"),
+                user_dir: if has_build_dir {
+                    // Use build/ directory for compiled configs
+                    base_dir.join("build")
+                } else {
+                    base_dir.clone()
+                },
+                rime_root: if has_build_dir {
+                    Some(base_dir)
+                } else {
+                    None
+                },
                 style_file: "weasel.yaml".into(),
                 style_custom: "weasel.custom.yaml".into(),
                 default_yaml: "default.yaml".into(),
@@ -49,6 +67,7 @@ impl RimeConfig {
                 user_dir: dirs::data_dir()
                     .unwrap_or_else(|| PathBuf::from("."))
                     .join("Rime"),
+                rime_root: None,
                 style_file: "rime.yaml".into(),
                 style_custom: "rime.custom.yaml".into(),
                 default_yaml: "default.yaml".into(),
@@ -62,6 +81,11 @@ impl RimeConfig {
     }
 
     pub fn style_custom_path(&self) -> PathBuf {
+        // On Windows with build/ dir, custom files are in rime_root, not build/
+        #[cfg(target_os = "windows")]
+        if let Some(ref root) = self.rime_root {
+            return root.join(&self.style_custom);
+        }
         self.user_dir.join(&self.style_custom)
     }
 
@@ -70,6 +94,11 @@ impl RimeConfig {
     }
 
     pub fn default_custom_path(&self) -> PathBuf {
+        // On Windows with build/ dir, custom files are in rime_root, not build/
+        #[cfg(target_os = "windows")]
+        if let Some(ref root) = self.rime_root {
+            return root.join(&self.default_custom);
+        }
         self.user_dir.join(&self.default_custom)
     }
 
