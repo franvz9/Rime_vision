@@ -1,0 +1,63 @@
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv
+venv/
+env/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Swift build artifacts (archived)
+archive/RimeVision/.build/
+archive/RimeVision/*.d
+archive/RimeVision/*.o
+archive/RimeVision/*.swiftdeps
+archive/RimeVision/*.swiftdeps~
+archive/RimeVision/.DS_Store
+archive/RimeVision/Tests/
+
+# Local Rime configs (not to be pushed)
+squirrel/
+rime_setting/
+
+# WeaselVision build artifacts
+weasel_vision/node_modules/
+weasel_vision/dist/
+weasel_vision/src-tauri/target/
+weasel_vision/weasel/
+weasel_vision/DESIGN.md
+weasel_vision/.DS_Store
+weasel_vision/app/
+
+# Build outputs
+*.dmg
+*.exe
+*.app
+
+# Other agent-generated configs
+.codegraph/
+.reasonix/
+reasonix.toml
+archive/RimeVision/docs/
