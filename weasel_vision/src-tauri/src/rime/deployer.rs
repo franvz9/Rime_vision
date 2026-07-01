@@ -39,12 +39,18 @@ fn find_weasel_deployer() -> Option<std::path::PathBuf> {
     }
 
     // Method 2: Fallback to common default paths
-    deployer_paths.push(std::path::PathBuf::from("C:\\Program Files\\Rime\\WeaselDeployer.exe"));
-    deployer_paths.push(std::path::PathBuf::from("C:\\Program Files (x86)\\Rime\\WeaselDeployer.exe"));
+    deployer_paths.push(std::path::PathBuf::from(
+        "C:\\Program Files\\Rime\\WeaselDeployer.exe",
+    ));
+    deployer_paths.push(std::path::PathBuf::from(
+        "C:\\Program Files (x86)\\Rime\\WeaselDeployer.exe",
+    ));
 
     // Method 3: Check user's AppData\Local\Programs
     if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
-        deployer_paths.push(std::path::PathBuf::from(&local_appdata).join("Programs\\Rime\\WeaselDeployer.exe"));
+        deployer_paths.push(
+            std::path::PathBuf::from(&local_appdata).join("Programs\\Rime\\WeaselDeployer.exe"),
+        );
     }
 
     for path in &deployer_paths {
@@ -68,7 +74,11 @@ pub fn deploy() -> Result<()> {
 
         if !output.status.success() && output.status.code() != Some(1) {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("pkill returned unexpected error (exit code {:?}): {}", output.status.code(), stderr);
+            anyhow::bail!(
+                "pkill returned unexpected error (exit code {:?}): {}",
+                output.status.code(),
+                stderr
+            );
         }
     }
 

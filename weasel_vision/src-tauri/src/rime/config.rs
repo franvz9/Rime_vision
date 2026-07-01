@@ -39,7 +39,9 @@ impl RimeConfig {
         if cfg!(target_os = "macos") {
             Self {
                 user_dir: dirs::home_dir()
-                    .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+                    .unwrap_or_else(|| {
+                        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+                    })
                     .join("Library/Rime"),
                 build_dir: None,
                 style_file: "squirrel.yaml".into(),
@@ -53,10 +55,10 @@ impl RimeConfig {
             let base_dir = dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join("Rime");
-            
+
             let build_dir_path = base_dir.join("build");
             let has_build_dir = build_dir_path.exists();
-            
+
             Self {
                 user_dir: base_dir,
                 build_dir: if has_build_dir {
@@ -119,7 +121,10 @@ impl RimeConfig {
     pub fn schema_custom_path(&self, schema_id: &str) -> Option<PathBuf> {
         // Reject schema_id with path traversal characters
         if schema_id.contains('/') || schema_id.contains('\\') || schema_id.contains("..") {
-            eprintln!("Warning: schema_id '{}' contains invalid path characters", schema_id);
+            eprintln!(
+                "Warning: schema_id '{}' contains invalid path characters",
+                schema_id
+            );
             return None;
         }
         Some(self.user_dir.join(format!("{}.custom.yaml", schema_id)))
@@ -191,10 +196,7 @@ impl RimeConfig {
         mutate(&mut patch_map)?;
 
         let mut root = Mapping::new();
-        root.insert(
-            Value::String("patch".into()),
-            Value::Mapping(patch_map),
-        );
+        root.insert(Value::String("patch".into()), Value::Mapping(patch_map));
 
         let content = serde_yaml::to_string(&root)?;
         backup::write_if_changed(&content, custom_path)?;
@@ -220,9 +222,7 @@ fn normalize(value: Value) -> Value {
             }
             Value::Mapping(result)
         }
-        Value::Sequence(seq) => {
-            Value::Sequence(seq.into_iter().map(normalize).collect())
-        }
+        Value::Sequence(seq) => Value::Sequence(seq.into_iter().map(normalize).collect()),
         other => other,
     }
 }
@@ -245,9 +245,8 @@ pub fn get_bool(dict: &Mapping, key: &str) -> Option<bool> {
 }
 
 pub fn get_i64(dict: &Mapping, key: &str) -> Option<i64> {
-    dict.get(Value::String(key.into())).and_then(|v| {
-        v.as_i64().or_else(|| v.as_f64().map(|f| f as i64))
-    })
+    dict.get(Value::String(key.into()))
+        .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)))
 }
 
 pub fn get_mapping<'a>(dict: &'a Mapping, key: &str) -> &'a Mapping {
@@ -385,7 +384,9 @@ mod tests {
     #[test]
     fn test_load_yaml_missing_file() {
         let (_tmp, cfg) = temp_config();
-        let result = cfg.load_yaml(&cfg.user_dir.join("nonexistent.yaml")).unwrap();
+        let result = cfg
+            .load_yaml(&cfg.user_dir.join("nonexistent.yaml"))
+            .unwrap();
         assert!(result.as_mapping().unwrap().is_empty());
     }
 

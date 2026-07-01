@@ -36,6 +36,7 @@ const currentRules = computed(() => {
 })
 
 let punctMounted = true
+let saveToastTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
   try {
@@ -49,6 +50,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   punctMounted = false
+  if (saveToastTimer) clearTimeout(saveToastTimer)
 })
 
 function editRule(rule: PunctRule) {
@@ -95,7 +97,7 @@ async function save() {
       full: data.value.full_shape,
     })
     showSaved.value = true
-    setTimeout(() => {
+    saveToastTimer = setTimeout(() => {
       showSaved.value = false
     }, 2000)
   } catch (e) {

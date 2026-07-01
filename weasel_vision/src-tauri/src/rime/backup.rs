@@ -85,10 +85,7 @@ const MAX_TIMESTAMPED_BACKUPS: usize = 10;
 
 fn timestamped_backup(path: &Path) -> PathBuf {
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S%.3f");
-    let stem = path
-        .file_stem()
-        .unwrap_or_default()
-        .to_string_lossy();
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
     let ext = path
         .extension()
         .map(|e| format!(".{}", e.to_string_lossy()))
@@ -100,9 +97,17 @@ fn timestamped_backup(path: &Path) -> PathBuf {
 /// Remove oldest timestamped backups when the count exceeds `MAX_TIMESTAMPED_BACKUPS`.
 /// Backup file names contain timestamps so lexicographic order = chronological order.
 fn cleanup_timestamped_backups(original_path: &Path) {
-    let Some(parent) = original_path.parent() else { return };
-    let stem = original_path.file_stem().unwrap_or_default().to_string_lossy();
-    let ext = original_path.extension().unwrap_or_default().to_string_lossy();
+    let Some(parent) = original_path.parent() else {
+        return;
+    };
+    let stem = original_path
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy();
+    let ext = original_path
+        .extension()
+        .unwrap_or_default()
+        .to_string_lossy();
 
     // Collect timestamped backup files matching the pattern: <stem>.<timestamp>.<ext>
     let mut backups: Vec<(String, PathBuf)> = Vec::new();
@@ -112,7 +117,8 @@ fn cleanup_timestamped_backups(original_path: &Path) {
             // Pattern: stem.YYYYMMDD-HHMMSSmmm.ext
             if name.starts_with(&format!("{}.", stem))
                 && (ext.is_empty() || name.ends_with(&format!(".{}", ext)))
-                && name.len() > stem.len() + 1 // has timestamp suffix
+                && name.len() > stem.len() + 1
+            // has timestamp suffix
             {
                 let between = if ext.is_empty() {
                     &name[stem.len() + 1..]

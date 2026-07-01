@@ -35,9 +35,26 @@ pub fn validate_safe_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Maximum file size for read operations (10 MB) to prevent memory exhaustion.
+const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
+/// Read a file to string with a size limit to prevent memory exhaustion.
+pub fn read_file_with_limit(path: &Path) -> Result<String, crate::rime::error::RimeError> {
+    let metadata = std::fs::metadata(path)?;
+    if metadata.len() > MAX_FILE_SIZE {
+        return Err(crate::rime::error::RimeError::Io(format!(
+            "File too large: {} ({} bytes, max {} bytes)",
+            path.display(),
+            metadata.len(),
+            MAX_FILE_SIZE
+        )));
+    }
+    std::fs::read_to_string(path).map_err(crate::rime::error::RimeError::from)
+}
+
 /// Maximum recursion depth for directory traversal to prevent stack overflow
 /// from symlink cycles or excessively deep directory trees.
-const MAX_DIR_DEPTH: u32 = 32;
+pub const MAX_DIR_DEPTH: u32 = 32;
 
 /// Calculate total size of a directory recursively
 pub fn dir_size(dir: &Path) -> i64 {

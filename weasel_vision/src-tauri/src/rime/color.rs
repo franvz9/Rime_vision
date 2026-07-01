@@ -7,9 +7,8 @@ static HEX8_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^0x([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})$").unwrap()
 });
 
-static HEX6_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^0x([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})$").unwrap()
-});
+static HEX6_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^0x([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})$").unwrap());
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct RimeColor {
@@ -47,10 +46,7 @@ impl RimeColor {
 
     pub fn to_hex(self) -> String {
         if self.a < 255 {
-            format!(
-                "0x{:02X}{:02X}{:02X}{:02X}",
-                self.a, self.b, self.g, self.r
-            )
+            format!("0x{:02X}{:02X}{:02X}{:02X}", self.a, self.b, self.g, self.r)
         } else {
             format!("0x{:02X}{:02X}{:02X}", self.b, self.g, self.r)
         }

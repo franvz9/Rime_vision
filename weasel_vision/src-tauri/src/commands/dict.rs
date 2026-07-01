@@ -104,13 +104,13 @@ fn parse_snapshot_line(line: &str) -> Option<DictEntry> {
 
     let word = parts[0].to_string();
     let code = parts[1].to_string();
-    
+
     // Rime snapshot format: "word\tcode\tc=N d=X.XX t=XXX"
     // Parse the third column to extract commit count (c=N)
     let third_col = parts[2];
     let mut frequency = 0i64;
     let mut commit_count = 0i64;
-    
+
     // Try to parse as simple number first (legacy format)
     if let Ok(freq) = third_col.parse::<i64>() {
         frequency = freq;
@@ -196,7 +196,7 @@ pub fn load_user_dict_entries(
             });
         }
     };
-    let content = std::fs::read_to_string(&snapshot)?;
+    let content = crate::rime::utils::read_file_with_limit(&snapshot)?;
 
     let mut entries: Vec<DictEntry> = content
         .lines()
@@ -206,9 +206,8 @@ pub fn load_user_dict_entries(
 
     if let Some(ref query) = search {
         let q = query.to_lowercase();
-        entries.retain(|e| {
-            e.word.to_lowercase().contains(&q) || e.code.to_lowercase().contains(&q)
-        });
+        entries
+            .retain(|e| e.word.to_lowercase().contains(&q) || e.code.to_lowercase().contains(&q));
     }
 
     let total = entries.len();
@@ -243,10 +242,14 @@ pub fn list_snapshots(dict_id: String) -> Result<Vec<SnapshotInfo>, RimeError> {
     let mut seen_files = std::collections::HashSet::new();
 
     // Priority 1: Check sync directory (Rime native sync output)
-    if let Ok(installation_content) = std::fs::read_to_string(cfg.user_dir.join("installation.yaml")) {
+    if let Ok(installation_content) =
+        std::fs::read_to_string(cfg.user_dir.join("installation.yaml"))
+    {
         if let Ok(installation) = serde_yaml::from_str::<serde_yaml::Value>(&installation_content) {
             if let Some(sync_dir) = installation.get("sync_dir").and_then(|v| v.as_str()) {
-                if let Some(device_id) = installation.get("installation_id").and_then(|v| v.as_str()) {
+                if let Some(device_id) =
+                    installation.get("installation_id").and_then(|v| v.as_str())
+                {
                     let sync_device_dir = std::path::PathBuf::from(sync_dir).join(device_id);
                     if sync_device_dir.exists() {
                         if let Ok(entries) = std::fs::read_dir(&sync_device_dir) {
@@ -284,7 +287,10 @@ pub fn list_snapshots(dict_id: String) -> Result<Vec<SnapshotInfo>, RimeError> {
         if let Ok(entries) = std::fs::read_dir(&snapshots_dir) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with(&format!("{}.", dict_id)) && name.ends_with(".txt") && !seen_files.contains(&name) {
+                if name.starts_with(&format!("{}.", dict_id))
+                    && name.ends_with(".txt")
+                    && !seen_files.contains(&name)
+                {
                     let meta = std::fs::metadata(entry.path()).ok();
                     snapshots.push(SnapshotInfo {
                         file_name: name.clone(),
@@ -339,23 +345,26 @@ pub fn list_snapshots(dict_id: String) -> Result<Vec<SnapshotInfo>, RimeError> {
 /// Collects all matching files and returns the one with the latest modification time.
 fn find_snapshot(dict_id: &str) -> Result<PathBuf, RimeError> {
     let cfg = RimeConfig::detect();
-    
+
     // Priority 1: Check sync directory (Rime native sync output)
     // Path: ~/Library/Rime/sync/<device_id>/<dict_id>.userdb.txt
     // IMPORTANT: Scan ALL device folders in sync dir, not just current device,
     // because other devices' synced data is stored in their respective folders.
-    if let Ok(installation_content) = std::fs::read_to_string(cfg.user_dir.join("installation.yaml")) {
+    if let Ok(installation_content) =
+        std::fs::read_to_string(cfg.user_dir.join("installation.yaml"))
+    {
         if let Ok(installation) = serde_yaml::from_str::<serde_yaml::Value>(&installation_content) {
             if let Some(sync_dir) = installation.get("sync_dir").and_then(|v| v.as_str()) {
                 let sync_base = std::path::PathBuf::from(sync_dir);
                 if sync_base.exists() {
                     // Scan all device folders to find the most recent snapshot
                     let mut candidates: Vec<(PathBuf, std::time::SystemTime)> = Vec::new();
-                    
+
                     if let Ok(entries) = std::fs::read_dir(&sync_base) {
                         for entry in entries.flatten() {
                             if entry.path().is_dir() {
-                                let snapshot_path = entry.path().join(format!("{}.userdb.txt", dict_id));
+                                let snapshot_path =
+                                    entry.path().join(format!("{}.userdb.txt", dict_id));
                                 if snapshot_path.exists() {
                                     if let Ok(meta) = std::fs::metadata(&snapshot_path) {
                                         if let Ok(modified) = meta.modified() {
@@ -366,10 +375,10 @@ fn find_snapshot(dict_id: &str) -> Result<PathBuf, RimeError> {
                             }
                         }
                     }
-                    
+
                     // Sort by modification time (most recent first)
                     candidates.sort_by_key(|(_, m)| std::cmp::Reverse(*m));
-                    
+
                     if let Some((latest_path, _)) = candidates.first() {
                         return Ok(latest_path.clone());
                     }
@@ -377,7 +386,7 @@ fn find_snapshot(dict_id: &str) -> Result<PathBuf, RimeError> {
             }
         }
     }
-    
+
     // Priority 2: Check user_dictionaries/ directory (legacy location)
     let snapshots_dir = user_dict_snapshots_dir();
     if snapshots_dir.exists() {
@@ -389,17 +398,17 @@ fn find_snapshot(dict_id: &str) -> Result<PathBuf, RimeError> {
                     name.starts_with(&format!("{}.", dict_id)) && name.ends_with(".txt")
                 })
                 .collect();
-            
+
             // Sort by modification time (most recent first)
             candidates.sort_by_key(|e| {
                 std::cmp::Reverse(
                     e.metadata()
                         .ok()
                         .and_then(|m| m.modified().ok())
-                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
                 )
             });
-            
+
             if let Some(latest) = candidates.first() {
                 return Ok(latest.path());
             }
@@ -416,23 +425,26 @@ fn find_snapshot(dict_id: &str) -> Result<PathBuf, RimeError> {
                 name.ends_with(".txt")
             })
             .collect();
-        
+
         // Sort by modification time (most recent first)
         candidates.sort_by_key(|e| {
             std::cmp::Reverse(
                 e.metadata()
                     .ok()
                     .and_then(|m| m.modified().ok())
-                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
             )
         });
-        
+
         if let Some(latest) = candidates.first() {
             return Ok(latest.path());
         }
     }
 
-    Err(RimeError::NotFound(format!("No snapshot found for dict '{}'", dict_id)))
+    Err(RimeError::NotFound(format!(
+        "No snapshot found for dict '{}'",
+        dict_id
+    )))
 }
 
 fn find_schemas_for_dict(cfg: &RimeConfig, dict_id: &str) -> Vec<String> {
@@ -462,8 +474,13 @@ fn validate_dict_id(id: &str) -> Result<(), RimeError> {
     if id.is_empty() || id.len() > 64 {
         return Err(RimeError::Config("Invalid dictionary ID".into()));
     }
-    if id.chars().any(|c| !c.is_ascii_alphanumeric() && c != '_' && c != '-') {
-        return Err(RimeError::Config("Dictionary ID contains invalid characters".into()));
+    if id
+        .chars()
+        .any(|c| !c.is_ascii_alphanumeric() && c != '_' && c != '-')
+    {
+        return Err(RimeError::Config(
+            "Dictionary ID contains invalid characters".into(),
+        ));
     }
     Ok(())
 }
@@ -527,10 +544,13 @@ fn dir_metadata_modified(dir: &Path) -> String {
 /// - Testing and development purposes
 /// - Cases where user understands changes may not persist
 #[tauri::command]
-pub fn delete_entries(dict_id: String, entries_to_delete: Vec<DictEntryKey>) -> Result<usize, RimeError> {
+pub fn delete_entries(
+    dict_id: String,
+    entries_to_delete: Vec<DictEntryKey>,
+) -> Result<usize, RimeError> {
     validate_dict_id(&dict_id)?;
     let snapshot = find_snapshot(&dict_id)?;
-    let content = std::fs::read_to_string(&snapshot)?;
+    let content = crate::rime::utils::read_file_with_limit(&snapshot)?;
 
     let delete_set: std::collections::HashSet<(String, String)> = entries_to_delete
         .iter()
@@ -573,7 +593,7 @@ pub fn update_entry_frequency(
 ) -> Result<(), RimeError> {
     validate_dict_id(&dict_id)?;
     let snapshot = find_snapshot(&dict_id)?;
-    let content = std::fs::read_to_string(&snapshot)?;
+    let content = crate::rime::utils::read_file_with_limit(&snapshot)?;
 
     let new_lines: Vec<String> = content
         .lines()
@@ -609,7 +629,10 @@ pub fn update_entry_frequency(
                                 entry.word,
                                 entry.code,
                                 new_third,
-                                parts[3..].iter().map(|p| format!("\t{}", p)).collect::<String>()
+                                parts[3..]
+                                    .iter()
+                                    .map(|p| format!("\t{}", p))
+                                    .collect::<String>()
                             );
                         }
                         return format!("{}\t{}\t{}", entry.word, entry.code, new_third);
@@ -635,7 +658,7 @@ pub struct DictEntryKey {
 pub fn batch_delete_low_frequency(dict_id: String, threshold: i64) -> Result<usize, RimeError> {
     validate_dict_id(&dict_id)?;
     let snapshot = find_snapshot(&dict_id)?;
-    let content = std::fs::read_to_string(&snapshot)?;
+    let content = crate::rime::utils::read_file_with_limit(&snapshot)?;
 
     let mut deleted = 0;
     let new_lines: Vec<String> = content
@@ -668,12 +691,17 @@ pub fn export_user_dict(dict_id: String, output_path: String) -> Result<usize, R
         return Err(RimeError::InvalidPath("Output path is empty".into()));
     }
     if output_path.contains("..") {
-        return Err(RimeError::InvalidPath("Output path contains path traversal".into()));
+        return Err(RimeError::InvalidPath(
+            "Output path contains path traversal".into(),
+        ));
     }
     // Block system-critical directories
     let path_str = output_path.replace('\\', "/");
     #[cfg(target_os = "macos")]
-    if path_str.starts_with("/System") || path_str.starts_with("/usr") || path_str.starts_with("/private") {
+    if path_str.starts_with("/System")
+        || path_str.starts_with("/usr")
+        || path_str.starts_with("/private")
+    {
         return Err(RimeError::Permission("不允许写入系统关键目录".into()));
     }
     #[cfg(target_os = "windows")]
@@ -689,7 +717,7 @@ pub fn export_user_dict(dict_id: String, output_path: String) -> Result<usize, R
         return Err(RimeError::InvalidPath("Output path is not a file".into()));
     }
     let snapshot = find_snapshot(&dict_id)?;
-    let content = std::fs::read_to_string(&snapshot)?;
+    let content = crate::rime::utils::read_file_with_limit(&snapshot)?;
 
     let mut count = 0;
     let mut lines = Vec::new();
@@ -699,7 +727,10 @@ pub fn export_user_dict(dict_id: String, output_path: String) -> Result<usize, R
             continue;
         }
         if let Some(entry) = parse_snapshot_line(line) {
-            lines.push(format!("{}\t{}\t{}", entry.word, entry.code, entry.frequency));
+            lines.push(format!(
+                "{}\t{}\t{}",
+                entry.word, entry.code, entry.frequency
+            ));
             count += 1;
         }
     }
@@ -719,7 +750,10 @@ pub fn clear_user_dict(dict_id: String) -> Result<(), RimeError> {
     let userdb_dir = cfg.user_dir.join(format!("{}.userdb", dict_id));
 
     if !userdb_dir.exists() {
-        return Err(RimeError::NotFound(format!("Dictionary '{}' not found", dict_id)));
+        return Err(RimeError::NotFound(format!(
+            "Dictionary '{}' not found",
+            dict_id
+        )));
     }
 
     // Rename old directory to temp name, create new empty one
@@ -730,12 +764,11 @@ pub fn clear_user_dict(dict_id: String) -> Result<(), RimeError> {
     std::fs::rename(&userdb_dir, &temp_dir)?;
 
     // Create new empty directory
-    std::fs::create_dir_all(&userdb_dir)
-        .map_err(|e| {
-            // Try to restore from backup if creation fails
-            let _ = std::fs::rename(&temp_dir, &userdb_dir);
-            RimeError::Io(format!("Failed to create new directory: {}", e))
-        })?;
+    std::fs::create_dir_all(&userdb_dir).map_err(|e| {
+        // Try to restore from backup if creation fails
+        let _ = std::fs::rename(&temp_dir, &userdb_dir);
+        RimeError::Io(format!("Failed to create new directory: {}", e))
+    })?;
 
     // Cleanup old directory (best effort)
     let _ = std::fs::remove_dir_all(&temp_dir);
@@ -765,13 +798,10 @@ pub struct NewDictEntry {
 }
 
 #[tauri::command]
-pub fn add_dict_entry(
-    dict_id: String,
-    entry: NewDictEntry,
-) -> Result<(), RimeError> {
+pub fn add_dict_entry(dict_id: String, entry: NewDictEntry) -> Result<(), RimeError> {
     validate_dict_id(&dict_id)?;
     let snapshot = find_snapshot(&dict_id)?;
-    let content = std::fs::read_to_string(&snapshot)?;
+    let content = crate::rime::utils::read_file_with_limit(&snapshot)?;
 
     // Check if entry already exists
     for line in content.lines() {
@@ -780,7 +810,10 @@ pub fn add_dict_entry(
         }
         if let Some(existing) = parse_snapshot_line(line) {
             if existing.word == entry.word && existing.code == entry.code {
-                return Err(RimeError::Config(format!("Entry '{}' with code '{}' already exists", entry.word, entry.code)));
+                return Err(RimeError::Config(format!(
+                    "Entry '{}' with code '{}' already exists",
+                    entry.word, entry.code
+                )));
             }
         }
     }
@@ -801,31 +834,32 @@ pub fn add_dict_entry(
 pub async fn create_snapshot(dict_id: String) -> Result<String, RimeError> {
     validate_dict_id(&dict_id)?;
     let cfg = RimeConfig::detect();
-    
+
     // Check if userdb directory exists
     let userdb_dir = cfg.user_dir.join(format!("{}.userdb", dict_id));
     if !userdb_dir.exists() {
-        return Err(RimeError::NotFound(format!("Dictionary '{}' not found", dict_id)));
+        return Err(RimeError::NotFound(format!(
+            "Dictionary '{}' not found",
+            dict_id
+        )));
     }
-    
+
     // Check if snapshot already exists (maybe from previous sync)
     if let Ok(existing) = find_snapshot(&dict_id) {
         return Ok(existing.to_string_lossy().to_string());
     }
-    
+
     // Check if sync directory is configured in installation.yaml
     let installation_path = cfg.user_dir.join("installation.yaml");
     let sync_configured = if installation_path.exists() {
         match std::fs::read_to_string(&installation_path) {
-            Ok(content) => {
-                match serde_yaml::from_str::<serde_yaml::Value>(&content) {
-                    Ok(value) => value.get("sync_dir").and_then(|v| v.as_str()).is_some(),
-                    Err(e) => {
-                        eprintln!("Warning: failed to parse installation.yaml: {}", e);
-                        false
-                    }
+            Ok(content) => match serde_yaml::from_str::<serde_yaml::Value>(&content) {
+                Ok(value) => value.get("sync_dir").and_then(|v| v.as_str()).is_some(),
+                Err(e) => {
+                    eprintln!("Warning: failed to parse installation.yaml: {}", e);
+                    false
                 }
-            }
+            },
             Err(e) => {
                 eprintln!("Warning: failed to read installation.yaml: {}", e);
                 false
@@ -834,54 +868,53 @@ pub async fn create_snapshot(dict_id: String) -> Result<String, RimeError> {
     } else {
         false
     };
-    
+
     if !sync_configured {
         return Err(RimeError::Config("SYNC_NOT_CONFIGURED".into()));
     }
-    
+
     // Sync directory is configured — trigger Rime sync
     // On macOS this sends kill -HUP to Squirrel, which triggers async sync.
     // We need to wait a bit for Squirrel to generate the snapshot.
     // Wrap synchronous I/O in spawn_blocking to avoid blocking the async runtime.
-    let sync_result = tokio::task::spawn_blocking(move || {
-        crate::rime::deployer::sync()
-    }).await;
+    let sync_result = tokio::task::spawn_blocking(crate::rime::deployer::sync).await;
     match sync_result {
-        Ok(Ok(_)) => {},
+        Ok(Ok(_)) => {}
         Ok(Err(e)) => return Err(RimeError::Unknown(format!("Sync failed: {}", e))),
         Err(e) => return Err(RimeError::Unknown(format!("Task join error: {}", e))),
     }
-    
+
     // Wait for Squirrel to process the sync and generate snapshot files
     // Poll for up to 10 seconds
     for _ in 0..SYNC_POLL_MAX_ATTEMPTS {
         tokio::time::sleep(std::time::Duration::from_millis(SYNC_POLL_INTERVAL_MS)).await;
         let dict_id_for_find = dict_id.clone();
-        let find_result = tokio::task::spawn_blocking(move || {
-            find_snapshot(&dict_id_for_find)
-        }).await;
+        let find_result =
+            tokio::task::spawn_blocking(move || find_snapshot(&dict_id_for_find)).await;
         match find_result {
             Ok(Ok(snapshot_path)) => return Ok(snapshot_path.to_string_lossy().to_string()),
-            Ok(Err(_)) => {}, // not found yet, continue polling
+            Ok(Err(_)) => {} // not found yet, continue polling
             Err(e) => return Err(RimeError::Unknown(format!("Task join error: {}", e))),
         }
     }
-    
-    Err(RimeError::Unknown("同步已完成，但未找到快照文件。请确保 Rime 输入法正在运行，然后重试。".into()))
+
+    Err(RimeError::Unknown(
+        "同步已完成，但未找到快照文件。请确保 Rime 输入法正在运行，然后重试。".into(),
+    ))
 }
 
 #[tauri::command]
 pub fn delete_snapshot(dict_id: String, file_name: String) -> Result<(), RimeError> {
     validate_dict_id(&dict_id)?;
-    
+
     // Validate file_name to prevent path traversal
     if file_name.contains("..") || file_name.starts_with('/') || file_name.starts_with('\\') {
         return Err(RimeError::InvalidPath("Invalid snapshot file name".into()));
     }
-    
+
     // Use the same resolution logic as apply_modified_snapshot
     let snapshot_path = resolve_snapshot_path(&dict_id, &file_name)?;
-    
+
     std::fs::remove_file(&snapshot_path)?;
     Ok(())
 }
@@ -892,13 +925,17 @@ pub fn delete_snapshot(dict_id: String, file_name: String) -> Result<(), RimeErr
 fn resolve_snapshot_path(dict_id: &str, file_name: &str) -> Result<PathBuf, RimeError> {
     // Validate file_name to prevent path traversal (defense in depth)
     if file_name.contains("..") || file_name.contains('/') || file_name.contains('\\') {
-        return Err(RimeError::InvalidPath("Invalid file name: path traversal not allowed".into()));
+        return Err(RimeError::InvalidPath(
+            "Invalid file name: path traversal not allowed".into(),
+        ));
     }
 
     let cfg = RimeConfig::detect();
-    
+
     // Priority 1: Check sync directory
-    if let Ok(installation_content) = std::fs::read_to_string(cfg.user_dir.join("installation.yaml")) {
+    if let Ok(installation_content) =
+        std::fs::read_to_string(cfg.user_dir.join("installation.yaml"))
+    {
         if let Ok(installation) = serde_yaml::from_str::<serde_yaml::Value>(&installation_content) {
             if let Some(sync_dir) = installation.get("sync_dir").and_then(|v| v.as_str()) {
                 let sync_base = std::path::PathBuf::from(sync_dir);
@@ -917,7 +954,7 @@ fn resolve_snapshot_path(dict_id: &str, file_name: &str) -> Result<PathBuf, Rime
             }
         }
     }
-    
+
     // Priority 2: Check user_dictionaries/ directory
     let user_dicts_dir = cfg.user_dir.join("user_dictionaries");
     let path2 = user_dicts_dir.join(file_name);
@@ -935,7 +972,10 @@ fn resolve_snapshot_path(dict_id: &str, file_name: &str) -> Result<PathBuf, Rime
         }
     }
 
-    Err(RimeError::NotFound(format!("Snapshot '{}' not found", file_name)))
+    Err(RimeError::NotFound(format!(
+        "Snapshot '{}' not found",
+        file_name
+    )))
 }
 
 /// Apply modified snapshot back to Rime user dictionary
@@ -946,24 +986,26 @@ pub fn apply_modified_snapshot(dict_id: String, file_name: String) -> Result<(),
 
     // Validate file_name to prevent path traversal
     if file_name.contains("..") || file_name.contains('/') || file_name.contains('\\') {
-        return Err(RimeError::InvalidPath("Invalid file name: path traversal not allowed".into()));
+        return Err(RimeError::InvalidPath(
+            "Invalid file name: path traversal not allowed".into(),
+        ));
     }
 
     let cfg = RimeConfig::detect();
-    
+
     // Create user_dictionaries directory (copy target)
     let user_dicts_dir = cfg.user_dir.join("user_dictionaries");
     std::fs::create_dir_all(&user_dicts_dir)?;
-    
+
     // Resolve the actual snapshot path using same priority as find_snapshot
     let snapshot_path = resolve_snapshot_path(&dict_id, &file_name)?;
-    
+
     // Copy snapshot to user_dictionaries/<dict_id>.userdb.txt
     let target_path = user_dicts_dir.join(format!("{}.userdb.txt", dict_id));
     std::fs::copy(&snapshot_path, &target_path)?;
-    
+
     // Trigger Rime deploy to reload the dictionary
     crate::rime::deployer::deploy()?;
-    
+
     Ok(())
 }

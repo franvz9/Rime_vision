@@ -190,10 +190,7 @@ mod tests {
             Value::String("Arial".into()),
         );
 
-        let val = value_at(
-            &dict,
-            &["style".to_string(), "font_face".to_string()],
-        );
+        let val = value_at(&dict, &["style".to_string(), "font_face".to_string()]);
         assert_eq!(val, Some(&Value::String("Arial".into())));
     }
 

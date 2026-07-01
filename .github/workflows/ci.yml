@@ -48,6 +48,10 @@ jobs:
         run: npm ci
 
       # Rust 检查
+      - name: Cargo fmt check
+        working-directory: weasel_vision/src-tauri
+        run: cargo fmt --check
+
       - name: Cargo check
         working-directory: weasel_vision/src-tauri
         run: cargo check

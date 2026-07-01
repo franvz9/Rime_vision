@@ -60,6 +60,7 @@ function formatKeyDisplay(keyName: string): string {
 }
 
 let mounted = true
+let saveToastTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
   try {
@@ -73,6 +74,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   mounted = false
+  if (saveToastTimer) clearTimeout(saveToastTimer)
 })
 
 // Caps Lock 动作选项（后端参数 -> 显示文本）
@@ -94,7 +96,7 @@ async function save() {
   try {
     await invoke('save_general_settings', { settings: settings.value })
     showSaved.value = true
-    setTimeout(() => {
+    saveToastTimer = setTimeout(() => {
       showSaved.value = false
     }, 2000)
   } catch (e) {

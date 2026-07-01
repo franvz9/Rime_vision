@@ -113,31 +113,16 @@ fn serialize_punct_rules(rules: &[PunctRule]) -> serde_yaml::Mapping {
                 Value::String("commit".into()),
                 Value::String(rule.commit.clone()),
             );
-            dict.insert(
-                Value::String(rule.key.clone()),
-                Value::Mapping(inner),
-            );
+            dict.insert(Value::String(rule.key.clone()), Value::Mapping(inner));
         } else if !rule.pair.is_empty() {
-            let pair_values: Vec<Value> = rule
-                .pair
-                .iter()
-                .map(|s| Value::String(s.clone()))
-                .collect();
+            let pair_values: Vec<Value> =
+                rule.pair.iter().map(|s| Value::String(s.clone())).collect();
             let mut inner = serde_yaml::Mapping::new();
-            inner.insert(
-                Value::String("pair".into()),
-                Value::Sequence(pair_values),
-            );
-            dict.insert(
-                Value::String(rule.key.clone()),
-                Value::Mapping(inner),
-            );
+            inner.insert(Value::String("pair".into()), Value::Sequence(pair_values));
+            dict.insert(Value::String(rule.key.clone()), Value::Mapping(inner));
         } else if !rule.list.is_empty() {
-            let list_values: Vec<Value> = rule
-                .list
-                .iter()
-                .map(|s| Value::String(s.clone()))
-                .collect();
+            let list_values: Vec<Value> =
+                rule.list.iter().map(|s| Value::String(s.clone())).collect();
             dict.insert(
                 Value::String(rule.key.clone()),
                 Value::Sequence(list_values),

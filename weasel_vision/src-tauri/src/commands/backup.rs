@@ -5,10 +5,7 @@ use ts_rs::TS;
 
 use crate::rime::config::RimeConfig;
 use crate::rime::error::RimeError;
-
-/// Maximum recursion depth for directory traversal to prevent stack overflow
-/// from symlink cycles or excessively deep directory trees.
-const MAX_DIR_DEPTH: u32 = 32;
+use crate::rime::utils::{read_file_with_limit, MAX_DIR_DEPTH};
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct BackupInfo {
@@ -69,14 +66,11 @@ fn deploy_backups_dir() -> PathBuf {
 fn get_files_by_category(category: &str) -> Result<Vec<PathBuf>, String> {
     let cfg = RimeConfig::detect();
     let mut files = Vec::new();
-    
+
     match category {
         "core" => {
             // Core config files — user-editable files from user_dir
-            let user_files = [
-                "default.custom.yaml",
-                "installation.yaml", "user.yaml",
-            ];
+            let user_files = ["default.custom.yaml", "installation.yaml", "user.yaml"];
             for f in &user_files {
                 let path = cfg.user_dir.join(f);
                 if path.exists() {
@@ -87,20 +81,32 @@ fn get_files_by_category(category: &str) -> Result<Vec<PathBuf>, String> {
             if cfg!(target_os = "macos") {
                 // macOS: all files in same dir
                 let p = cfg.user_dir.join("default.yaml");
-                if p.exists() { files.push(p); }
+                if p.exists() {
+                    files.push(p);
+                }
                 let p = cfg.user_dir.join("squirrel.yaml");
-                if p.exists() { files.push(p); }
+                if p.exists() {
+                    files.push(p);
+                }
                 let p = cfg.user_dir.join("squirrel.custom.yaml");
-                if p.exists() { files.push(p); }
+                if p.exists() {
+                    files.push(p);
+                }
             } else if cfg!(target_os = "windows") {
                 // Windows: compiled files from rime_data_dir(), custom files from user_dir
                 let data_dir = cfg.rime_data_dir();
                 let p = data_dir.join("default.yaml");
-                if p.exists() { files.push(p); }
+                if p.exists() {
+                    files.push(p);
+                }
                 let p = data_dir.join("weasel.yaml");
-                if p.exists() { files.push(p); }
+                if p.exists() {
+                    files.push(p);
+                }
                 let p = cfg.user_dir.join("weasel.custom.yaml");
-                if p.exists() { files.push(p); }
+                if p.exists() {
+                    files.push(p);
+                }
             }
         }
         "schemas" => {
@@ -184,7 +190,7 @@ fn get_files_by_category(category: &str) -> Result<Vec<PathBuf>, String> {
         }
         _ => return Err(format!("Unknown backup category: {}", category)),
     }
-    
+
     Ok(files)
 }
 
@@ -221,7 +227,7 @@ fn collect_user_dir(user_dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Str
             if path.is_symlink() {
                 continue;
             }
-            
+
             if path.is_dir() {
                 if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
                     if is_backup_excluded_dir(dir_name) {
@@ -229,7 +235,7 @@ fn collect_user_dir(user_dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Str
                     }
                 }
             }
-            
+
             if path.is_file() {
                 files.push(path);
             } else if path.is_dir() {
@@ -288,7 +294,11 @@ fn copy_dir_filtered_inner(
             // Skip locked LevelDB files on Windows (os error 32)
             #[cfg(target_os = "windows")]
             {
-                if name.ends_with(".log") || name == "LOCK" || name.starts_with("MANIFEST-") || name == "CURRENT" {
+                if name.ends_with(".log")
+                    || name == "LOCK"
+                    || name.starts_with("MANIFEST-")
+                    || name == "CURRENT"
+                {
                     eprintln!("Skipping locked file: {}", name);
                     continue;
                 }
@@ -306,7 +316,10 @@ fn copy_dir_filtered_inner(
                             eprintln!("Skipping locked file: {:?}", src_path);
                             continue;
                         }
-                        return Err(format!("Failed to copy {:?} to {:?}: {}", src_path, dst_path, e));
+                        return Err(format!(
+                            "Failed to copy {:?} to {:?}: {}",
+                            src_path, dst_path, e
+                        ));
                     }
                 }
             }
@@ -321,8 +334,14 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<usize, String> {
 }
 
 /// Copy directory recursively, optionally excluding .gram model files
-fn copy_dir_recursive_exclude(src: &Path, dst: &Path, include_models: bool) -> Result<usize, String> {
-    copy_dir_filtered(src, dst, &|name: &str| !include_models && name.ends_with(".gram"))
+fn copy_dir_recursive_exclude(
+    src: &Path,
+    dst: &Path,
+    include_models: bool,
+) -> Result<usize, String> {
+    copy_dir_filtered(src, dst, &|name: &str| {
+        !include_models && name.ends_with(".gram")
+    })
 }
 
 fn timestamp() -> String {
@@ -349,7 +368,7 @@ pub fn list_backups() -> Result<Vec<BackupInfo>, RimeError> {
                 if entry.path().is_dir() {
                     let manifest_path = entry.path().join("manifest.json");
                     if manifest_path.exists() {
-                        if let Ok(content) = std::fs::read_to_string(&manifest_path) {
+                        if let Ok(content) = read_file_with_limit(&manifest_path) {
                             if let Ok(info) = serde_json::from_str::<BackupInfo>(&content) {
                                 all_backups.push(info);
                             }
@@ -389,7 +408,7 @@ pub fn get_backup_detail(backup_id: String) -> Result<BackupDetail, RimeError> {
 
     let manifest_path = dir.join("manifest.json");
     let info = if manifest_path.exists() {
-        let content = std::fs::read_to_string(&manifest_path)?;
+        let content = read_file_with_limit(&manifest_path)?;
         serde_json::from_str::<BackupInfo>(&content)?
     } else {
         BackupInfo {
@@ -410,14 +429,17 @@ pub fn get_backup_detail(backup_id: String) -> Result<BackupDetail, RimeError> {
 }
 
 #[tauri::command]
-pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<BackupInfo, RimeError> {
+pub fn create_backup(
+    categories: Vec<String>,
+    note: Option<String>,
+) -> Result<BackupInfo, RimeError> {
     let cfg = RimeConfig::detect();
     let ts = timestamp();
     let backup_dir = manual_backups_dir().join(&ts);
     std::fs::create_dir_all(&backup_dir)?;
 
     let mut file_count = 0;
-    
+
     // If no categories specified, use full backup (backward compatibility)
     let categories_to_use = if categories.is_empty() {
         vec!["full".to_string()]
@@ -427,34 +449,38 @@ pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<Ba
 
     // Check if this is a full backup
     let is_full = categories_to_use.iter().any(|c| c == "full");
-    
+
     if is_full {
         // For full backup: directly copy entire user directory structure
         // user_dir is always the correct Rime root directory
         let actual_backup_source = cfg.user_dir.clone();
-        
+
         if let Ok(entries) = std::fs::read_dir(&actual_backup_source) {
             for entry in entries.flatten() {
                 let src_path = entry.path();
                 let name = entry.file_name().to_string_lossy().to_string();
-                
+
                 // Skip excluded directories
                 if src_path.is_dir() && is_backup_excluded_dir(&name) {
                     continue;
                 }
-                
+
                 // Skip locked LevelDB files on Windows (os error 32)
                 #[cfg(target_os = "windows")]
-                if name.ends_with(".log") || name == "LOCK" || name.starts_with("MANIFEST-") || name == "CURRENT" {
+                if name.ends_with(".log")
+                    || name == "LOCK"
+                    || name.starts_with("MANIFEST-")
+                    || name == "CURRENT"
+                {
                     eprintln!("Skipping locked file: {}", name);
                     continue;
                 }
-                
+
                 let dst_path = backup_dir.join(&name);
                 if src_path.is_dir() {
                     // Copy entire directory recursively
-                    file_count += copy_dir_recursive(&src_path, &dst_path)
-                        .map_err(RimeError::Unknown)?;
+                    file_count +=
+                        copy_dir_recursive(&src_path, &dst_path).map_err(RimeError::Unknown)?;
                 } else {
                     // Copy single file with retry for locked files
                     match std::fs::copy(&src_path, &dst_path) {
@@ -476,14 +502,15 @@ pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<Ba
         for category in &categories_to_use {
             let files = get_files_by_category(category).map_err(RimeError::Unknown)?;
             for src_path in files {
-                let rel_path = src_path.strip_prefix(&cfg.user_dir)
-                    .map_err(|_| RimeError::Unknown(format!("Failed to get relative path for {:?}", src_path)))?;
-                
+                let rel_path = src_path.strip_prefix(&cfg.user_dir).map_err(|_| {
+                    RimeError::Unknown(format!("Failed to get relative path for {:?}", src_path))
+                })?;
+
                 if let Some(parent) = rel_path.parent() {
                     let dst_parent = backup_dir.join(parent);
                     std::fs::create_dir_all(&dst_parent)?;
                 }
-                
+
                 let dst = backup_dir.join(rel_path);
                 std::fs::copy(&src_path, &dst)?;
                 file_count += 1;
@@ -553,7 +580,9 @@ fn restore_full(cfg: &RimeConfig, backup_dir: &Path) -> Result<(), String> {
 
     // Phase 1: Copy backup to a staging directory
     let restore_id = uuid::Uuid::new_v4().to_string();
-    let staging_dir = cfg.user_dir.join(format!(".restore_temp_new_{}", restore_id));
+    let staging_dir = cfg
+        .user_dir
+        .join(format!(".restore_temp_new_{}", restore_id));
     std::fs::create_dir_all(&staging_dir).map_err(|e| e.to_string())?;
 
     let mut staged_files = Vec::new();
@@ -582,7 +611,14 @@ fn restore_full(cfg: &RimeConfig, backup_dir: &Path) -> Result<(), String> {
     }
 
     // Phase 2: Atomically replace current files with staged files.
-    let bak_suffix = format!(".restore_bak_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
+    let bak_suffix = format!(
+        ".restore_bak_{}",
+        uuid::Uuid::new_v4()
+            .to_string()
+            .split('-')
+            .next()
+            .unwrap_or("0")
+    );
 
     for (name, is_dir) in &staged_files {
         let staged_path = staging_dir.join(name);
@@ -608,7 +644,14 @@ fn restore_full(cfg: &RimeConfig, backup_dir: &Path) -> Result<(), String> {
         } else {
             if std::fs::rename(&staged_path, &dst_path).is_err() {
                 if dst_path.exists() {
-                    let bak = dst_path.with_extension(format!("{}.{}", dst_path.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default(), bak_suffix));
+                    let bak = dst_path.with_extension(format!(
+                        "{}.{}",
+                        dst_path
+                            .extension()
+                            .map(|e| e.to_string_lossy().to_string())
+                            .unwrap_or_default(),
+                        bak_suffix
+                    ));
                     let _ = std::fs::copy(&dst_path, &bak);
                     let _ = std::fs::remove_file(&dst_path);
                 }
@@ -639,7 +682,10 @@ fn cleanup_restore_artifacts(user_dir: &Path) {
                     }
                 } else if path.is_file() {
                     if let Err(e) = std::fs::remove_file(&path) {
-                        eprintln!("Warning: failed to clean up artifact file {:?}: {}", path, e);
+                        eprintln!(
+                            "Warning: failed to clean up artifact file {:?}: {}",
+                            path, e
+                        );
                     } else {
                         eprintln!("Cleaned up restore artifact file: {}", name);
                     }
@@ -689,11 +735,9 @@ fn restore_partial(cfg: &RimeConfig, backup_dir: &Path, files: Vec<String>) -> R
         // Auto-backup current file before overwriting
         if dst.exists() {
             let safe_name = file_name.replace(['/', '\\'], "_");
-            let backup_path =
-                auto_backups_dir().join(format!("{}.{}.bak", safe_name, timestamp()));
-            if let Err(e) = std::fs::create_dir_all(
-                backup_path.parent().unwrap_or(Path::new(".")),
-            ) {
+            let backup_path = auto_backups_dir().join(format!("{}.{}.bak", safe_name, timestamp()));
+            if let Err(e) = std::fs::create_dir_all(backup_path.parent().unwrap_or(Path::new(".")))
+            {
                 restore_errors.push(format!("Auto-backup dir for {}: {}", file_name, e));
                 continue;
             }
@@ -705,7 +749,14 @@ fn restore_partial(cfg: &RimeConfig, backup_dir: &Path, files: Vec<String>) -> R
 
         // Atomic restore: rename dst to .bak, rename staged to dst, remove .bak
         // Falls back to copy if rename fails (e.g. cross-filesystem).
-        let bak_suffix = format!(".restore_bak_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
+        let bak_suffix = format!(
+            ".restore_bak_{}",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .split('-')
+                .next()
+                .unwrap_or("0")
+        );
         let bak_path = if dst.exists() {
             let bak = dst.with_extension(format!(
                 "{}.{}",
@@ -724,7 +775,10 @@ fn restore_partial(cfg: &RimeConfig, backup_dir: &Path, files: Vec<String>) -> R
             if let Err(e) = std::fs::rename(&dst, bak) {
                 // Fallback: direct copy
                 if let Err(e2) = std::fs::copy(staged_path, &dst) {
-                    restore_errors.push(format!("Restore {}: rename failed ({}), copy failed ({})", file_name, e, e2));
+                    restore_errors.push(format!(
+                        "Restore {}: rename failed ({}), copy failed ({})",
+                        file_name, e, e2
+                    ));
                 }
                 continue;
             }
@@ -774,14 +828,17 @@ pub fn compare_backup(backup_id: String, file_name: String) -> Result<FileDiff, 
 
     let backup_path = dir.join(&file_name);
     let backup_content = if backup_path.exists() {
-        std::fs::read_to_string(&backup_path)?
+        read_file_with_limit(&backup_path)?
     } else {
-        return Err(RimeError::NotFound(format!("File {} not found in backup", file_name)));
+        return Err(RimeError::NotFound(format!(
+            "File {} not found in backup",
+            file_name
+        )));
     };
 
     let current_path = cfg.user_dir.join(&file_name);
     let current_content = if current_path.exists() {
-        Some(std::fs::read_to_string(&current_path)?)
+        Some(read_file_with_limit(&current_path)?)
     } else {
         None
     };
@@ -815,7 +872,10 @@ fn validate_backup_id(id: &str) -> Result<(), String> {
     if id.is_empty() || id.len() > 64 {
         return Err("Invalid backup ID".to_string());
     }
-    if id.chars().any(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_') {
+    if id
+        .chars()
+        .any(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
+    {
         return Err("Backup ID contains invalid characters".to_string());
     }
     Ok(())
@@ -839,11 +899,20 @@ fn dir_size(dir: &Path) -> i64 {
 }
 
 /// Recursively collect files from backup dir, storing relative paths
-fn collect_backup_files_recursive(base_dir: &Path, current_dir: &Path, files: &mut Vec<BackupFile>) {
+fn collect_backup_files_recursive(
+    base_dir: &Path,
+    current_dir: &Path,
+    files: &mut Vec<BackupFile>,
+) {
     collect_backup_files_recursive_inner(base_dir, current_dir, files, 0);
 }
 
-fn collect_backup_files_recursive_inner(base_dir: &Path, current_dir: &Path, files: &mut Vec<BackupFile>, depth: u32) {
+fn collect_backup_files_recursive_inner(
+    base_dir: &Path,
+    current_dir: &Path,
+    files: &mut Vec<BackupFile>,
+    depth: u32,
+) {
     if depth > MAX_DIR_DEPTH {
         return;
     }
@@ -861,7 +930,8 @@ fn collect_backup_files_recursive_inner(base_dir: &Path, current_dir: &Path, fil
                 {
                     continue;
                 }
-                let rel_path = path.strip_prefix(base_dir)
+                let rel_path = path
+                    .strip_prefix(base_dir)
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .to_string();
@@ -974,11 +1044,17 @@ fn cleanup_old_deploy_backups(max_count: usize) {
     for (name, path) in backups.iter().skip(max_count) {
         // Double-check: path must still be under deploy_backups_dir
         if path.parent() != Some(&dir) {
-            eprintln!("Warning: refusing to remove backup outside deploy dir: {:?}", path);
+            eprintln!(
+                "Warning: refusing to remove backup outside deploy dir: {:?}",
+                path
+            );
             continue;
         }
         if let Err(e) = std::fs::remove_dir_all(path) {
-            eprintln!("Warning: failed to remove old deploy backup {}: {}", name, e);
+            eprintln!(
+                "Warning: failed to remove old deploy backup {}: {}",
+                name, e
+            );
         } else {
             eprintln!("Removed old deploy backup: {}", name);
         }

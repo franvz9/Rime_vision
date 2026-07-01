@@ -75,19 +75,13 @@ pub fn save_keybindings(bindings: Vec<KeyBinding>) -> Result<(), RimeError> {
             .iter()
             .map(|b| {
                 let mut item = serde_yaml::Mapping::new();
-                item.insert(
-                    Value::String("when".into()),
-                    Value::String(b.when.clone()),
-                );
+                item.insert(Value::String("when".into()), Value::String(b.when.clone()));
                 item.insert(
                     Value::String("accept".into()),
                     Value::String(b.accept.clone()),
                 );
                 if !b.send.is_empty() {
-                    item.insert(
-                        Value::String("send".into()),
-                        Value::String(b.send.clone()),
-                    );
+                    item.insert(Value::String("send".into()), Value::String(b.send.clone()));
                 }
                 if !b.toggle.is_empty() {
                     item.insert(

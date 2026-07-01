@@ -1,6 +1,6 @@
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
-use parking_lot::Mutex;
 use std::time::Instant;
 use ts_rs::TS;
 
@@ -79,7 +79,8 @@ pub fn get_general_settings() -> Result<GeneralSettings, RimeError> {
                 .filter_map(|v| v.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            settings.switcher_fold_options = config::get_bool(s_map, "fold_options").unwrap_or(true);
+            settings.switcher_fold_options =
+                config::get_bool(s_map, "fold_options").unwrap_or(true);
             settings.switcher_abbreviate_options =
                 config::get_bool(s_map, "abbreviate_options").unwrap_or(true);
         }
@@ -90,12 +91,12 @@ pub fn get_general_settings() -> Result<GeneralSettings, RimeError> {
             settings.good_old_caps_lock =
                 config::get_bool(c_map, "good_old_caps_lock").unwrap_or(true);
             let switch_key = config::get_mapping(c_map, "switch_key");
-            settings.caps_lock_action = config::get_string(switch_key, "Caps_Lock")
-                .unwrap_or_else(|| "commit_code".into());
-            settings.shift_left_action = config::get_string(switch_key, "Shift_L")
-                .unwrap_or_else(|| "commit_code".into());
-            settings.shift_right_action = config::get_string(switch_key, "Shift_R")
-                .unwrap_or_else(|| "inline_ascii".into());
+            settings.caps_lock_action =
+                config::get_string(switch_key, "Caps_Lock").unwrap_or_else(|| "commit_code".into());
+            settings.shift_left_action =
+                config::get_string(switch_key, "Shift_L").unwrap_or_else(|| "commit_code".into());
+            settings.shift_right_action =
+                config::get_string(switch_key, "Shift_R").unwrap_or_else(|| "inline_ascii".into());
         }
     }
 
@@ -152,10 +153,7 @@ pub fn save_general_settings(settings: GeneralSettings) -> Result<(), RimeError>
             Value::String("caption".into()),
             Value::String(settings.switcher_caption),
         );
-        switcher.insert(
-            Value::String("hotkeys".into()),
-            Value::Sequence(hotkeys),
-        );
+        switcher.insert(Value::String("hotkeys".into()), Value::Sequence(hotkeys));
         switcher.insert(
             Value::String("fold_options".into()),
             Value::Bool(settings.switcher_fold_options),
@@ -246,7 +244,9 @@ pub fn get_config_files() -> Result<Vec<ConfigFileInfo>, RimeError> {
 
 #[tauri::command]
 pub fn sync_build_dir() -> Result<(), RimeError> {
-    crate::rime::deployer::sync().map(|_| ()).map_err(RimeError::from)
+    crate::rime::deployer::sync()
+        .map(|_| ())
+        .map_err(RimeError::from)
 }
 
 #[tauri::command]
@@ -265,14 +265,21 @@ pub fn open_dir(path: String) -> Result<(), RimeError> {
     }
     // Validate path contains only safe characters (no shell metacharacters)
     // Note: parentheses are valid in macOS paths, so they are allowed
-    if path.contains('\0') || path.contains('\n') || path.contains('\r') || path.contains('\t')
-        || path.contains(';') || path.contains('|') || path.contains('&')
-        || path.contains('$') || path.contains('`')
-        || path.contains('<') || path.contains('>')
+    if path.contains('\0')
+        || path.contains('\n')
+        || path.contains('\r')
+        || path.contains('\t')
+        || path.contains(';')
+        || path.contains('|')
+        || path.contains('&')
+        || path.contains('$')
+        || path.contains('`')
+        || path.contains('<')
+        || path.contains('>')
     {
         return Err(RimeError::InvalidPath("路径包含无效字符".into()));
     }
-    
+
     let path_obj = std::path::Path::new(&path);
     if !path_obj.exists() {
         return Err(RimeError::NotFound(format!("目录不存在: {}", path)));
@@ -347,7 +354,8 @@ pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeErr
         *last = Some(Instant::now());
     }
     // Determine if any model deletion is planned
-    let has_model_delete = pending_deletes.as_ref()
+    let has_model_delete = pending_deletes
+        .as_ref()
         .is_some_and(|deletes| deletes.iter().any(|d| d.delete_type == "model"));
 
     // Backup before deploy: include models only if model deletion is planned
@@ -361,38 +369,58 @@ pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeErr
         for delete in &deletes {
             // Validate identifier to prevent path traversal (aligned with validate_safe_path)
             // Defense in depth: explicitly check control chars + call validate_safe_path
-            if delete.identifier.contains('/') || delete.identifier.contains('\\')
+            if delete.identifier.contains('/')
+                || delete.identifier.contains('\\')
                 || delete.identifier.contains('\0')
                 || delete.identifier.contains('\n')
                 || delete.identifier.contains('\r')
                 || delete.identifier.contains('\t')
                 || crate::rime::utils::validate_safe_path(&delete.identifier).is_err()
             {
-                eprintln!("Warning: skipping delete with invalid identifier: {}", delete.identifier);
+                eprintln!(
+                    "Warning: skipping delete with invalid identifier: {}",
+                    delete.identifier
+                );
                 continue;
             }
             match delete.delete_type.as_str() {
                 "theme" => {
                     // Remove theme from squirrel.custom.yaml
-                    let _ = super::style::delete_color_scheme(delete.identifier.clone());
+                    if let Err(e) = super::style::delete_color_scheme(delete.identifier.clone()) {
+                        eprintln!(
+                            "Warning: failed to delete color scheme '{}': {}",
+                            delete.identifier, e
+                        );
+                    }
                 }
                 "schema" => {
                     // Delete schema file from user directory
                     let file_path = cfg.user_dir.join(&delete.identifier);
                     if file_path.exists() {
                         if let Err(e) = std::fs::remove_file(&file_path) {
-                            eprintln!("Warning: failed to delete schema {}: {}", delete.identifier, e);
+                            eprintln!(
+                                "Warning: failed to delete schema {}: {}",
+                                delete.identifier, e
+                            );
                         }
                     }
                     // Also remove from schema_list in default.custom.yaml
-                    let _ = remove_schema_from_list(&cfg, &delete.identifier);
+                    if let Err(e) = remove_schema_from_list(&cfg, &delete.identifier) {
+                        eprintln!(
+                            "Warning: failed to remove schema '{}': {}",
+                            delete.identifier, e
+                        );
+                    }
                 }
                 "model" => {
                     // Delete grammar model file from user directory
                     let file_path = cfg.user_dir.join(&delete.identifier);
                     if file_path.exists() {
                         if let Err(e) = std::fs::remove_file(&file_path) {
-                            eprintln!("Warning: failed to delete model {}: {}", delete.identifier, e);
+                            eprintln!(
+                                "Warning: failed to delete model {}: {}",
+                                delete.identifier, e
+                            );
                         }
                     }
                 }

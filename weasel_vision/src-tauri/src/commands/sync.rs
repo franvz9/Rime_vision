@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use parking_lot::Mutex;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -55,10 +55,7 @@ fn load_installation_yaml() -> Result<Mapping, RimeError> {
     }
     let content = std::fs::read_to_string(&path)?;
     let value: Value = serde_yaml::from_str(&content)?;
-    Ok(value
-        .as_mapping()
-        .cloned()
-        .unwrap_or_default())
+    Ok(value.as_mapping().cloned().unwrap_or_default())
 }
 
 fn save_installation_yaml(dict: &Mapping) -> Result<(), RimeError> {
@@ -88,10 +85,21 @@ pub fn save_sync_settings(settings: SyncSettings) -> Result<(), RimeError> {
     let mut dict = load_installation_yaml()?;
 
     if let Some(ref dir) = settings.sync_dir {
-        dict.insert(
-            Value::String("sync_dir".into()),
-            Value::String(dir.clone()),
-        );
+        // Validate sync_dir: non-empty, no control chars, no path traversal
+        if dir.is_empty() {
+            return Err(RimeError::InvalidPath("sync_dir cannot be empty".into()));
+        }
+        if dir.contains('\0') || dir.contains('\n') || dir.contains('\r') || dir.contains('\t') {
+            return Err(RimeError::InvalidPath(
+                "sync_dir contains invalid characters".into(),
+            ));
+        }
+        if dir.contains("..") {
+            return Err(RimeError::InvalidPath(
+                "sync_dir contains path traversal".into(),
+            ));
+        }
+        dict.insert(Value::String("sync_dir".into()), Value::String(dir.clone()));
     } else {
         dict.remove(Value::String("sync_dir".into()));
     }
@@ -115,10 +123,16 @@ pub fn get_sync_status() -> Result<SyncStatus, RimeError> {
 
     // Check for a recorded last_sync_time first (written by execute_sync)
     let last_sync_time = settings.sync_dir.as_ref().and_then(|d| {
-        let marker = std::path::Path::new(d).join(&settings.installation_id).join(".last_sync");
+        let marker = std::path::Path::new(d)
+            .join(&settings.installation_id)
+            .join(".last_sync");
         std::fs::read_to_string(&marker).ok().and_then(|s| {
             let s = s.trim();
-            if s.is_empty() { None } else { Some(s.to_string()) }
+            if s.is_empty() {
+                None
+            } else {
+                Some(s.to_string())
+            }
         })
     });
 
@@ -210,14 +224,14 @@ pub async fn execute_sync() -> Result<SyncResult, RimeError> {
         }
         *last = Some(Instant::now());
     }
-    
+
     let settings = get_sync_settings()?;
-    
+
     // Check if sync directory is configured
     if settings.sync_dir.is_none() {
         return Err(RimeError::Config("请先在「同步设置」中配置同步目录".into()));
     }
-    
+
     // Trigger Rime native sync by sending kill -HUP to Squirrel
     let process_found = crate::rime::deployer::sync()?;
 
@@ -226,7 +240,9 @@ pub async fn execute_sync() -> Result<SyncResult, RimeError> {
             success: false,
             uploaded: vec![],
             downloaded: vec![],
-            errors: vec!["输入法进程未运行，无法执行同步。请确保 Rime 输入法正在运行。".to_string()],
+            errors: vec![
+                "输入法进程未运行，无法执行同步。请确保 Rime 输入法正在运行。".to_string(),
+            ],
         });
     }
 
@@ -243,7 +259,11 @@ pub async fn execute_sync() -> Result<SyncResult, RimeError> {
             if let Err(e) = std::fs::write(device_dir.join(".last_sync"), &now) {
                 eprintln!("Warning: failed to write .last_sync: {}", e);
             } else {
-                eprintln!("Recorded sync time: {} at {:?}", now, device_dir.join(".last_sync"));
+                eprintln!(
+                    "Recorded sync time: {} at {:?}",
+                    now,
+                    device_dir.join(".last_sync")
+                );
             }
         }
     }
@@ -266,8 +286,13 @@ fn validate_installation_id(id: &str) -> Result<(), RimeError> {
     if id.is_empty() || id.len() > 64 {
         return Err(RimeError::Config("Invalid installation ID".into()));
     }
-    if id.chars().any(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_') {
-        return Err(RimeError::Config("Installation ID contains invalid characters".into()));
+    if id
+        .chars()
+        .any(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
+    {
+        return Err(RimeError::Config(
+            "Installation ID contains invalid characters".into(),
+        ));
     }
     Ok(())
 }

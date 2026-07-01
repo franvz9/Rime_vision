@@ -241,11 +241,7 @@ impl RimeColorScheme {
             "hilited_candidate_back_color",
             self.hilited_candidate_back_color,
         );
-        insert_color(
-            &mut dict,
-            "candidate_text_color",
-            self.candidate_text_color,
-        );
+        insert_color(&mut dict, "candidate_text_color", self.candidate_text_color);
         insert_color(
             &mut dict,
             "hilited_candidate_text_color",
@@ -257,22 +253,14 @@ impl RimeColorScheme {
             "hilited_candidate_label_color",
             self.hilited_candidate_label_color,
         );
-        insert_color(
-            &mut dict,
-            "comment_text_color",
-            self.comment_text_color,
-        );
+        insert_color(&mut dict, "comment_text_color", self.comment_text_color);
         insert_color(
             &mut dict,
             "hilited_comment_text_color",
             self.hilited_comment_text_color,
         );
         insert_color(&mut dict, "preedit_back_color", self.preedit_back_color);
-        insert_color(
-            &mut dict,
-            "candidate_back_color",
-            self.candidate_back_color,
-        );
+        insert_color(&mut dict, "candidate_back_color", self.candidate_back_color);
 
         insert_opt_bool(&mut dict, "translucency", self.translucency);
         insert_opt_bool(&mut dict, "mutual_exclusive", self.mutual_exclusive);
@@ -292,12 +280,20 @@ impl RimeColorScheme {
             self.candidate_format.as_deref(),
         );
         insert_opt_f64(&mut dict, "corner_radius", self.corner_radius);
-        insert_opt_f64(&mut dict, "hilited_corner_radius", self.hilited_corner_radius);
+        insert_opt_f64(
+            &mut dict,
+            "hilited_corner_radius",
+            self.hilited_corner_radius,
+        );
         insert_opt_f64(&mut dict, "border_width", self.border_width);
         insert_opt_f64(&mut dict, "border_height", self.border_height);
         insert_opt_string(&mut dict, "font_face", self.font_face.as_deref());
         insert_opt_f64(&mut dict, "font_point", self.font_point);
-        insert_opt_string(&mut dict, "label_font_face", self.label_font_face.as_deref());
+        insert_opt_string(
+            &mut dict,
+            "label_font_face",
+            self.label_font_face.as_deref(),
+        );
         insert_opt_f64(&mut dict, "label_font_point", self.label_font_point);
         insert_opt_string(
             &mut dict,

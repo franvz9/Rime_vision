@@ -294,10 +294,15 @@ function getHexDisplay(v: unknown): string {
   return `0x${c.b.toString(16).padStart(2, '0')}${c.g.toString(16).padStart(2, '0')}${c.r.toString(16).padStart(2, '0')}`
 }
 
-function setColorHex(scheme: RimeColorScheme, key: string, hex: string) {
+/** Subset of RimeColorScheme keys whose values are RimeColor | null */
+type ColorSchemeKey = {
+  [K in keyof RimeColorScheme]: NonNullable<RimeColorScheme[K]> extends RimeColor ? K : never
+}[keyof RimeColorScheme]
+
+function setColorHex(scheme: RimeColorScheme, key: ColorSchemeKey, hex: string) {
   const rgb = hexToRgb(hexToRimeHex(hex))
   if (rgb) {
-    ;(scheme as unknown as Record<string, unknown>)[key] = rgb
+    scheme[key] = rgb
   }
 }
 
@@ -674,7 +679,13 @@ async function saveStyle() {
             <input
               type="color"
               :value="getColorHex(editingScheme![key as keyof RimeColorScheme])"
-              @input="setColorHex(editingScheme!, key, ($event.target as HTMLInputElement).value)"
+              @input="
+                setColorHex(
+                  editingScheme!,
+                  key as ColorSchemeKey,
+                  ($event.target as HTMLInputElement).value,
+                )
+              "
             />
             <span>{{ getHexDisplay(editingScheme![key as keyof RimeColorScheme]) }}</span>
           </div>

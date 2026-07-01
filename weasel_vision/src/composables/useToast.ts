@@ -13,7 +13,7 @@
  *   toast.info('Deploy in progress...')
  */
 
-import { ref } from 'vue'
+import { ref, readonly } from 'vue'
 
 export interface Toast {
   id: number
@@ -73,7 +73,7 @@ function dismissToast(id: number) {
 
 export function useToast() {
   return {
-    toasts,
+    toasts: readonly(toasts),
 
     /** Show an error notification (auto-dismiss: 6s) */
     error(message: string) {

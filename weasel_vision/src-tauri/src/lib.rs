@@ -1,7 +1,7 @@
 mod commands;
 mod rime;
 
-use commands::{backup, dict, grammar, keybinding, punctuation, settings, schema, style, sync};
+use commands::{backup, dict, grammar, keybinding, punctuation, schema, settings, style, sync};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

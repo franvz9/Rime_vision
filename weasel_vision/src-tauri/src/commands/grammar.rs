@@ -86,10 +86,8 @@ fn load_mount_config(
 
                 config.contextual_suggestions =
                     config::get_bool(translator, "contextual_suggestions").unwrap_or(true);
-                config.max_homophones =
-                    config::get_i64(translator, "max_homophones").unwrap_or(7);
-                config.max_homographs =
-                    config::get_i64(translator, "max_homographs").unwrap_or(7);
+                config.max_homophones = config::get_i64(translator, "max_homophones").unwrap_or(7);
+                config.max_homographs = config::get_i64(translator, "max_homographs").unwrap_or(7);
             }
         }
     }
@@ -104,7 +102,8 @@ pub fn mount_grammar(
     config: SchemaGrammarConfig,
 ) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
-    let custom_url = cfg.schema_custom_path(&schema_id)
+    let custom_url = cfg
+        .schema_custom_path(&schema_id)
         .ok_or_else(|| RimeError::Config(format!("Invalid schema_id: {}", schema_id)))?;
 
     cfg.save_patch(&custom_url, |patch| {
@@ -156,7 +155,8 @@ pub fn mount_grammar(
 #[tauri::command]
 pub fn unmount_grammar(schema_id: String) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
-    let custom_url = cfg.schema_custom_path(&schema_id)
+    let custom_url = cfg
+        .schema_custom_path(&schema_id)
         .ok_or_else(|| RimeError::Config(format!("Invalid schema_id: {}", schema_id)))?;
 
     cfg.save_patch(&custom_url, |patch| {
@@ -211,29 +211,33 @@ pub fn import_grammar(file_path: String) -> Result<(), RimeError> {
 
     let path = std::path::Path::new(&file_path);
     if !path.exists() {
-        return Err(RimeError::NotFound(format!("File not found: {}", file_path)));
+        return Err(RimeError::NotFound(format!(
+            "File not found: {}",
+            file_path
+        )));
     }
     if !path.is_file() {
         return Err(RimeError::InvalidPath("Path is not a file".into()));
     }
 
     let cfg = RimeConfig::detect();
-    
+
     // Read the source file as binary (gram files can be binary)
     let content = std::fs::read(&file_path)?;
-    
+
     // Get filename without extension
     let path = std::path::Path::new(&file_path);
-    let filename = path.file_stem()
+    let filename = path
+        .file_stem()
         .and_then(|s| s.to_str())
         .ok_or_else(|| RimeError::InvalidPath("Invalid filename".into()))?
         .to_string();
-    
+
     // Basic validation: check if file is not empty and has reasonable size
     if content.is_empty() {
         return Err(RimeError::Config("Grammar file is empty".into()));
     }
-    
+
     // For text-based gram files, do additional validation
     // Try to convert to string for validation, but don't fail if it's binary
     if let Ok(content_str) = std::str::from_utf8(&content) {
@@ -243,10 +247,10 @@ pub fn import_grammar(file_path: String) -> Result<(), RimeError> {
         }
     }
     // If conversion fails, it's likely a binary file, which is acceptable
-    
+
     // Copy to user directory using binary write
     let dest_path = cfg.user_dir.join(format!("{}.gram", filename));
     std::fs::write(&dest_path, content)?;
-    
+
     Ok(())
 }
