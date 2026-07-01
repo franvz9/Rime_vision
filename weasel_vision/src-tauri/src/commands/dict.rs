@@ -4,6 +4,37 @@ use serde::{Deserialize, Serialize};
 
 use crate::rime::config::RimeConfig;
 
+/// Atomically write content to a file (write to temp then rename)
+fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
+    // Use UUID to prevent concurrent writes from conflicting on same temp file
+    let temp_path = path.with_file_name(format!("{}.tmp", uuid::Uuid::new_v4()));
+    std::fs::write(&temp_path, content).map_err(|e| format!("Failed to write temp file: {}", e))?;
+    // Try direct rename first (works on Windows 10 1607+ and Unix)
+    // If it fails (older Windows), fall back to remove + rename
+    if std::fs::rename(&temp_path, path).is_err() {
+        if path.exists() {
+            std::fs::remove_file(path).map_err(|e| format!("Failed to remove existing file: {}", e))?;
+        }
+        std::fs::rename(&temp_path, path).map_err(|e| format!("Failed to rename temp file: {}", e))?;
+    }
+    Ok(())
+}
+
+/// Validate a file path for import operations (prevents path traversal)
+pub fn validate_import_path(path: &str) -> Result<(), String> {
+    if path.is_empty() {
+        return Err("路径为空".to_string());
+    }
+    // Only reject path traversal components, not path separators (absolute paths are valid)
+    if path.contains("..") {
+        return Err("路径包含路径遍历字符".to_string());
+    }
+    if path.contains('\0') || path.contains('\n') || path.contains('\r') || path.contains('\t') {
+        return Err("路径包含控制字符".to_string());
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserDictInfo {
     pub dict_id: String,
@@ -471,24 +502,7 @@ fn count_snapshot_entries(dict_id: &str) -> usize {
 }
 
 fn dir_size(dir: &Path) -> i64 {
-    let mut size = 0i64;
-    dir_size_recursive(dir, &mut size);
-    size
-}
-
-fn dir_size_recursive(dir: &Path, size: &mut i64) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                if let Ok(m) = std::fs::metadata(&path) {
-                    *size += m.len() as i64;
-                }
-            } else if path.is_dir() {
-                dir_size_recursive(&path, size);
-            }
-        }
-    }
+    crate::rime::utils::dir_size(dir)
 }
 
 fn dir_metadata_modified(dir: &Path) -> String {
@@ -544,7 +558,7 @@ pub fn delete_entries(dict_id: String, entries_to_delete: Vec<DictEntryKey>) -> 
         .map(|s| s.to_string())
         .collect();
 
-    std::fs::write(&snapshot, new_lines.join("\n") + "\n").map_err(|e| e.to_string())?;
+    atomic_write(&snapshot, &(new_lines.join("\n") + "\n"))?;
     Ok(deleted)
 }
 
@@ -610,7 +624,7 @@ pub fn update_entry_frequency(
         })
         .collect();
 
-    std::fs::write(&snapshot, new_lines.join("\n") + "\n").map_err(|e| e.to_string())?;
+    atomic_write(&snapshot, &(new_lines.join("\n") + "\n"))?;
     Ok(())
 }
 
@@ -644,7 +658,7 @@ pub fn batch_delete_low_frequency(dict_id: String, threshold: i64) -> Result<usi
         .map(|s| s.to_string())
         .collect();
 
-    std::fs::write(&snapshot, new_lines.join("\n") + "\n").map_err(|e| e.to_string())?;
+    atomic_write(&snapshot, &(new_lines.join("\n") + "\n"))?;
     Ok(deleted)
 }
 
@@ -660,10 +674,19 @@ pub fn export_user_dict(dict_id: String, output_path: String) -> Result<usize, S
         return Err("Output path contains path traversal".to_string());
     }
     // Ensure output path is under user's home directory
+    // Find the first existing parent and validate it
     if let Some(home) = dirs::home_dir() {
-        let canonical_output = output.canonicalize().unwrap_or_else(|_| output.clone());
         let canonical_home = home.canonicalize().unwrap_or(home);
-        if !canonical_output.starts_with(&canonical_home) {
+        let mut current = output.clone();
+        // Walk up to find first existing parent
+        while !current.exists() {
+            match current.parent() {
+                Some(parent) => current = parent.to_path_buf(),
+                None => return Err("Output path must be within user home directory".to_string()),
+            }
+        }
+        let canonical_parent = current.canonicalize().map_err(|e| format!("Failed to resolve path: {}", e))?;
+        if !canonical_parent.starts_with(&canonical_home) {
             return Err("Output path must be within user home directory".to_string());
         }
     }
@@ -686,17 +709,14 @@ pub fn export_user_dict(dict_id: String, output_path: String) -> Result<usize, S
         }
     }
 
-    std::fs::write(&output_path, lines.join("\n") + "\n").map_err(|e| e.to_string())?;
+    atomic_write(&output, &(lines.join("\n") + "\n"))?;
     Ok(count)
 }
 
 /// Clear all entries from a user dictionary
 ///
-/// This removes the entire LevelDB directory and recreates it empty,
-/// which is safer than deleting individual files (which would corrupt LevelDB).
-/// Also removes associated snapshot files.
-///
-/// **Note**: For changes to take effect, Rime should be redeployed after this operation.
+/// This renames the old directory, creates a new empty one, then deletes the old one.
+/// This is safer than remove_dir_all + create_dir_all which can lose data if creation fails.
 #[tauri::command]
 pub fn clear_user_dict(dict_id: String) -> Result<(), String> {
     validate_dict_id(&dict_id)?;
@@ -707,10 +727,24 @@ pub fn clear_user_dict(dict_id: String) -> Result<(), String> {
         return Err(format!("Dictionary '{}' not found", dict_id));
     }
 
-    // Remove the entire .userdb directory and recreate it empty
-    // This is safer than deleting individual files, which would corrupt LevelDB
-    std::fs::remove_dir_all(&userdb_dir).map_err(|e| format!("Failed to remove database: {}", e))?;
-    std::fs::create_dir_all(&userdb_dir).map_err(|e| format!("Failed to recreate directory: {}", e))?;
+    // Rename old directory to temp name, create new empty one
+    let temp_dir = cfg.user_dir.join(format!(".{}.userdb.bak", dict_id));
+    // Remove any leftover temp directory from previous failed attempts
+    let _ = std::fs::remove_dir_all(&temp_dir);
+
+    std::fs::rename(&userdb_dir, &temp_dir)
+        .map_err(|e| format!("Failed to backup old dictionary: {}", e))?;
+
+    // Create new empty directory
+    std::fs::create_dir_all(&userdb_dir)
+        .map_err(|e| {
+            // Try to restore from backup if creation fails
+            let _ = std::fs::rename(&temp_dir, &userdb_dir);
+            format!("Failed to create new directory: {}", e)
+        })?;
+
+    // Cleanup old directory (best effort)
+    let _ = std::fs::remove_dir_all(&temp_dir);
 
     // Also remove snapshot files so entry counts and browsing reflect the cleared state
     let snapshots_dir = cfg.user_dir.join("user_dictionaries");
@@ -742,7 +776,8 @@ pub fn add_dict_entry(
 ) -> Result<(), String> {
     validate_dict_id(&dict_id)?;
     let snapshot = find_snapshot(&dict_id)?;
-    let content = std::fs::read_to_string(&snapshot).unwrap_or_default();
+    let content = std::fs::read_to_string(&snapshot)
+        .map_err(|e| format!("Failed to read snapshot: {}", e))?;
 
     // Check if entry already exists
     for line in content.lines() {
@@ -764,7 +799,7 @@ pub fn add_dict_entry(
         content.trim_end().to_string() + "\n" + &new_line + "\n"
     };
 
-    std::fs::write(&snapshot, new_content).map_err(|e| e.to_string())?;
+    atomic_write(&snapshot, &new_content)?;
     Ok(())
 }
 
@@ -787,10 +822,21 @@ pub async fn create_snapshot(dict_id: String) -> Result<String, String> {
     // Check if sync directory is configured in installation.yaml
     let installation_path = cfg.user_dir.join("installation.yaml");
     let sync_configured = if installation_path.exists() {
-        let content = std::fs::read_to_string(&installation_path).unwrap_or_default();
-        let value: serde_yaml::Value = serde_yaml::from_str(&content).ok()
-            .unwrap_or(serde_yaml::Value::Null);
-        value.get("sync_dir").and_then(|v| v.as_str()).is_some()
+        match std::fs::read_to_string(&installation_path) {
+            Ok(content) => {
+                match serde_yaml::from_str::<serde_yaml::Value>(&content) {
+                    Ok(value) => value.get("sync_dir").and_then(|v| v.as_str()).is_some(),
+                    Err(e) => {
+                        eprintln!("Warning: failed to parse installation.yaml: {}", e);
+                        false
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to read installation.yaml: {}", e);
+                false
+            }
+        }
     } else {
         false
     };
@@ -805,8 +851,8 @@ pub async fn create_snapshot(dict_id: String) -> Result<String, String> {
     crate::rime::deployer::sync().map_err(|e| format!("触发同步失败: {}", e))?;
     
     // Wait for Squirrel to process the sync and generate snapshot files
-    // Poll for up to 5 seconds
-    for _ in 0..50 {
+    // Poll for up to 10 seconds
+    for _ in 0..100 {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         if let Ok(snapshot_path) = find_snapshot(&dict_id) {
             return Ok(snapshot_path.to_string_lossy().to_string());
@@ -836,6 +882,11 @@ pub fn delete_snapshot(dict_id: String, file_name: String) -> Result<(), String>
 /// Uses the same priority order as find_snapshot:
 /// 1. sync directory, 2. user_dictionaries/, 3. .userdb/
 fn resolve_snapshot_path(dict_id: &str, file_name: &str) -> Result<PathBuf, String> {
+    // Validate file_name to prevent path traversal (defense in depth)
+    if file_name.contains("..") || file_name.contains('/') || file_name.contains('\\') {
+        return Err("Invalid file name: path traversal not allowed".to_string());
+    }
+
     let cfg = RimeConfig::detect();
     
     // Priority 1: Check sync directory
@@ -865,14 +916,8 @@ fn resolve_snapshot_path(dict_id: &str, file_name: &str) -> Result<PathBuf, Stri
     if path2.exists() {
         return Ok(path2);
     }
-    
+
     // Priority 3: Check .userdb/ directory
-    if file_name.contains('/') || file_name.contains('\\') {
-        let path3 = cfg.user_dir.join(file_name);
-        if path3.exists() {
-            return Ok(path3);
-        }
-    }
     let userdb_dir = cfg.user_dir.join(format!("{}.userdb", dict_id));
     if let Ok(entries) = std::fs::read_dir(&userdb_dir) {
         for entry in entries.flatten() {
@@ -881,7 +926,7 @@ fn resolve_snapshot_path(dict_id: &str, file_name: &str) -> Result<PathBuf, Stri
             }
         }
     }
-    
+
     Err(format!("Snapshot '{}' not found", file_name))
 }
 
@@ -890,12 +935,12 @@ fn resolve_snapshot_path(dict_id: &str, file_name: &str) -> Result<PathBuf, Stri
 #[tauri::command]
 pub fn apply_modified_snapshot(dict_id: String, file_name: String) -> Result<(), String> {
     validate_dict_id(&dict_id)?;
-    
+
     // Validate file_name to prevent path traversal
-    if file_name.contains("..") {
+    if file_name.contains("..") || file_name.contains('/') || file_name.contains('\\') {
         return Err("Invalid file name: path traversal not allowed".to_string());
     }
-    
+
     let cfg = RimeConfig::detect();
     
     // Create user_dictionaries directory (copy target)

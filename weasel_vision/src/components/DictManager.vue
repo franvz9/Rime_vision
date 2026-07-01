@@ -54,6 +54,10 @@ const isGenerating = ref(false)
 const showApplyConfirm = ref(false)
 const showSyncNotConfigured = ref(false)
 
+// Request IDs to prevent stale responses from overwriting newer data
+let loadEntriesRequestId = 0
+let loadSnapshotsRequestId = 0
+
 onMounted(async () => {
   await loadDicts()
 })
@@ -76,14 +80,23 @@ async function selectDict(dict: UserDictInfo) {
 
 async function loadEntries() {
   if (!selectedDict.value) return
+
+  // Increment request ID to discard stale responses
+  const requestId = ++loadEntriesRequestId
+
   try {
-    entries.value = await invoke('load_user_dict_entries', {
+    const result = await invoke<DictEntriesResult>('load_user_dict_entries', {
       dictId: selectedDict.value.dict_id,
       page: currentPage.value,
       perPage,
       sortBy: sortBy.value,
       search: searchQuery.value || null,
     })
+
+    // Only update if this request is still the latest
+    if (requestId === loadEntriesRequestId) {
+      entries.value = result
+    }
   } catch (e) {
     console.error('Failed to load entries:', e)
   }
@@ -91,17 +104,26 @@ async function loadEntries() {
 
 async function loadSnapshots() {
   if (!selectedDict.value) return
+
+  // Increment request ID to discard stale responses
+  const requestId = ++loadSnapshotsRequestId
+
   try {
-    snapshots.value = await invoke('list_snapshots', {
+    const result = await invoke<SnapshotInfo[]>('list_snapshots', {
       dictId: selectedDict.value.dict_id,
     })
-    // Update entry_count based on actual snapshot existence
-    // If we have snapshots, set entry_count to the total from loaded entries
-    // If no snapshots, keep it as -1 (needs sync)
-    if (snapshots.value.length > 0 && entries.value) {
-      selectedDict.value = { 
-        ...selectedDict.value, 
-        entry_count: entries.value.total 
+
+    // Only update if this request is still the latest
+    if (requestId === loadSnapshotsRequestId) {
+      snapshots.value = result
+      // Update entry_count based on actual snapshot existence
+      // If we have snapshots, set entry_count to the total from loaded entries
+      // If no snapshots, keep it as -1 (needs sync)
+      if (result.length > 0 && entries.value) {
+        selectedDict.value = {
+          ...selectedDict.value,
+          entry_count: entries.value.total
+        }
       }
     }
   } catch (e) {

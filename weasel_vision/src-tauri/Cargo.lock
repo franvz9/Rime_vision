@@ -4343,11 +4343,12 @@ dependencies = [
 
 [[package]]
 name = "weasel-vision"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
  "dirs 5.0.1",
+ "parking_lot",
  "regex",
  "serde",
  "serde_json",

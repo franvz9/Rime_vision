@@ -248,8 +248,30 @@ pub fn sync() -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_dir(path: String) -> Result<(), String> {
-    if !std::path::Path::new(&path).exists() {
+    // Validate path to prevent command injection
+    if path.is_empty() {
+        return Err("路径不能为空".to_string());
+    }
+    // Reject paths starting with '-' (could be interpreted as command flags)
+    if path.starts_with('-') {
+        return Err("无效的路径格式".to_string());
+    }
+    // Validate path contains only safe characters (shell metacharacters that could cause injection)
+    // Note: parentheses are valid in macOS paths, so they are allowed
+    if path.contains('\0') || path.contains('\n') || path.contains('\r') || path.contains('\t')
+        || path.contains(';') || path.contains('|') || path.contains('&')
+        || path.contains('$') || path.contains('`')
+        || path.contains('<') || path.contains('>')
+    {
+        return Err("路径包含无效字符".to_string());
+    }
+    
+    let path_obj = std::path::Path::new(&path);
+    if !path_obj.exists() {
         return Err(format!("目录不存在: {}", path));
+    }
+    if !path_obj.is_dir() {
+        return Err("路径不是目录".to_string());
     }
 
     #[cfg(target_os = "macos")]
@@ -333,6 +355,11 @@ pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), String>
     if let Some(deletes) = pending_deletes {
         let cfg = RimeConfig::detect();
         for delete in &deletes {
+            // Validate identifier to prevent path traversal
+            if delete.identifier.contains("..") || delete.identifier.contains('/') || delete.identifier.contains('\\') {
+                eprintln!("Warning: skipping delete with invalid identifier: {}", delete.identifier);
+                continue;
+            }
             match delete.delete_type.as_str() {
                 "theme" => {
                     // Remove theme from squirrel.custom.yaml

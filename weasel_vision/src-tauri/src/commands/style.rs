@@ -159,6 +159,14 @@ pub fn save_color_scheme(
     scheme: RimeColorScheme,
     original_name: Option<String>,
 ) -> Result<(), String> {
+    // Validate scheme name to prevent YAML injection
+    if name.is_empty() || name.len() > 64 {
+        return Err("配色方案名称长度无效".to_string());
+    }
+    if !name.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == ' ') {
+        return Err("配色方案名称包含无效字符".to_string());
+    }
+
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
         let schemes = patch
@@ -224,12 +232,7 @@ pub fn delete_color_scheme(name: String) -> Result<(), String> {
 #[tauri::command]
 pub fn import_color_scheme(file_path: String) -> Result<(), String> {
     // Validate file path
-    if file_path.is_empty() {
-        return Err("File path is empty".to_string());
-    }
-    if file_path.contains("..") {
-        return Err("Invalid file path: path traversal not allowed".to_string());
-    }
+    super::dict::validate_import_path(&file_path)?;
     let path = std::path::Path::new(&file_path);
     if !path.exists() {
         return Err(format!("File not found: {}", file_path));

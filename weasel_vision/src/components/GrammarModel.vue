@@ -58,8 +58,8 @@ onMounted(async () => {
 
 async function loadData() {
   try {
-    const schemas: any = await invoke('get_schemas')
-    schemaIds.value = schemas.schemas.map((s: any) => s.schema)
+    const schemas = await invoke<{ schemas: Array<{ schema: string }> }>('get_schemas')
+    schemaIds.value = schemas.schemas.map((s) => s.schema)
     data.value = await invoke('get_grammar_data', { schemaIds: schemaIds.value })
   } catch (e) {
     console.error('Failed to load grammar data:', e)
@@ -121,29 +121,23 @@ function openBatchModal() {
 }
 
 async function batchMount() {
-  for (const schemaId of selectedSchemaIds.value) {
-    try {
-      await invoke('mount_grammar', {
-        modelFilename: selectedModel.value!.filename,
-        schemaId,
-        config: { ...batchConfig.value, schema_id: schemaId },
-      })
-    } catch (e) {
-      console.error('Mount failed:', e)
-    }
-  }
+  const promises = Array.from(selectedSchemaIds.value).map(schemaId =>
+    invoke('mount_grammar', {
+      modelFilename: selectedModel.value!.filename,
+      schemaId,
+      config: { ...batchConfig.value, schema_id: schemaId },
+    }).catch(e => console.error('Mount failed:', e))
+  )
+  await Promise.all(promises)
   showBatchModal.value = false
   await loadData()
 }
 
 async function batchUnmount() {
-  for (const schemaId of selectedSchemaIds.value) {
-    try {
-      await invoke('unmount_grammar', { schemaId })
-    } catch (e) {
-      console.error('Unmount failed:', e)
-    }
-  }
+  const promises = Array.from(selectedSchemaIds.value).map(schemaId =>
+    invoke('unmount_grammar', { schemaId }).catch(e => console.error('Unmount failed:', e))
+  )
+  await Promise.all(promises)
   showBatchModal.value = false
   await loadData()
 }

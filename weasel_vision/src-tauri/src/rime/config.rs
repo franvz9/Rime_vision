@@ -19,18 +19,16 @@ pub struct RimeConfig {
 }
 
 impl RimeConfig {
-    /// Cached config detection - computed once and reused
+    /// Detect Rime config paths. Called on each command to reflect runtime changes.
     pub fn detect() -> Self {
-        use std::sync::OnceLock;
-        static CACHED: OnceLock<RimeConfig> = OnceLock::new();
-        CACHED.get_or_init(Self::detect_inner).clone()
+        Self::detect_inner()
     }
 
     fn detect_inner() -> Self {
         if cfg!(target_os = "macos") {
             Self {
                 user_dir: dirs::home_dir()
-                    .unwrap_or_else(|| PathBuf::from("~"))
+                    .unwrap_or_else(|| PathBuf::from("/Users"))
                     .join("Library/Rime"),
                 build_dir: None,
                 style_file: "squirrel.yaml".into(),
@@ -107,16 +105,13 @@ impl RimeConfig {
 
     /// Get the custom config path for a given schema_id
     /// Returns None if schema_id contains path traversal characters
-    pub fn schema_custom_path(&self, schema_id: &str) -> PathBuf {
-        // Sanitize schema_id: remove any path separators and traversal sequences
-        let safe_id = schema_id
-            .replace('/', "")
-            .replace('\\', "")
-            .replace("..", "");
-        if safe_id != schema_id {
-            eprintln!("Warning: schema_id '{}' contained invalid characters, sanitized to '{}'", schema_id, safe_id);
+    pub fn schema_custom_path(&self, schema_id: &str) -> Option<PathBuf> {
+        // Reject schema_id with path traversal characters
+        if schema_id.contains('/') || schema_id.contains('\\') || schema_id.contains("..") {
+            eprintln!("Warning: schema_id '{}' contains invalid path characters", schema_id);
+            return None;
         }
-        self.user_dir.join(format!("{}.custom.yaml", safe_id))
+        Some(self.user_dir.join(format!("{}.custom.yaml", schema_id)))
     }
 
     /// Returns the directory containing compiled/generated configs.
@@ -190,13 +185,6 @@ pub fn parse_yaml(text: &str) -> Result<Value> {
     Ok(normalize(value))
 }
 
-/// Serialize a YAML value back to string
-/// Reserved for future config export functionality.
-#[allow(dead_code)]
-pub fn dump_yaml(value: &Value) -> Result<String> {
-    Ok(serde_yaml::to_string(value)?)
-}
-
 fn normalize(value: Value) -> Value {
     match value {
         Value::Mapping(map) => {
@@ -234,15 +222,6 @@ pub fn get_bool(dict: &Mapping, key: &str) -> Option<bool> {
         .and_then(|v| v.as_bool())
 }
 
-/// Get a floating-point value from YAML mapping
-/// Reserved for future config access.
-#[allow(dead_code)]
-pub fn get_f64(dict: &Mapping, key: &str) -> Option<f64> {
-    dict.get(Value::String(key.into())).and_then(|v| {
-        v.as_f64().or_else(|| v.as_i64().map(|i| i as f64))
-    })
-}
-
 pub fn get_i64(dict: &Mapping, key: &str) -> Option<i64> {
     dict.get(Value::String(key.into())).and_then(|v| {
         v.as_i64().or_else(|| v.as_f64().map(|f| f as i64))
@@ -263,41 +242,4 @@ pub fn get_sequence<'a>(dict: &'a Mapping, key: &str) -> &'a Vec<Value> {
     dict.get(Value::String(key.into()))
         .and_then(|v| v.as_sequence())
         .unwrap_or(empty)
-}
-
-/// Set a string value in YAML mapping
-/// Reserved for future config modification.
-#[allow(dead_code)]
-pub fn set_string(dict: &mut Mapping, key: &str, value: &str) {
-    dict.insert(
-        Value::String(key.into()),
-        Value::String(value.into()),
-    );
-}
-
-/// Set a boolean value in YAML mapping
-/// Reserved for future config modification.
-#[allow(dead_code)]
-pub fn set_bool(dict: &mut Mapping, key: &str, value: bool) {
-    dict.insert(Value::String(key.into()), Value::Bool(value));
-}
-
-/// Set a floating-point value in YAML mapping
-/// Reserved for future config modification.
-#[allow(dead_code)]
-pub fn set_f64(dict: &mut Mapping, key: &str, value: f64) {
-    dict.insert(
-        Value::String(key.into()),
-        Value::Number(value.into()),
-    );
-}
-
-/// Set an integer value in YAML mapping
-/// Reserved for future config modification.
-#[allow(dead_code)]
-pub fn set_i64(dict: &mut Mapping, key: &str, value: i64) {
-    dict.insert(
-        Value::String(key.into()),
-        Value::Number(value.into()),
-    );
 }

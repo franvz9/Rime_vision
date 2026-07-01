@@ -88,12 +88,7 @@ pub fn save_schemas(schemas: Vec<RimeSchema>) -> Result<(), String> {
 #[tauri::command]
 pub fn import_schema(file_path: String) -> Result<(), String> {
     // Validate file path
-    if file_path.is_empty() {
-        return Err("File path is empty".to_string());
-    }
-    if file_path.contains("..") {
-        return Err("Invalid file path: path traversal not allowed".to_string());
-    }
+    super::dict::validate_import_path(&file_path)?;
     let path = std::path::Path::new(&file_path);
     if !path.exists() {
         return Err(format!("File not found: {}", file_path));
@@ -116,6 +111,13 @@ pub fn import_schema(file_path: String) -> Result<(), String> {
     // Check for schema_id
     if let Some(schema_id) = yaml_value.get(Value::String("schema_id".into())) {
         if let Some(id) = schema_id.as_str() {
+            // Validate schema_id to prevent path traversal and injection
+            if id.contains("..") || id.contains('/') || id.contains('\\') || id.contains('\0') {
+                return Err("Invalid schema_id: contains invalid characters".to_string());
+            }
+            if id.is_empty() || id.len() > 64 {
+                return Err("Invalid schema_id: length must be 1-64 characters".to_string());
+            }
             // Add to schema_list in default.custom.yaml
             let cfg = RimeConfig::detect();
             cfg.save_patch(&cfg.default_custom_path(), |patch| {
@@ -147,6 +149,14 @@ pub fn import_schema(file_path: String) -> Result<(), String> {
                 
                 Ok(())
             }).map_err(|e| e.to_string())?;
+            
+            // Copy the schema file to user directory so Rime can use it
+            let dest_file = cfg.user_dir.join(format!("{}.schema.yaml", id));
+            // Don't overwrite if already exists
+            if !dest_file.exists() {
+                std::fs::copy(&path, &dest_file)
+                    .map_err(|e| format!("Failed to copy schema file: {}", e))?;
+            }
             
             return Ok(());
         }

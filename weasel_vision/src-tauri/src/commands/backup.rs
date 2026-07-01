@@ -217,20 +217,29 @@ fn collect_user_dir(user_dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Str
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<usize, String> {
     std::fs::create_dir_all(dst).map_err(|e| format!("Failed to create dir {:?}: {}", dst, e))?;
     let mut count = 0;
-    
+
     if let Ok(entries) = std::fs::read_dir(src) {
         for entry in entries.flatten() {
             let src_path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
-            let dst_path = dst.join(entry.file_name());
-            
-            // Skip locked LevelDB files on Windows (os error 32)
-            #[cfg(target_os = "windows")]
-            if name.ends_with(".log") || name == "LOCK" || name.starts_with("MANIFEST-") || name == "CURRENT" {
-                eprintln!("Skipping locked file in subdirectory: {}", name);
+
+            // Validate file name to prevent path traversal in subdirectories
+            if let Err(e) = validate_file_name(&name) {
+                eprintln!("Skipping invalid entry in subdirectory: {} - {}", name, e);
                 continue;
             }
-            
+
+            let dst_path = dst.join(&name);
+
+            // Skip locked LevelDB files on Windows (os error 32)
+            #[cfg(target_os = "windows")]
+            {
+                if name.ends_with(".log") || name == "LOCK" || name.starts_with("MANIFEST-") || name == "CURRENT" {
+                    eprintln!("Skipping locked file in subdirectory: {}", name);
+                    continue;
+                }
+            }
+
             if src_path.is_dir() {
                 count += copy_dir_recursive(&src_path, &dst_path)?;
             } else {
@@ -261,6 +270,13 @@ fn copy_dir_recursive_exclude(src: &Path, dst: &Path, include_models: bool) -> R
         for entry in entries.flatten() {
             let src_path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
+
+            // Validate file name to prevent path traversal
+            if let Err(e) = validate_file_name(&name) {
+                eprintln!("Skipping invalid entry: {} - {}", name, e);
+                continue;
+            }
+
             let dst_path = dst.join(&name);
 
             // Skip .gram model files when not needed
@@ -268,12 +284,30 @@ fn copy_dir_recursive_exclude(src: &Path, dst: &Path, include_models: bool) -> R
                 continue;
             }
 
+            // Skip locked LevelDB files on Windows (os error 32)
+            #[cfg(target_os = "windows")]
+            {
+                if name.ends_with(".log") || name == "LOCK" || name.starts_with("MANIFEST-") || name == "CURRENT" {
+                    eprintln!("Skipping locked file: {}", name);
+                    continue;
+                }
+            }
+
             if src_path.is_dir() {
                 count += copy_dir_recursive_exclude(&src_path, &dst_path, include_models)?;
             } else {
-                std::fs::copy(&src_path, &dst_path)
-                    .map_err(|e| format!("Failed to copy {:?} to {:?}: {}", src_path, dst_path, e))?;
-                count += 1;
+                match std::fs::copy(&src_path, &dst_path) {
+                    Ok(_) => count += 1,
+                    Err(e) => {
+                        // Skip locked files on Windows
+                        #[cfg(target_os = "windows")]
+                        if e.raw_os_error() == Some(32) {
+                            eprintln!("Skipping locked file: {:?}", src_path);
+                            continue;
+                        }
+                        return Err(format!("Failed to copy {:?} to {:?}: {}", src_path, dst_path, e));
+                    }
+                }
             }
         }
     }
@@ -281,7 +315,7 @@ fn copy_dir_recursive_exclude(src: &Path, dst: &Path, include_models: bool) -> R
 }
 
 fn timestamp() -> String {
-    chrono::Local::now().format("%Y%m%d-%H%M%S").to_string()
+    chrono::Local::now().format("%Y%m%d-%H%M%S%.3f").to_string()
 }
 
 fn timestamp_iso() -> String {
@@ -476,20 +510,22 @@ pub fn restore_backup(backup_id: String, restore_files: Vec<String>) -> Result<(
 
     if is_full_restore {
         // Full restore: copy entire backup directory back to user directory
-        // First, auto-backup current user directory
+        // Strategy: copy to temp dir first, then swap atomically
+
+        // Create auto-backup of current state
         let auto_backup_dir = auto_backups_dir().join(format!("pre_restore_{}", timestamp()));
         std::fs::create_dir_all(&auto_backup_dir).map_err(|e| e.to_string())?;
-        
-        let exclude_dirs = ["backups", "build", ".restore_temp"];
+
+        let exclude_dirs = ["backups", "build", ".restore_temp", ".restore_temp_new"];
         if let Ok(entries) = std::fs::read_dir(&cfg.user_dir) {
             for entry in entries.flatten() {
                 let src_path = entry.path();
                 let name = entry.file_name().to_string_lossy().to_string();
-                
+
                 if src_path.is_dir() && exclude_dirs.contains(&name.as_str()) {
                     continue;
                 }
-                
+
                 let dst_path = auto_backup_dir.join(&name);
                 if src_path.is_dir() {
                     copy_dir_recursive(&src_path, &dst_path)
@@ -500,32 +536,64 @@ pub fn restore_backup(backup_id: String, restore_files: Vec<String>) -> Result<(
                 }
             }
         }
-        
-        // Now copy backup files back to user directory
+
+        // Phase 1: Copy backup to a staging directory
+        let restore_id = uuid::Uuid::new_v4().to_string();
+        let staging_dir = cfg.user_dir.join(format!(".restore_temp_new_{}", restore_id));
+        std::fs::create_dir_all(&staging_dir).map_err(|e| e.to_string())?;
+
+        let mut staged_files = Vec::new();
         if let Ok(entries) = std::fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let src_path = entry.path();
                 let name = entry.file_name().to_string_lossy().to_string();
-                
-                // Skip manifest.json
+
                 if name == "manifest.json" {
                     continue;
                 }
-                
-                let dst_path = cfg.user_dir.join(&name);
+
+                if let Err(e) = validate_file_name(&name) {
+                    eprintln!("Skipping invalid backup entry: {} - {}", name, e);
+                    continue;
+                }
+
+                let staged_path = staging_dir.join(&name);
                 if src_path.is_dir() {
-                    // Remove existing directory and copy backup
-                    if dst_path.exists() {
-                        std::fs::remove_dir_all(&dst_path)
-                            .map_err(|e| format!("删除已有目录失败 {:?}: {}", dst_path, e))?;
-                    }
-                    copy_dir_recursive(&src_path, &dst_path)?;
+                    copy_dir_recursive(&src_path, &staged_path)?;
                 } else {
-                    std::fs::copy(&src_path, &dst_path).map_err(|e| e.to_string())?;
+                    std::fs::copy(&src_path, &staged_path).map_err(|e| e.to_string())?;
+                }
+                staged_files.push((name, src_path.is_dir()));
+            }
+        }
+
+        // Phase 2: Replace current files with staged files
+        for (name, is_dir) in staged_files {
+            let staged_path = staging_dir.join(&name);
+            let dst_path = cfg.user_dir.join(&name);
+
+            if is_dir {
+                if dst_path.exists() {
+                    std::fs::remove_dir_all(&dst_path)
+                        .map_err(|e| format!("删除已有目录失败 {:?}: {}", dst_path, e))?;
+                }
+                // Use copy for directories to avoid Windows rename issues
+                copy_dir_recursive(&staged_path, &dst_path)?;
+            } else {
+                // For files, try rename first, fall back to copy
+                if std::fs::rename(&staged_path, &dst_path).is_err() {
+                    if dst_path.exists() {
+                        std::fs::remove_file(&dst_path).ok();
+                    }
+                    std::fs::copy(&staged_path, &dst_path)
+                        .map_err(|e| format!("Failed to restore {}: {}", name, e))?;
                 }
             }
         }
-        
+
+        // Cleanup staging directory
+        let _ = std::fs::remove_dir_all(&staging_dir);
+
         return Ok(());
     }
 
@@ -534,7 +602,9 @@ pub fn restore_backup(backup_id: String, restore_files: Vec<String>) -> Result<(
 
     // Phase 1: Validate and stage all files into a temp directory first.
     // This ensures we don't partially overwrite files if any source is missing or unreadable.
-    let temp_dir = cfg.user_dir.join(".restore_temp");
+    // Use UUID-based random directory name to prevent TOCTOU race conditions.
+    let restore_id = uuid::Uuid::new_v4().to_string();
+    let temp_dir = cfg.user_dir.join(format!(".restore_temp_{}", restore_id));
     std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
 
     let mut files_to_restore: Vec<(String, PathBuf)> = Vec::new(); // (file_name, staged_path)
@@ -667,51 +737,19 @@ fn validate_file_name(name: &str) -> Result<(), String> {
     if name.is_empty() || name.len() > 512 {
         return Err("Invalid file name".to_string());
     }
-    // Block path traversal but allow relative paths with /
-    if name.contains("..") || name.starts_with('/') || name.starts_with('\\') {
+    // Block path traversal, null bytes, and absolute paths
+    if name.contains("..") || name.contains('\0') || name.starts_with('/') || name.starts_with('\\') {
         return Err("File name contains invalid characters".to_string());
     }
     Ok(())
 }
 
 fn count_files(dir: &Path) -> usize {
-    let mut count = 0;
-    count_files_recursive(dir, &mut count);
-    count
-}
-
-fn count_files_recursive(dir: &Path, count: &mut usize) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                *count += 1;
-            } else if path.is_dir() {
-                count_files_recursive(&path, count);
-            }
-        }
-    }
+    crate::rime::utils::count_files(dir)
 }
 
 fn dir_size(dir: &Path) -> i64 {
-    let mut size = 0i64;
-    dir_size_recursive(dir, &mut size);
-    size
-}
-
-fn dir_size_recursive(dir: &Path, size: &mut i64) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                if let Ok(m) = std::fs::metadata(&path) {
-                    *size += m.len() as i64;
-                }
-            } else if path.is_dir() {
-                dir_size_recursive(&path, size);
-            }
-        }
-    }
+    crate::rime::utils::dir_size(dir)
 }
 
 /// Recursively collect files from backup dir, storing relative paths
@@ -835,6 +873,8 @@ fn cleanup_old_deploy_backups(max_count: usize) {
 
     // Remove backups beyond the limit
     for (_, path) in backups.iter().skip(max_count) {
-        let _ = std::fs::remove_dir_all(path);
+        if let Err(e) = std::fs::remove_dir_all(path) {
+            eprintln!("Warning: failed to remove old backup {:?}: {}", path, e);
+        }
     }
 }

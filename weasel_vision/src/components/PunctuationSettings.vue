@@ -131,12 +131,12 @@ async function save() {
     </div>
 
     <!-- Edit modal -->
-    <div v-if="showEditor" class="modal-overlay" @click.self="showEditor = false">
+    <div v-if="showEditor && editingRule" class="modal-overlay" @click.self="showEditor = false">
       <div class="modal">
         <h3>编辑标点</h3>
         <div class="form-group">
           <label>按键:</label>
-          <input v-model="editingRule!.key" maxlength="4" />
+          <input v-model="editingRule.key" maxlength="4" />
         </div>
         <div class="form-group">
           <label>类型:</label>
@@ -157,19 +157,19 @@ async function save() {
         </div>
         <div class="form-group" v-if="editType === 'commit'">
           <label>输出:</label>
-          <input v-model="editingRule!.commit" />
+          <input v-model="editingRule.commit" />
         </div>
         <div class="form-group" v-else-if="editType === 'pair'">
           <label>配对 (逗号分隔):</label>
-          <input :value="editingRule!.pair.join(', ')" @input="editingRule!.pair = ($event.target as HTMLInputElement).value.split(',').map(s => s.trim())" />
+          <input :value="editingRule.pair.join(', ')" @input="editingRule.pair = ($event.target as HTMLInputElement).value.split(',').map(s => s.trim())" />
         </div>
         <div class="form-group" v-else>
           <label>候选 (逗号分隔):</label>
-          <input :value="editingRule!.list.join(', ')" @input="editingRule!.list = ($event.target as HTMLInputElement).value.split(',').map(s => s.trim())" />
+          <input :value="editingRule.list.join(', ')" @input="editingRule.list = ($event.target as HTMLInputElement).value.split(',').map(s => s.trim())" />
         </div>
         <div class="modal-actions">
           <button class="btn" @click="showEditor = false">取消</button>
-          <button class="btn btn-primary" @click="saveEditedRule(editingRule!)" :disabled="!editingRule?.key">保存</button>
+          <button class="btn btn-primary" @click="saveEditedRule(editingRule)" :disabled="!editingRule?.key">保存</button>
         </div>
       </div>
     </div>

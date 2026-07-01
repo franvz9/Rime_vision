@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use parking_lot::Mutex;
 
 #[derive(Debug, PartialEq)]
 pub enum WriteResult {
@@ -8,7 +9,12 @@ pub enum WriteResult {
     Written,
 }
 
+/// Global lock to prevent concurrent writes to the same file
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
+
 pub fn write_if_changed(content: &str, path: &Path) -> Result<WriteResult> {
+    let _guard = WRITE_LOCK.lock();
+
     if path.exists() {
         let existing = std::fs::read_to_string(path)?;
         if existing == content {
@@ -20,7 +26,17 @@ pub fn write_if_changed(content: &str, path: &Path) -> Result<WriteResult> {
         std::fs::create_dir_all(parent)?;
     }
 
-    std::fs::write(path, content)?;
+    // Atomic write: write to temp file then rename
+    let temp_path = path.with_file_name(format!("{}.tmp", uuid::Uuid::new_v4()));
+    std::fs::write(&temp_path, content)?;
+    // Try direct rename first (works on Windows 10 1607+ and Unix)
+    // If it fails (older Windows), fall back to remove + rename
+    if std::fs::rename(&temp_path, path).is_err() {
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
+        std::fs::rename(&temp_path, path)?;
+    }
     Ok(WriteResult::Written)
 }
 

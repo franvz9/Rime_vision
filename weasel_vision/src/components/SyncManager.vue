@@ -45,9 +45,14 @@ onMounted(async () => {
 
 async function loadData() {
   try {
-    settings.value = await invoke('get_sync_settings')
-    status.value = await invoke('get_sync_status')
-    devices.value = await invoke('list_synced_devices')
+    const [settingsResult, statusResult, devicesResult] = await Promise.all([
+      invoke<SyncSettings>('get_sync_settings'),
+      invoke<SyncStatus | null>('get_sync_status'),
+      invoke<SyncedDevice[]>('list_synced_devices')
+    ])
+    settings.value = settingsResult
+    status.value = statusResult
+    devices.value = devicesResult
   } catch (e) {
     console.error('Failed to load sync data:', e)
   }

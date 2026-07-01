@@ -1,6 +1,6 @@
 [package]
 name = "weasel-vision"
-version = "0.1.0"
+version = "0.2.0"
 description = "Rime Weasel configuration tool"
 authors = ["franvz9"]
 edition = "2021"
@@ -26,6 +26,7 @@ regex = "1"
 anyhow = "1"
 tokio = { version = "1", features = ["time"] }
 uuid = { version = "1", features = ["v4"] }
+parking_lot = "0.12"
 
 [profile.release]
 codegen-units = 1

@@ -43,9 +43,10 @@ pub fn get_grammar_data(schema_ids: Vec<String>) -> Result<GrammarData, String> 
     models.sort_by(|a, b| a.filename.cmp(&b.filename));
 
     for schema_id in &schema_ids {
-        let custom_url = cfg.schema_custom_path(schema_id);
-        let config = load_mount_config(&cfg, &custom_url, schema_id);
-        mount_configs.insert(schema_id.clone(), config);
+        if let Some(custom_url) = cfg.schema_custom_path(schema_id) {
+            let config = load_mount_config(&cfg, &custom_url, schema_id);
+            mount_configs.insert(schema_id.clone(), config);
+        }
     }
 
     Ok(GrammarData {
@@ -101,7 +102,8 @@ pub fn mount_grammar(
     config: SchemaGrammarConfig,
 ) -> Result<(), String> {
     let cfg = RimeConfig::detect();
-    let custom_url = cfg.schema_custom_path(&schema_id);
+    let custom_url = cfg.schema_custom_path(&schema_id)
+        .ok_or_else(|| format!("Invalid schema_id: {}", schema_id))?;
 
     cfg.save_patch(&custom_url, |patch| {
         patch.insert(
@@ -152,7 +154,8 @@ pub fn mount_grammar(
 #[tauri::command]
 pub fn unmount_grammar(schema_id: String) -> Result<(), String> {
     let cfg = RimeConfig::detect();
-    let custom_url = cfg.schema_custom_path(&schema_id);
+    let custom_url = cfg.schema_custom_path(&schema_id)
+        .ok_or_else(|| format!("Invalid schema_id: {}", schema_id))?;
 
     cfg.save_patch(&custom_url, |patch| {
         // Remove all grammar/* keys
@@ -202,10 +205,16 @@ pub fn unmount_grammar(schema_id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn import_grammar(file_path: String) -> Result<(), String> {
     // Security validation: prevent path traversal attacks
-    if file_path.contains("..") {
-        return Err("Invalid file path: path traversal not allowed".to_string());
+    super::dict::validate_import_path(&file_path)?;
+
+    let path = std::path::Path::new(&file_path);
+    if !path.exists() {
+        return Err(format!("File not found: {}", file_path));
     }
-    
+    if !path.is_file() {
+        return Err("Path is not a file".to_string());
+    }
+
     let cfg = RimeConfig::detect();
     
     // Read the source file as binary (gram files can be binary)

@@ -540,16 +540,16 @@ async function saveStyle() {
     </div>
 
     <!-- Edit / Copy modal -->
-    <div v-if="showEditor" class="modal-overlay" @click.self="cancelEdit">
+    <div v-if="showEditor && editingScheme" class="modal-overlay" @click.self="cancelEdit">
       <div class="modal">
-        <h3>{{ editMode === 'copy' ? '复制配色' : '编辑配色' }}: {{ editMode === 'copy' ? originalSchemeName + ' → ' + newSchemeName : editingScheme?.name }}</h3>
+        <h3>{{ editMode === 'copy' ? '复制配色' : '编辑配色' }}: {{ editMode === 'copy' ? originalSchemeName + ' → ' + newSchemeName : editingScheme.name }}</h3>
         <div class="form-group" v-if="editMode === 'copy'">
           <label>新方案名称</label>
           <input v-model="newSchemeName" placeholder="输入新方案名称" />
         </div>
         <div class="form-group">
           <label>作者</label>
-          <input v-model="editingScheme!.author" />
+          <input v-model="editingScheme.author" />
         </div>
         <div class="color-grid">
           <div class="color-field" v-for="(label, key) in {
@@ -565,10 +565,10 @@ async function saveStyle() {
             <div class="color-input">
               <input
                 type="color"
-                :value="getColorHex(editingScheme![key as keyof ColorScheme])"
-                @input="setColorHex(editingScheme!, key, ($event.target as HTMLInputElement).value)"
+                :value="getColorHex(editingScheme[key as keyof ColorScheme])"
+                @input="setColorHex(editingScheme, key, ($event.target as HTMLInputElement).value)"
               />
-              <span>{{ getHexDisplay(editingScheme![key as keyof ColorScheme]) }}</span>
+              <span>{{ getHexDisplay(editingScheme[key as keyof ColorScheme]) }}</span>
             </div>
           </div>
         </div>

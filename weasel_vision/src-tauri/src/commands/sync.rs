@@ -203,14 +203,20 @@ pub async fn execute_sync() -> Result<SyncResult, String> {
     }
     
     // Trigger Rime native sync by sending kill -HUP to Squirrel
-    // This will:
-    // 1. Export LevelDB data to *.userdb/*.txt files
-    // 2. Copy those .txt files to sync/<device_id>/*.userdb.txt
     let process_found = crate::rime::deployer::sync().map_err(|e| format!("触发同步失败: {}", e))?;
-    
+
+    if !process_found {
+        return Ok(SyncResult {
+            success: false,
+            uploaded: vec![],
+            downloaded: vec![],
+            errors: vec!["输入法进程未运行，无法执行同步。请确保 Rime 输入法正在运行。".to_string()],
+        });
+    }
+
     // Wait for Squirrel to complete the sync (minimum 2s)
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    
+
     // Record the sync timestamp so get_sync_status can read it
     if let Some(ref sync_dir) = settings.sync_dir {
         let device_dir = std::path::Path::new(sync_dir).join(&settings.installation_id);
@@ -225,162 +231,17 @@ pub async fn execute_sync() -> Result<SyncResult, String> {
             }
         }
     }
-    
-    let message = if process_found {
-        "Rime 原生同步已触发".to_string()
-    } else {
-        "输入法进程未运行，已记录同步时间，下次启动时将自动同步".to_string()
-    };
-    
+
     // Report success - the actual sync was done by Rime/Squirrel
     Ok(SyncResult {
         success: true,
-        uploaded: vec![message],
+        uploaded: vec!["Rime 原生同步已触发".to_string()],
         downloaded: vec![],
-        errors: if process_found { vec![] } else { vec!["Squirrel/Weasel 未运行".to_string()] },
+        errors: vec![],
     })
 }
 
 /// Merge all remote device snapshots for a given dict_id into the local user dictionary.
-/// First merges all remote snapshots together, then merges with the local snapshot.
-/// If no local snapshot exists, the merged remote data becomes the initial local snapshot.
-// Reserved for future sync functionality
-/// Merge all remote userdb snapshots into the local LevelDB database
-/// 
-/// This function is reserved for future multi-device sync merge functionality.
-/// Currently not used but kept for planned sync features.
-#[allow(dead_code)]
-fn merge_all_remotes_into_userdb(
-    dict_id: &str,
-    device_snapshots: &[(String, PathBuf)], // (device_id, staging_path)
-    cfg: &RimeConfig,
-) -> Result<(), String> {
-    // Merge all remote snapshots into one combined set
-    // key = (word, code), value = (full_line, frequency) — preserve full line for max freq entry
-    let mut combined: std::collections::HashMap<(String, String), (String, i64)> =
-        std::collections::HashMap::new();
-
-    for (_device_id, path) in device_snapshots {
-        let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        for line in content.lines() {
-            if line.starts_with('#') || line.trim().is_empty() {
-                continue;
-            }
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 3 {
-                let word = parts[0].to_string();
-                let code = parts[1].to_string();
-                let freq = parts[2].parse::<i64>().unwrap_or(0);
-                let entry = combined.entry((word, code));
-                match entry {
-                    std::collections::hash_map::Entry::Occupied(mut e) => {
-                        if freq > e.get().1 {
-                            e.insert((line.to_string(), freq));
-                        }
-                    }
-                    std::collections::hash_map::Entry::Vacant(e) => {
-                        e.insert((line.to_string(), freq));
-                    }
-                }
-            }
-        }
-    }
-
-    // Try to find existing local snapshot; if none, use merged remote as initial
-    let local_snapshot = match find_local_snapshot(dict_id, cfg) {
-        Ok(path) => path,
-        Err(_) => {
-            // No local snapshot — write merged remote data as initial snapshot
-            let snapshots_dir = cfg.user_dir.join("user_dictionaries");
-            std::fs::create_dir_all(&snapshots_dir).map_err(|e| e.to_string())?;
-            let target = snapshots_dir.join(format!("{}.userdb.txt", dict_id));
-            let mut lines: Vec<String> = combined.into_values().map(|(line, _)| line).collect();
-            lines.sort();
-            let output = lines.join("\n") + "\n";
-            std::fs::write(&target, output).map_err(|e| e.to_string())?;
-            return Ok(());
-        }
-    };
-
-    // Merge remote combined with local snapshot
-    let local_content = std::fs::read_to_string(&local_snapshot).map_err(|e| e.to_string())?;
-
-    // Parse local entries, preserving full lines
-    for line in local_content.lines() {
-        if line.starts_with('#') || line.trim().is_empty() {
-            continue;
-        }
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() >= 3 {
-            let word = parts[0].to_string();
-            let code = parts[1].to_string();
-            let freq = parts[2].parse::<i64>().unwrap_or(0);
-            let entry = combined.entry((word, code));
-            match entry {
-                std::collections::hash_map::Entry::Occupied(mut e) => {
-                    if freq > e.get().1 {
-                        e.insert((line.to_string(), freq));
-                    }
-                }
-                std::collections::hash_map::Entry::Vacant(e) => {
-                    e.insert((line.to_string(), freq));
-                }
-            }
-        }
-    }
-
-    // Write merged result preserving full original lines
-    let mut lines: Vec<String> = combined.into_values().map(|(line, _)| line).collect();
-    lines.sort();
-    let output = lines.join("\n") + "\n";
-    std::fs::write(&local_snapshot, output).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-/// Find the most recent local snapshot for a dict.
-/// Returns the newest matching file by modification time.
-fn find_local_snapshot(dict_id: &str, cfg: &RimeConfig) -> Result<PathBuf, String> {
-    let mut candidates: Vec<(PathBuf, std::time::SystemTime)> = Vec::new();
-
-    // Check user_dictionaries/ first
-    let snapshots_dir = cfg.user_dir.join("user_dictionaries");
-    if snapshots_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&snapshots_dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with(&format!("{}.", dict_id)) && name.ends_with(".txt") {
-                    let modified = std::fs::metadata(entry.path())
-                        .ok()
-                        .and_then(|m| m.modified().ok())
-                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-                    candidates.push((entry.path(), modified));
-                }
-            }
-        }
-    }
-
-    // Check userdb dir
-    let userdb_dir = cfg.user_dir.join(format!("{}.userdb", dict_id));
-    if let Ok(entries) = std::fs::read_dir(&userdb_dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.ends_with(".txt") {
-                let modified = std::fs::metadata(entry.path())
-                    .ok()
-                    .and_then(|m| m.modified().ok())
-                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-                candidates.push((entry.path(), modified));
-            }
-        }
-    }
-
-    candidates
-        .into_iter()
-        .max_by_key(|(_, t)| *t)
-        .map(|(p, _)| p)
-        .ok_or_else(|| format!("No local snapshot found for dict '{}'", dict_id))
-}
-
 fn uuid_simple() -> String {
     uuid::Uuid::new_v4().to_string()
 }

@@ -7,3 +7,4 @@ pub mod grammar;
 pub mod patch;
 pub mod schema;
 pub mod style;
+pub mod utils;

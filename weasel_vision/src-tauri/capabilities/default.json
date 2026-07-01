@@ -9,7 +9,7 @@
     "opener:allow-open-path",
     "dialog:default",
     "dialog:allow-confirm",
-    "shell:allow-execute",
+    "dialog:allow-open",
     "shell:allow-open"
   ]
 }

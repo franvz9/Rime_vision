@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import ThemeEditor from './components/ThemeEditor.vue'
-import SchemaManager from './components/SchemaManager.vue'
-import GeneralSettings from './components/GeneralSettings.vue'
-import KeybindingEditor from './components/KeybindingEditor.vue'
-import PunctuationSettings from './components/PunctuationSettings.vue'
-import GrammarModel from './components/GrammarModel.vue'
-import BackupManager from './components/BackupManager.vue'
-import DictManager from './components/DictManager.vue'
-import SyncManager from './components/SyncManager.vue'
-import AdvancedSettings from './components/AdvancedSettings.vue'
+import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+
+// Lazy load heavy components for better initial load performance
+const GeneralSettings = defineAsyncComponent(() => import('./components/GeneralSettings.vue'))
+const ThemeEditor = defineAsyncComponent(() => import('./components/ThemeEditor.vue'))
+const SchemaManager = defineAsyncComponent(() => import('./components/SchemaManager.vue'))
+const GrammarModel = defineAsyncComponent(() => import('./components/GrammarModel.vue'))
+const KeybindingEditor = defineAsyncComponent(() => import('./components/KeybindingEditor.vue'))
+const PunctuationSettings = defineAsyncComponent(() => import('./components/PunctuationSettings.vue'))
+const BackupManager = defineAsyncComponent(() => import('./components/BackupManager.vue'))
+const DictManager = defineAsyncComponent(() => import('./components/DictManager.vue'))
+const SyncManager = defineAsyncComponent(() => import('./components/SyncManager.vue'))
+const AdvancedSettings = defineAsyncComponent(() => import('./components/AdvancedSettings.vue'))
 
 interface PendingDelete {
   delete_type: string
