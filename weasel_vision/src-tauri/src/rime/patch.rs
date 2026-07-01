@@ -204,6 +204,6 @@ mod tests {
         );
 
         remove_value(&mut dict, &["a".to_string(), "b".to_string()]);
-        assert!(dict.get(&Value::String("a".into())).is_none());
+        assert!(dict.get(Value::String("a".into())).is_none());
     }
 }
