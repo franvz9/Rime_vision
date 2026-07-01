@@ -28,7 +28,7 @@ tokio = { version = "1", features = ["time"] }
 uuid = { version = "1", features = ["v4"] }
 parking_lot = "0.12"
 open = "5"
-thiserror = "1"
+thiserror = "2"
 
 [profile.release]
 codegen-units = 1

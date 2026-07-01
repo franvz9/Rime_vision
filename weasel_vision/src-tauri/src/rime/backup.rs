@@ -51,6 +51,7 @@ pub fn write_if_changed(content: &str, path: &Path) -> Result<WriteResult> {
         }
         let backup = timestamped_backup(path);
         std::fs::copy(path, &backup)?;
+        cleanup_timestamped_backups(path);
     } else if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -79,6 +80,9 @@ pub async fn write_if_changed_async(content: String, path: PathBuf) -> Result<Wr
         .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
 }
 
+/// Maximum number of timestamped backup files to retain per original file.
+const MAX_TIMESTAMPED_BACKUPS: usize = 10;
+
 fn timestamped_backup(path: &Path) -> PathBuf {
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S%.3f");
     let stem = path
@@ -91,6 +95,47 @@ fn timestamped_backup(path: &Path) -> PathBuf {
         .unwrap_or_default();
 
     path.with_file_name(format!("{}.{}{}", stem, ts, ext))
+}
+
+/// Remove oldest timestamped backups when the count exceeds `MAX_TIMESTAMPED_BACKUPS`.
+/// Backup file names contain timestamps so lexicographic order = chronological order.
+fn cleanup_timestamped_backups(original_path: &Path) {
+    let Some(parent) = original_path.parent() else { return };
+    let stem = original_path.file_stem().unwrap_or_default().to_string_lossy();
+    let ext = original_path.extension().unwrap_or_default().to_string_lossy();
+
+    // Collect timestamped backup files matching the pattern: <stem>.<timestamp>.<ext>
+    let mut backups: Vec<(String, PathBuf)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            // Pattern: stem.YYYYMMDD-HHMMSSmmm.ext
+            if name.starts_with(&format!("{}.", stem))
+                && (ext.is_empty() || name.ends_with(&format!(".{}", ext)))
+                && name.len() > stem.len() + 1 // has timestamp suffix
+            {
+                let between = if ext.is_empty() {
+                    &name[stem.len() + 1..]
+                } else {
+                    &name[stem.len() + 1..name.len() - ext.len() - 1]
+                };
+                // Verify it looks like a timestamp (starts with digit, contains dash)
+                if between.starts_with(|c: char| c.is_ascii_digit()) && between.contains('-') {
+                    backups.push((name, entry.path()));
+                }
+            }
+        }
+    }
+
+    // Sort by name descending (newest first)
+    backups.sort_by(|a, b| b.0.cmp(&a.0));
+
+    // Remove oldest backups beyond the limit
+    for (name, path) in backups.iter().skip(MAX_TIMESTAMPED_BACKUPS) {
+        if let Err(e) = std::fs::remove_file(path) {
+            eprintln!("Warning: failed to remove old backup {}: {}", name, e);
+        }
+    }
 }
 
 #[cfg(test)]

@@ -154,7 +154,7 @@ pub fn import_schema(file_path: String) -> Result<(), String> {
             let dest_file = cfg.user_dir.join(format!("{}.schema.yaml", id));
             // Don't overwrite if already exists
             if !dest_file.exists() {
-                std::fs::copy(&path, &dest_file)
+                std::fs::copy(path, &dest_file)
                     .map_err(|e| format!("Failed to copy schema file: {}", e))?;
             }
             

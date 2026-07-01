@@ -1,21 +1,35 @@
 /**
- * WeaselVision Shared Utility Styles
+ * WeaselVision Shared Styles
  *
- * Design tokens and utility classes that are NOT overridden by component scoped styles.
- * Component-specific patterns (.btn, .modal, .tabs, .form-group, .toggle) live in
- * each component's <style scoped> block for full control and zero CSS conflicts.
+ * Global utility classes and shared component patterns using .wv- namespace.
+ * Components reference these via class="wv-*" in templates.
+ * Component-specific customizations remain in each component's <style scoped>.
  */
 
 /* ── Typography Utilities ─────────────────────────────────────────── */
 
-.mono {
+.wv-mono {
   font-family: monospace;
 }
 
 /* ── Empty State ──────────────────────────────────────────────────── */
 
-.empty-state,
-.empty-detail {
+.wv-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--color-text-tertiary);
+  padding: 40px 20px;
+}
+
+.wv-empty-state p {
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.wv-empty-detail {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -25,20 +39,14 @@
   text-align: center;
 }
 
-.empty-state p,
-.empty-detail p {
+.wv-empty-detail p {
   margin: 4px 0;
   font-size: 13px;
 }
 
-/* ── Misc Utilities ───────────────────────────────────────────────── */
+/* ── Icon Button ──────────────────────────────────────────────────── */
 
-.saved-hint {
-  color: var(--color-success);
-  font-size: 14px;
-}
-
-.icon-btn {
+.wv-icon-btn {
   background: none;
   border: none;
   cursor: pointer;
@@ -47,16 +55,132 @@
   color: var(--color-text-primary);
 }
 
-.icon-btn.danger {
+.wv-icon-btn.danger {
   color: var(--color-danger);
 }
 
-.icon-btn.save {
+.wv-icon-btn.save {
   color: var(--color-success);
 }
 
-/* ── Z-Index Overrides ────────────────────────────────────────────── */
+/* ── Buttons ──────────────────────────────────────────────────────── */
 
-.z-high {
+.wv-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+
+.wv-btn:hover {
+  background: var(--color-bg-hover);
+}
+
+.wv-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wv-btn-primary {
+  background: var(--color-accent);
+  color: white;
+  border: none;
+}
+
+.wv-btn-primary:hover {
+  background: var(--color-btn-primary-hover);
+}
+
+.wv-btn-danger {
+  background: var(--color-danger);
+  color: white;
+  border: none;
+}
+
+.wv-btn-danger:hover {
+  background: var(--color-danger-hover);
+}
+
+/* ── Modal (used by WeaselModal component) ─────────────────────────── */
+
+.wv-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.wv-modal-overlay.wv-z-high {
   z-index: 1000;
+}
+
+.wv-modal {
+  background: var(--color-bg-modal);
+  border-radius: 12px;
+  padding: 24px;
+  width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  color: var(--color-text-primary);
+}
+
+.wv-modal-wide {
+  width: 600px;
+}
+
+.wv-modal h3 {
+  margin-bottom: 12px;
+  font-size: 16px;
+  color: var(--color-text-primary);
+}
+
+.wv-modal h4 {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.wv-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ── Form Group ───────────────────────────────────────────────────── */
+
+.wv-form-group {
+  margin-bottom: 12px;
+}
+
+.wv-form-group label {
+  display: block;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+}
+
+.wv-form-group input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+}
+
+/* ── Misc Utilities ───────────────────────────────────────────────── */
+
+.wv-saved-hint {
+  color: var(--color-success);
+  font-size: 14px;
 }

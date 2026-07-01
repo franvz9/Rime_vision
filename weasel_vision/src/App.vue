@@ -1,21 +1,60 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onUnmounted, defineAsyncComponent, defineComponent, h } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useToast } from './composables/useToast'
 import { errorMessage, emitBusEvent, BusEvents } from './utils'
 import ToastContainer from './components/ToastContainer.vue'
 
+// ── Async component fallbacks ──────────────────────────────────────────
+
+const AsyncLoading = defineComponent({
+  name: 'AsyncLoading',
+  setup() {
+    return () =>
+      h('div', { class: 'async-fallback' }, [
+        h('div', { class: 'async-spinner' }),
+        h('p', { class: 'async-fallback-text' }, '正在加载…'),
+      ])
+  },
+})
+
+const AsyncError = defineComponent({
+  name: 'AsyncError',
+  props: { error: { type: [Error, String], default: null } },
+  setup(props) {
+    return () =>
+      h('div', { class: 'async-fallback' }, [
+        h('p', { class: 'async-fallback-text async-error-text' }, '组件加载失败'),
+        props.error ? h('p', { class: 'async-error-detail' }, String(props.error)) : null,
+      ])
+  },
+})
+
+/** Factory: create a lazy-loaded async component with loading/error/timeout config */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createLazyComponent(loader: () => Promise<any>) {
+  return defineAsyncComponent({
+    loader,
+    loadingComponent: AsyncLoading,
+    errorComponent: AsyncError,
+    delay: 200,
+    timeout: 10000,
+  })
+}
+
 // Lazy load heavy components for better initial load performance
-const GeneralSettings = defineAsyncComponent(() => import('./components/GeneralSettings.vue'))
-const ThemeEditor = defineAsyncComponent(() => import('./components/ThemeEditor.vue'))
-const SchemaManager = defineAsyncComponent(() => import('./components/SchemaManager.vue'))
-const GrammarModel = defineAsyncComponent(() => import('./components/GrammarModel.vue'))
-const KeybindingEditor = defineAsyncComponent(() => import('./components/KeybindingEditor.vue'))
-const PunctuationSettings = defineAsyncComponent(() => import('./components/PunctuationSettings.vue'))
-const BackupManager = defineAsyncComponent(() => import('./components/BackupManager.vue'))
-const DictManager = defineAsyncComponent(() => import('./components/DictManager.vue'))
-const SyncManager = defineAsyncComponent(() => import('./components/SyncManager.vue'))
-const AdvancedSettings = defineAsyncComponent(() => import('./components/AdvancedSettings.vue'))
+const GeneralSettings = createLazyComponent(() => import('./components/GeneralSettings.vue'))
+const ThemeEditor = createLazyComponent(() => import('./components/ThemeEditor.vue'))
+const SchemaManager = createLazyComponent(() => import('./components/SchemaManager.vue'))
+const GrammarModel = createLazyComponent(() => import('./components/GrammarModel.vue'))
+const KeybindingEditor = createLazyComponent(() => import('./components/KeybindingEditor.vue'))
+const PunctuationSettings = createLazyComponent(
+  () => import('./components/PunctuationSettings.vue'),
+)
+const BackupManager = createLazyComponent(() => import('./components/BackupManager.vue'))
+const DictManager = createLazyComponent(() => import('./components/DictManager.vue'))
+const SyncManager = createLazyComponent(() => import('./components/SyncManager.vue'))
+const AdvancedSettings = createLazyComponent(() => import('./components/AdvancedSettings.vue'))
 
 // ── State ──────────────────────────────────────────────────────────────
 
@@ -36,17 +75,23 @@ const handleNavigateToSync = () => {
   selectedTab.value = 'sync'
 }
 
-const handleAddPendingDelete = (detail: import('./utils').BusEventMap[typeof BusEvents.ADD_PENDING_DELETE]) => {
+const handleAddPendingDelete = (
+  detail: import('./utils').BusEventMap[typeof BusEvents.ADD_PENDING_DELETE],
+) => {
   const { delete_type, identifier, label } = detail
-  if (!pendingDeletes.value.find(d => d.delete_type === delete_type && d.identifier === identifier)) {
+  if (
+    !pendingDeletes.value.find((d) => d.delete_type === delete_type && d.identifier === identifier)
+  ) {
     pendingDeletes.value.push({ delete_type, identifier, label: label || '' })
   }
 }
 
-const handleRemovePendingDelete = (detail: import('./utils').BusEventMap[typeof BusEvents.REMOVE_PENDING_DELETE]) => {
+const handleRemovePendingDelete = (
+  detail: import('./utils').BusEventMap[typeof BusEvents.REMOVE_PENDING_DELETE],
+) => {
   const { delete_type, identifier } = detail
   pendingDeletes.value = pendingDeletes.value.filter(
-    d => !(d.delete_type === delete_type && d.identifier === identifier)
+    (d) => !(d.delete_type === delete_type && d.identifier === identifier),
   )
 }
 
@@ -84,9 +129,9 @@ const tabs = [
 async function deploy() {
   isDeploying.value = true
   try {
-    const deletes = pendingDeletes.value.map(d => ({
+    const deletes = pendingDeletes.value.map((d) => ({
       delete_type: d.delete_type,
-      identifier: d.identifier
+      identifier: d.identifier,
     }))
     await invoke('deploy', { pendingDeletes: deletes.length > 0 ? deletes : null })
     // Clear pending deletes after successful deploy
@@ -100,8 +145,6 @@ async function deploy() {
     isDeploying.value = false
   }
 }
-
-
 </script>
 
 <template>
@@ -124,17 +167,15 @@ async function deploy() {
     <main class="content">
       <header class="toolbar">
         <div class="toolbar-left">
-          <h2 class="page-title">{{ tabs.find(t => t.id === selectedTab)?.label }}</h2>
+          <h2 class="page-title">{{ tabs.find((t) => t.id === selectedTab)?.label }}</h2>
         </div>
         <div class="toolbar-right">
           <span v-if="pendingDeletes.length > 0" class="delete-hint">
-            🗑️ {{ pendingDeletes.length }} 项待删除：{{ pendingDeletes.map(d => d.label).join('、') }}
+            🗑️ {{ pendingDeletes.length }} 项待删除：{{
+              pendingDeletes.map((d) => d.label).join('、')
+            }}
           </span>
-          <button
-            class="btn btn-deploy"
-            :disabled="isDeploying"
-            @click="deploy"
-          >
+          <button class="wv-btn wv-btn-deploy" :disabled="isDeploying" @click="deploy">
             {{ isDeploying ? '部署中...' : '重新部署' }}
           </button>
         </div>
@@ -164,7 +205,7 @@ async function deploy() {
 
 :root {
   /* ========== 亮色模式（默认）========== */
-  
+
   /* 背景与表面色 */
   --color-bg-primary: #f5f5f7;
   --color-bg-secondary: #ffffff;
@@ -174,25 +215,25 @@ async function deploy() {
   --color-bg-input: #ffffff;
   --color-bg-modal: #ffffff;
   --color-bg-overlay: rgba(0, 0, 0, 0.5);
-  
+
   /* 文字颜色 */
   --color-text-primary: #1d1d1f;
   --color-text-secondary: #6e6e73;
   --color-text-tertiary: #86868b;
   --color-text-placeholder: #999999;
   --color-text-inverse: #ffffff;
-  
+
   /* 边框与分割线 */
   --color-border: #e5e5e5;
   --color-border-light: #f0f0f0;
   --color-border-dark: #d0d0d0;
-  
+
   /* 主题色 */
   --color-accent: #007aff;
   --color-accent-hover: #0051d5;
   --color-accent-light: #e3f2fd;
   --color-accent-muted: rgba(0, 122, 255, 0.1);
-  
+
   /* 状态色 */
   --color-danger: #ff3b30;
   --color-danger-hover: #cc2f26;
@@ -207,7 +248,7 @@ async function deploy() {
   --color-warning-muted: rgba(255, 149, 0, 0.1);
   --color-pending: #ff9800;
   --color-pending-bg: #fff3e0;
-  
+
   /* 按钮与交互 */
   --color-btn-default-bg: #ffffff;
   --color-btn-default-border: #ddd;
@@ -216,18 +257,18 @@ async function deploy() {
   --color-btn-primary-hover: #0056b3;
   --color-btn-danger-bg: #ff3b30;
   --color-btn-danger-hover: #cc2f26;
-  
+
   /* 阴影 */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.1);
-  
+
   /* Spacing */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
-  
+
   /* Border radius */
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -246,25 +287,25 @@ async function deploy() {
     --color-bg-input: #1c1c1e;
     --color-bg-modal: #2c2c2e;
     --color-bg-overlay: rgba(0, 0, 0, 0.7);
-    
+
     /* 文字颜色 */
     --color-text-primary: #ffffff;
     --color-text-secondary: #a0a0a0;
     --color-text-tertiary: #8e8e93;
     --color-text-placeholder: #666666;
     --color-text-inverse: #ffffff;
-    
+
     /* 边框与分割线 */
     --color-border: #38383a;
     --color-border-light: #2c2c2e;
     --color-border-dark: #48484a;
-    
+
     /* 主题色 */
     --color-accent: #0a84ff;
     --color-accent-hover: #007aff;
     --color-accent-light: rgba(10, 132, 255, 0.2);
     --color-accent-muted: rgba(10, 132, 255, 0.15);
-    
+
     /* 状态色 */
     --color-danger: #ff453a;
     --color-danger-hover: #ff3b30;
@@ -279,7 +320,7 @@ async function deploy() {
     --color-warning-muted: rgba(255, 214, 10, 0.1);
     --color-pending: #ff9f0a;
     --color-pending-bg: rgba(255, 159, 10, 0.15);
-    
+
     /* 按钮与交互 */
     --color-btn-default-bg: #2c2c2e;
     --color-btn-default-border: #38383a;
@@ -288,7 +329,7 @@ async function deploy() {
     --color-btn-primary-hover: #007aff;
     --color-btn-danger-bg: #ff453a;
     --color-btn-danger-hover: #ff3b30;
-    
+
     /* 阴影 */
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -308,7 +349,6 @@ body {
   color: var(--color-text-primary);
   overflow: hidden;
 }
-
 </style>
 
 <style scoped>
@@ -390,7 +430,7 @@ body {
   font-weight: 600;
 }
 
-.btn {
+.wv-btn {
   padding: 6px 16px;
   border: none;
   border-radius: 6px;
@@ -399,16 +439,16 @@ body {
   transition: background 0.2s;
 }
 
-.btn-deploy {
+.wv-btn-deploy {
   background: var(--color-btn-primary-bg);
   color: var(--color-text-inverse);
 }
 
-.btn-deploy:hover {
+.wv-btn-deploy:hover {
   background: var(--color-btn-primary-hover);
 }
 
-.btn-deploy:disabled {
+.wv-btn-deploy:disabled {
   background: var(--color-border-dark);
   cursor: not-allowed;
 }
@@ -424,5 +464,50 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
+}
+
+/* ── Async component fallback styles ────────────────────────────────── */
+
+.async-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 64px 24px;
+  min-height: 200px;
+}
+
+.async-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: async-spin 0.8s linear infinite;
+}
+
+@keyframes async-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.async-fallback-text {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.async-error-text {
+  color: var(--color-danger);
+  font-weight: 500;
+}
+
+.async-error-detail {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  max-width: 400px;
+  text-align: center;
+  word-break: break-word;
 }
 </style>

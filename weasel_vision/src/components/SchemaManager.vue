@@ -36,7 +36,9 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => { schemaMounted = false })
+onUnmounted(() => {
+  schemaMounted = false
+})
 
 function toggleSchema(schema: Schema) {
   schema.enabled = !schema.enabled
@@ -56,7 +58,7 @@ async function importSchema() {
     directory: false,
     multiple: false,
     title: '选择输入方案文件',
-    filters: [{ name: 'YAML Files', extensions: ['yaml', 'yml'] }]
+    filters: [{ name: 'YAML Files', extensions: ['yaml', 'yml'] }],
   })
   if (selected && typeof selected === 'string') {
     try {
@@ -85,7 +87,11 @@ function toggleDeleteSchema(schemaId: string) {
     emitBusEvent(BusEvents.REMOVE_PENDING_DELETE, { delete_type: 'schema', identifier: filename })
   } else {
     pendingDeleteSchemas.value.add(schemaId)
-    emitBusEvent(BusEvents.ADD_PENDING_DELETE, { delete_type: 'schema', identifier: filename, label: `方案: ${schemaId}` })
+    emitBusEvent(BusEvents.ADD_PENDING_DELETE, {
+      delete_type: 'schema',
+      identifier: filename,
+      label: `方案: ${schemaId}`,
+    })
   }
   pendingDeleteSchemas.value = new Set(pendingDeleteSchemas.value)
 }
@@ -98,7 +104,7 @@ function toggleDeleteSchema(schemaId: string) {
     <div class="section">
       <div class="section-header">
         <h3>输入方案列表</h3>
-        <button class="btn btn-sm" @click="importSchema">📥 导入方案</button>
+        <button class="wv-btn btn-sm" @click="importSchema">📥 导入方案</button>
       </div>
       <p class="hint">启用的方案将显示在输入法方案切换菜单中</p>
 
@@ -106,33 +112,49 @@ function toggleDeleteSchema(schemaId: string) {
         <div
           v-for="schema in schemas"
           :key="schema.schema"
-          :class="['schema-item', { active: currentSchema === schema.schema, 'is-deleting': pendingDeleteSchemas.has(schema.schema) }]"
+          :class="[
+            'schema-item',
+            {
+              active: currentSchema === schema.schema,
+              'is-deleting': pendingDeleteSchemas.has(schema.schema),
+            },
+          ]"
         >
           <label class="toggle">
             <input type="checkbox" :checked="schema.enabled" @change="toggleSchema(schema)" />
             <span class="toggle-slider"></span>
           </label>
           <span class="schema-id">{{ schema.schema }}</span>
-          <span v-if="currentSchema === schema.schema && !pendingDeleteSchemas.has(schema.schema)" class="badge badge-active">使用中</span>
-          <span v-if="pendingDeleteSchemas.has(schema.schema)" class="badge badge-deleting">待删除</span>
+          <span
+            v-if="currentSchema === schema.schema && !pendingDeleteSchemas.has(schema.schema)"
+            class="badge badge-active"
+            >使用中</span
+          >
+          <span v-if="pendingDeleteSchemas.has(schema.schema)" class="badge badge-deleting"
+            >待删除</span
+          >
           <button
             v-if="pendingDeleteSchemas.has(schema.schema)"
             class="btn-cancel-delete"
             @click.stop="toggleDeleteSchema(schema.schema)"
-          >取消删除</button>
+          >
+            取消删除
+          </button>
           <button
             v-else
             class="btn-delete"
             :disabled="!canDeleteSchema(schema.schema)"
             :title="!canDeleteSchema(schema.schema) ? '使用中不可删除' : '删除'"
             @click.stop="toggleDeleteSchema(schema.schema)"
-          >🗑</button>
+          >
+            🗑
+          </button>
         </div>
       </div>
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary" @click="save">保存</button>
+      <button class="wv-btn wv-btn-primary" @click="save">保存</button>
     </div>
   </div>
 </template>
@@ -284,18 +306,11 @@ function toggleDeleteSchema(schemaId: string) {
   margin-top: 16px;
 }
 
-.btn {
+.wv-btn {
   padding: 8px 20px;
   border: none;
-  border-radius: 6px;
-  cursor: pointer;
   font-size: 14px;
   color: var(--color-text-primary);
-}
-
-.btn-primary {
-  background: var(--color-accent);
-  color: white;
 }
 
 .schema-item.is-deleting {
@@ -347,5 +362,4 @@ function toggleDeleteSchema(schemaId: string) {
   background: var(--color-success);
   color: white;
 }
-
 </style>

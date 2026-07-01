@@ -27,7 +27,9 @@ export function hexToRgb(hex: string): RgbColor | null {
   const cleaned = hex.replace(' ', '')
 
   // Rime 0xAABBGGRR format (8 digits)
-  const match8 = cleaned.match(/^0x([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})$/)
+  const match8 = cleaned.match(
+    /^0x([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})$/,
+  )
   if (match8) {
     return {
       a: parseInt(match8[1], 16),
@@ -74,7 +76,10 @@ export function rgbToHex(c: { r: number; g: number; b: number } | null): string 
  * Convert CSS hex color (#RRGGBB) to Rime hex format (0xBBGGRR or 0xAABBGGRR).
  */
 export function hexToRimeHex(hex: string, a: number = 255): string {
-  if (!/^#[A-Fa-f0-9]{6}$/.test(hex)) return hex
+  if (!/^#[A-Fa-f0-9]{6}$/.test(hex)) {
+    console.warn(`Invalid hex color: ${hex}`)
+    return '0x000000'
+  }
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)

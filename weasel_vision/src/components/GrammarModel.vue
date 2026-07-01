@@ -9,7 +9,6 @@ import WeaselModal from './WeaselModal.vue'
 
 const toast = useToast()
 
-
 interface GrammarModel {
   filename: string
   file_path: string
@@ -63,7 +62,9 @@ onMounted(async () => {
   await loadData()
 })
 
-onUnmounted(() => { gmMounted = false })
+onUnmounted(() => {
+  gmMounted = false
+})
 
 async function loadData() {
   try {
@@ -83,7 +84,7 @@ async function importGrammar() {
     directory: false,
     multiple: false,
     title: '选择语言模型文件',
-    filters: [{ name: 'Grammar Files', extensions: ['gram'] }]
+    filters: [{ name: 'Grammar Files', extensions: ['gram'] }],
   })
   if (selected && typeof selected === 'string') {
     try {
@@ -103,9 +104,8 @@ function selectModel(model: GrammarModel) {
 
 function mountedCount(model: GrammarModel): number {
   if (!data.value) return 0
-  return Object.values(data.value.mount_configs).filter(
-    (c) => c.mounted_model === model.filename
-  ).length
+  return Object.values(data.value.mount_configs).filter((c) => c.mounted_model === model.filename)
+    .length
 }
 
 function isMounted(schemaId: string): boolean {
@@ -133,12 +133,12 @@ function openBatchModal() {
 }
 
 async function batchMount() {
-  const promises = Array.from(selectedSchemaIds.value).map(schemaId =>
+  const promises = Array.from(selectedSchemaIds.value).map((schemaId) =>
     invoke('mount_grammar', {
       modelFilename: selectedModel.value!.filename,
       schemaId,
       config: { ...batchConfig.value, schema_id: schemaId },
-    }).catch(e => toast.error(`挂载 ${schemaId} 失败: ${errorMessage(e)}`))
+    }).catch((e) => toast.error(`挂载 ${schemaId} 失败: ${errorMessage(e)}`)),
   )
   await Promise.all(promises)
   showBatchModal.value = false
@@ -146,8 +146,10 @@ async function batchMount() {
 }
 
 async function batchUnmount() {
-  const promises = Array.from(selectedSchemaIds.value).map(schemaId =>
-    invoke('unmount_grammar', { schemaId }).catch(e => toast.error(`卸载 ${schemaId} 失败: ${errorMessage(e)}`))
+  const promises = Array.from(selectedSchemaIds.value).map((schemaId) =>
+    invoke('unmount_grammar', { schemaId }).catch((e) =>
+      toast.error(`卸载 ${schemaId} 失败: ${errorMessage(e)}`),
+    ),
   )
   await Promise.all(promises)
   showBatchModal.value = false
@@ -177,7 +179,11 @@ function toggleDeleteModel(model: GrammarModel) {
     emitBusEvent(BusEvents.REMOVE_PENDING_DELETE, { delete_type: 'model', identifier: filename })
   } else {
     pendingDeleteModels.value.add(model.filename)
-    emitBusEvent(BusEvents.ADD_PENDING_DELETE, { delete_type: 'model', identifier: filename, label: `模型: ${model.display_name}` })
+    emitBusEvent(BusEvents.ADD_PENDING_DELETE, {
+      delete_type: 'model',
+      identifier: filename,
+      label: `模型: ${model.display_name}`,
+    })
     // If this model is selected, deselect it
     if (selectedModel.value?.filename === model.filename) {
       selectedModel.value = null
@@ -192,15 +198,17 @@ function toggleDeleteModel(model: GrammarModel) {
     <DeployNotice />
 
     <div class="toolbar">
-      <button class="btn btn-outline" @click="openBatchModal" :disabled="!selectedModel">批量挂载</button>
-      <button class="btn btn-outline" @click="loadData">刷新</button>
-      <button class="btn btn-primary" @click="importGrammar">📥 导入模型</button>
+      <button class="wv-btn btn-outline" :disabled="!selectedModel" @click="openBatchModal">
+        批量挂载
+      </button>
+      <button class="wv-btn btn-outline" @click="loadData">刷新</button>
+      <button class="wv-btn wv-btn-primary" @click="importGrammar">📥 导入模型</button>
     </div>
 
     <div class="layout">
       <div class="model-list">
         <h3>可用模型</h3>
-        <div v-if="!data || data.models.length === 0" class="empty-state">
+        <div v-if="!data || data.models.length === 0" class="wv-empty-state">
           <p>未找到语言模型文件</p>
           <p class="hint">将 .gram 文件放入 Rime 用户目录</p>
         </div>
@@ -208,14 +216,22 @@ function toggleDeleteModel(model: GrammarModel) {
           <div
             v-for="model in data.models"
             :key="model.filename"
-            :class="['model-item', { selected: selectedModel?.filename === model.filename, 'is-deleting': pendingDeleteModels.has(model.filename) }]"
+            :class="[
+              'model-item',
+              {
+                selected: selectedModel?.filename === model.filename,
+                'is-deleting': pendingDeleteModels.has(model.filename),
+              },
+            ]"
             @click="selectModel(model)"
           >
             <div class="model-icon">📦</div>
             <div class="model-info">
               <div class="model-name">
                 {{ model.display_name }}
-                <span v-if="pendingDeleteModels.has(model.filename)" class="badge badge-deleting">待删除</span>
+                <span v-if="pendingDeleteModels.has(model.filename)" class="badge badge-deleting"
+                  >待删除</span
+                >
               </div>
               <div class="model-meta">
                 {{ model.formatted_size }}
@@ -228,14 +244,18 @@ function toggleDeleteModel(model: GrammarModel) {
               v-if="pendingDeleteModels.has(model.filename)"
               class="btn-cancel-delete-sm"
               @click.stop="toggleDeleteModel(model)"
-            >取消</button>
+            >
+              取消
+            </button>
             <button
               v-else
               class="btn-delete-sm"
               :disabled="!canDeleteModel(model)"
               :title="!canDeleteModel(model) ? '已挂载不可删除' : '删除'"
               @click.stop="toggleDeleteModel(model)"
-            >🗑</button>
+            >
+              🗑
+            </button>
           </div>
         </div>
       </div>
@@ -253,7 +273,7 @@ function toggleDeleteModel(model: GrammarModel) {
           </div>
           <div class="detail-row">
             <span class="label">路径:</span>
-            <span class="value mono">{{ selectedModel.file_path }}</span>
+            <span class="value wv-mono">{{ selectedModel.file_path }}</span>
           </div>
 
           <h4 style="margin-top: 20px">挂载状态</h4>
@@ -264,14 +284,19 @@ function toggleDeleteModel(model: GrammarModel) {
             </span>
           </div>
         </template>
-        <div v-else class="empty-detail">
+        <div v-else class="wv-empty-detail">
           <p>选择一个模型查看详情</p>
         </div>
       </div>
     </div>
 
     <!-- Batch mount modal -->
-    <WeaselModal :show="showBatchModal" :title="`批量挂载 — ${selectedModel?.display_name}`" wide @close="showBatchModal = false">
+    <WeaselModal
+      :show="showBatchModal"
+      :title="`批量挂载 — ${selectedModel?.display_name}`"
+      wide
+      @close="showBatchModal = false"
+    >
       <div class="batch-layout">
         <div class="schema-select">
           <div class="select-header">
@@ -286,7 +311,7 @@ function toggleDeleteModel(model: GrammarModel) {
                 :checked="selectedSchemaIds.has(id)"
                 @change="toggleSchemaId(id)"
               />
-              <span class="mono">{{ id }}</span>
+              <span class="wv-mono">{{ id }}</span>
               <span v-if="isMounted(id)" class="mounted-tag">已挂载</span>
             </label>
           </div>
@@ -295,47 +320,84 @@ function toggleDeleteModel(model: GrammarModel) {
           <h4>参数配置</h4>
           <div class="param-row">
             <label>搭配最大长度</label>
-            <input type="number" v-model.number="batchConfig.collocation_max_length" min="3" max="10" />
+            <input
+              v-model.number="batchConfig.collocation_max_length"
+              type="number"
+              min="3"
+              max="10"
+            />
           </div>
           <div class="param-row">
             <label>搭配最小长度</label>
-            <input type="number" v-model.number="batchConfig.collocation_min_length" min="1" max="5" />
+            <input
+              v-model.number="batchConfig.collocation_min_length"
+              type="number"
+              min="1"
+              max="5"
+            />
           </div>
           <div class="param-row">
             <label>搭配惩罚</label>
-            <input type="number" v-model.number="batchConfig.collocation_penalty" min="-64" max="0" />
+            <input
+              v-model.number="batchConfig.collocation_penalty"
+              type="number"
+              min="-64"
+              max="0"
+            />
           </div>
           <div class="param-row">
             <label>非搭配惩罚</label>
-            <input type="number" v-model.number="batchConfig.non_collocation_penalty" min="-64" max="0" />
+            <input
+              v-model.number="batchConfig.non_collocation_penalty"
+              type="number"
+              min="-64"
+              max="0"
+            />
           </div>
           <div class="param-row">
             <label>弱搭配惩罚</label>
-            <input type="number" v-model.number="batchConfig.weak_collocation_penalty" min="-200" max="0" />
+            <input
+              v-model.number="batchConfig.weak_collocation_penalty"
+              type="number"
+              min="-200"
+              max="0"
+            />
           </div>
           <div class="param-row">
             <label>后置惩罚</label>
-            <input type="number" v-model.number="batchConfig.rear_penalty" min="-100" max="0" />
+            <input v-model.number="batchConfig.rear_penalty" type="number" min="-100" max="0" />
           </div>
           <hr />
           <label class="checkbox">
-            <input type="checkbox" v-model="batchConfig.contextual_suggestions" />
+            <input v-model="batchConfig.contextual_suggestions" type="checkbox" />
             启用上下文建议
           </label>
           <div class="param-row">
             <label>同音词数</label>
-            <input type="number" v-model.number="batchConfig.max_homophones" min="1" max="20" />
+            <input v-model.number="batchConfig.max_homophones" type="number" min="1" max="20" />
           </div>
           <div class="param-row">
             <label>同形词数</label>
-            <input type="number" v-model.number="batchConfig.max_homographs" min="1" max="20" />
+            <input v-model.number="batchConfig.max_homographs" type="number" min="1" max="20" />
           </div>
         </div>
       </div>
       <template #actions>
-        <button class="btn btn-primary" @click="batchMount" :disabled="selectedSchemaIds.size === 0">批量挂载</button>
-        <button class="btn btn-outline" @click="batchUnmount" :disabled="selectedSchemaIds.size === 0">批量卸载</button>
-        <button class="btn" @click="showBatchModal = false">取消</button>
+        <button
+          class="wv-btn wv-btn-primary"
+          :disabled="selectedSchemaIds.size === 0"
+          @click="batchMount"
+        >
+          批量挂载
+        </button>
+        <button
+          class="wv-btn btn-outline"
+          :disabled="selectedSchemaIds.size === 0"
+          @click="batchUnmount"
+        >
+          批量卸载
+        </button>
+        <button class="wv-btn" @click="showBatchModal = false">取消</button>
       </template>
     </WeaselModal>
   </div>
@@ -433,7 +495,7 @@ function toggleDeleteModel(model: GrammarModel) {
   min-width: 60px;
 }
 
-.mono {
+.wv-mono {
   font-family: monospace;
   font-size: 12px;
   word-break: break-all;
@@ -459,14 +521,9 @@ function toggleDeleteModel(model: GrammarModel) {
   color: var(--color-success);
 }
 
-.empty-state,
-.empty-detail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+.wv-empty-state,
+.wv-empty-detail {
   height: 200px;
-  color: var(--color-text-tertiary);
 }
 
 .hint {
@@ -474,25 +531,10 @@ function toggleDeleteModel(model: GrammarModel) {
   color: var(--color-text-tertiary);
 }
 
-.btn {
+.wv-btn {
   padding: 6px 14px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
   border-radius: 6px;
-  cursor: pointer;
   font-size: 13px;
-}
-
-.btn-primary {
-  background: var(--color-accent);
-  color: white;
-  border: none;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .btn-outline {
@@ -506,25 +548,6 @@ function toggleDeleteModel(model: GrammarModel) {
   color: var(--color-accent);
   cursor: pointer;
   font-size: 12px;
-}
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--color-bg-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.modal {
-  background: var(--color-bg-modal);
-  border-radius: 12px;
-  padding: 24px;
-  width: 600px;
-  max-height: 80vh;
-  overflow-y: auto;
 }
 
 .batch-layout {
@@ -607,12 +630,6 @@ function toggleDeleteModel(model: GrammarModel) {
   gap: 6px;
   font-size: 13px;
   margin: 8px 0;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
 }
 
 /* Pending delete styles */

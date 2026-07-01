@@ -7,7 +7,6 @@ import { errorMessage } from '../utils'
 
 const toast = useToast()
 
-
 interface GeneralSettings {
   page_size: number
   enable_encoder: boolean
@@ -44,31 +43,35 @@ const showSaved = ref(false)
 
 // 按键名称映射（用于显示）
 const keyDisplayMap: Record<string, string> = {
-  'grave': '` (反引号)',
-  'minus': '- (减号)',
-  'equal': '= (等号)',
-  'bracketleft': '[ (左方括号)',
-  'bracketright': '] (右方括号)',
-  'backslash': '\\ (反斜杠)',
-  'semicolon': '; (分号)',
-  'apostrophe': "' (单引号)",
-  'comma': ', (逗号)',
-  'period': '. (句号)',
-  'slash': '/ (斜杠)',
+  grave: '` (反引号)',
+  minus: '- (减号)',
+  equal: '= (等号)',
+  bracketleft: '[ (左方括号)',
+  bracketright: '] (右方括号)',
+  backslash: '\\ (反斜杠)',
+  semicolon: '; (分号)',
+  apostrophe: "' (单引号)",
+  comma: ', (逗号)',
+  period: '. (句号)',
+  slash: '/ (斜杠)',
 }
 
 // 将按键名转换为显示文本
 function formatKeyDisplay(keyName: string): string {
   if (!keyName) return ''
-  const keys = keyName.split(/[,\s]+/).filter(k => k.trim())
-  return keys.map(key => {
-    // 处理组合键，如 Control+grave
-    const parts = key.split('+')
-    return parts.map(part => {
-      const lowerPart = part.toLowerCase()
-      return keyDisplayMap[lowerPart] || part
-    }).join('+')
-  }).join(', ')
+  const keys = keyName.split(/[,\s]+/).filter((k) => k.trim())
+  return keys
+    .map((key) => {
+      // 处理组合键，如 Control+grave
+      const parts = key.split('+')
+      return parts
+        .map((part) => {
+          const lowerPart = part.toLowerCase()
+          return keyDisplayMap[lowerPart] || part
+        })
+        .join('+')
+    })
+    .join(', ')
 }
 
 let mounted = true
@@ -83,7 +86,9 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => { mounted = false })
+onUnmounted(() => {
+  mounted = false
+})
 
 // Caps Lock 动作选项（后端参数 -> 显示文本）
 const capsLockOptions = [
@@ -104,7 +109,9 @@ async function save() {
   try {
     await invoke('save_general_settings', { settings: settings.value })
     showSaved.value = true
-    setTimeout(() => { showSaved.value = false }, 2000)
+    setTimeout(() => {
+      showSaved.value = false
+    }, 2000)
   } catch (e) {
     toast.error(`保存设置失败: ${errorMessage(e)}`)
   }
@@ -119,26 +126,26 @@ async function save() {
       <h3>候选词</h3>
       <div class="form-row">
         <label>每页候选词数:</label>
-        <input type="number" v-model.number="settings.page_size" min="3" max="10" />
+        <input v-model.number="settings.page_size" type="number" min="3" max="10" />
       </div>
     </div>
 
     <div class="section">
       <h3>翻译器</h3>
       <label class="checkbox">
-        <input type="checkbox" v-model="settings.enable_encoder" />
+        <input v-model="settings.enable_encoder" type="checkbox" />
         启用自动造词 (enable_encoder)
       </label>
       <label class="checkbox">
-        <input type="checkbox" v-model="settings.enable_sentence" />
+        <input v-model="settings.enable_sentence" type="checkbox" />
         启用自动句子输入 (enable_sentence)
       </label>
       <label class="checkbox">
-        <input type="checkbox" v-model="settings.enable_user_dict" />
+        <input v-model="settings.enable_user_dict" type="checkbox" />
         启用用户词典 (enable_user_dict)
       </label>
       <label class="checkbox">
-        <input type="checkbox" v-model="settings.encode_commit_history" />
+        <input v-model="settings.encode_commit_history" type="checkbox" />
         自动编码上屏词语 (encode_commit_history)
       </label>
     </div>
@@ -157,11 +164,11 @@ async function save() {
         </div>
       </div>
       <label class="checkbox">
-        <input type="checkbox" v-model="settings.switcher_fold_options" />
+        <input v-model="settings.switcher_fold_options" type="checkbox" />
         折叠选项 (fold_options)
       </label>
       <label class="checkbox">
-        <input type="checkbox" v-model="settings.switcher_abbreviate_options" />
+        <input v-model="settings.switcher_abbreviate_options" type="checkbox" />
         缩写选项 (abbreviate_options)
       </label>
     </div>
@@ -169,32 +176,38 @@ async function save() {
     <div class="section">
       <h3>中英文切换 (ascii_composer)</h3>
       <label class="checkbox">
-        <input type="checkbox" v-model="settings.good_old_caps_lock" />
+        <input v-model="settings.good_old_caps_lock" type="checkbox" />
         经典 Caps Lock 模式
       </label>
       <div class="form-row">
         <label>Caps Lock:</label>
         <select v-model="settings.caps_lock_action">
-          <option v-for="opt in capsLockOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          <option v-for="opt in capsLockOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
         </select>
       </div>
       <div class="form-row">
         <label>左 Shift:</label>
         <select v-model="settings.shift_left_action">
-          <option v-for="opt in shiftOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          <option v-for="opt in shiftOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
         </select>
       </div>
       <div class="form-row">
         <label>右 Shift:</label>
         <select v-model="settings.shift_right_action">
-          <option v-for="opt in shiftOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          <option v-for="opt in shiftOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
         </select>
       </div>
     </div>
 
     <div class="actions">
-      <span v-if="showSaved" class="saved-hint">已保存</span>
-      <button class="btn btn-primary" @click="save">保存</button>
+      <span v-if="showSaved" class="wv-saved-hint">已保存</span>
+      <button class="wv-btn wv-btn-primary" @click="save">保存</button>
     </div>
   </div>
 </template>
@@ -280,23 +293,9 @@ async function save() {
   margin-top: 16px;
 }
 
-.btn {
+.wv-btn {
   padding: 8px 20px;
   border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
-}
-
-.btn-primary {
-  background: var(--color-accent);
-  color: white;
-}
-
-.saved-hint {
-  color: var(--color-success);
   font-size: 14px;
 }
 </style>

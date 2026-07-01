@@ -7,7 +7,6 @@ import WeaselModal from './WeaselModal.vue'
 
 const toast = useToast()
 
-
 interface ConfigFileInfo {
   name: string
   path: string
@@ -20,10 +19,12 @@ const configFiles = ref<ConfigFileInfo[]>([])
 const showResetConfirm = ref(false)
 
 const customFileNames = computed(() => {
-  return configFiles.value
-    .filter(f => !f.is_main)
-    .map(f => f.name)
-    .join('、') || '自定义配置文件'
+  return (
+    configFiles.value
+      .filter((f) => !f.is_main)
+      .map((f) => f.name)
+      .join('、') || '自定义配置文件'
+  )
 })
 
 let advMounted = true
@@ -40,7 +41,9 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => { advMounted = false })
+onUnmounted(() => {
+  advMounted = false
+})
 
 async function resetConfig() {
   showResetConfirm.value = false
@@ -68,8 +71,10 @@ async function openRimeDir() {
       <h3>Rime 目录</h3>
       <div class="dir-row">
         <span class="label">用户目录:</span>
-        <code class="dir-path clickable" @click="openRimeDir" title="点击打开此目录">{{ userDir }}</code>
-        <button type="button" class="btn btn-small" @click="openRimeDir">📂 打开</button>
+        <code class="dir-path clickable" title="点击打开此目录" @click="openRimeDir">{{
+          userDir
+        }}</code>
+        <button type="button" class="wv-btn btn-small" @click="openRimeDir">📂 打开</button>
       </div>
     </div>
 
@@ -88,7 +93,9 @@ async function openRimeDir() {
     <div class="section">
       <h3>操作</h3>
       <div class="actions-row">
-        <button class="btn btn-danger" @click="showResetConfirm = true">重置自定义配置</button>
+        <button class="wv-btn wv-btn-danger" @click="showResetConfirm = true">
+          重置自定义配置
+        </button>
       </div>
     </div>
 
@@ -108,8 +115,8 @@ async function openRimeDir() {
     <WeaselModal :show="showResetConfirm" title="确认重置" @close="showResetConfirm = false">
       <p>将删除自定义配置文件（{{ customFileNames }}），此操作不可撤销。</p>
       <template #actions>
-        <button class="btn" @click="showResetConfirm = false">取消</button>
-        <button class="btn btn-danger" @click="resetConfig">确认重置</button>
+        <button class="wv-btn" @click="showResetConfirm = false">取消</button>
+        <button class="wv-btn wv-btn-danger" @click="resetConfig">确认重置</button>
       </template>
     </WeaselModal>
   </div>
@@ -197,20 +204,10 @@ async function openRimeDir() {
   gap: 8px;
 }
 
-.btn {
+.wv-btn {
   padding: 8px 16px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
   border-radius: 6px;
-  cursor: pointer;
   font-size: 13px;
-}
-
-.btn-danger {
-  background: var(--color-danger);
-  color: white;
-  border: none;
 }
 
 .about .version {
@@ -241,40 +238,5 @@ async function openRimeDir() {
   height: auto;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--color-bg-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 999;
-}
-
-.modal {
-  background: var(--color-bg-modal);
-  border-radius: 12px;
-  padding: 24px;
-  width: 400px;
-  box-shadow: var(--shadow-lg);
-}
-
-.modal h3 {
-  margin-bottom: 8px;
-}
-
-.modal p {
-  color: var(--color-text-secondary);
-  font-size: 14px;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
 }
 </style>

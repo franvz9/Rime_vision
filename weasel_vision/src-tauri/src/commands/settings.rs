@@ -344,7 +344,7 @@ pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), String>
     }
     // Determine if any model deletion is planned
     let has_model_delete = pending_deletes.as_ref()
-        .map_or(false, |deletes| deletes.iter().any(|d| d.delete_type == "model"));
+        .is_some_and(|deletes| deletes.iter().any(|d| d.delete_type == "model"));
 
     // Backup before deploy: include models only if model deletion is planned
     if let Err(e) = super::backup::create_deploy_backup(has_model_delete) {

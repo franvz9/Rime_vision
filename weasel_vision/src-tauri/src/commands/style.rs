@@ -180,7 +180,7 @@ pub fn save_color_scheme(
             // If renaming, remove the old key first
             if let Some(ref orig) = original_name {
                 if orig != &name {
-                    schemes_map.remove(&Value::String(orig.clone()));
+                    schemes_map.remove(Value::String(orig.clone()));
                 }
             }
             let scheme_value = scheme.to_dict();

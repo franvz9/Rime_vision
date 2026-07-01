@@ -5,8 +5,15 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import DeployNotice from './DeployNotice.vue'
 import WeaselModal from './WeaselModal.vue'
 import { useToast } from '../composables/useToast'
-import { hexToRgb, rgbToHex, hexToRimeHex, errorMessage, emitBusEvent, BusEvents, type RgbColor } from '../utils'
-
+import {
+  hexToRgb,
+  rgbToHex,
+  hexToRimeHex,
+  errorMessage,
+  emitBusEvent,
+  BusEvents,
+  type RgbColor,
+} from '../utils'
 
 interface ColorScheme {
   name: string
@@ -85,9 +92,7 @@ const pendingDeleteSchemes = ref<Set<string>>(new Set())
 
 const schemes = computed(() => {
   if (!styleData.value) return {}
-  return activeTab.value === 'light'
-    ? styleData.value.light_schemes
-    : styleData.value.dark_schemes
+  return activeTab.value === 'light' ? styleData.value.light_schemes : styleData.value.dark_schemes
 })
 
 const currentActiveScheme = computed(() => {
@@ -100,9 +105,8 @@ const currentActiveScheme = computed(() => {
 // Update selectedScheme when tab changes to show the currently active scheme
 watch(activeTab, (newTab) => {
   if (!styleData.value) return
-  selectedScheme.value = newTab === 'light'
-    ? styleData.value!.selected_light
-    : styleData.value!.selected_dark
+  selectedScheme.value =
+    newTab === 'light' ? styleData.value!.selected_light : styleData.value!.selected_dark
 })
 
 // Refresh style data after deploy completes
@@ -122,9 +126,8 @@ onMounted(async () => {
   try {
     styleData.value = await invoke('get_style_data')
     if (!themeMounted) return
-    selectedScheme.value = activeTab.value === 'light'
-      ? styleData.value!.selected_light
-      : styleData.value!.selected_dark
+    selectedScheme.value =
+      activeTab.value === 'light' ? styleData.value!.selected_light : styleData.value!.selected_dark
     localStyle.value = { ...styleData.value!.style }
   } catch (e) {
     if (!themeMounted) return
@@ -149,10 +152,10 @@ function selectScheme(name: string) {
 async function applyScheme(name: string) {
   // Don't apply if marked for deletion
   if (pendingDeleteSchemes.value.has(name)) return
-  
+
   // First select this scheme
   selectedScheme.value = name
-  
+
   // Only set pending if the scheme is different from current active
   if (name === currentActiveScheme.value) {
     // Clicking on already active scheme - clear pending
@@ -166,8 +169,8 @@ async function applyScheme(name: string) {
     // Immediately save the selection to backend
     try {
       await invoke('save_selected_schemes', {
-        light: activeTab.value === 'light' ? name : (styleData.value?.selected_light || 'native'),
-        dark: activeTab.value === 'dark' ? name : (styleData.value?.selected_dark || 'native'),
+        light: activeTab.value === 'light' ? name : styleData.value?.selected_light || 'native',
+        dark: activeTab.value === 'dark' ? name : styleData.value?.selected_dark || 'native',
       })
       // Update local styleData to reflect the new selection
       if (styleData.value) {
@@ -186,10 +189,10 @@ async function applyScheme(name: string) {
 function editScheme(name: string) {
   // Don't edit if marked for deletion
   if (pendingDeleteSchemes.value.has(name)) return
-  
+
   // First select this scheme
   selectedScheme.value = name
-  
+
   const scheme = schemes.value[name]
   if (scheme) {
     editingScheme.value = { ...scheme }
@@ -203,10 +206,10 @@ function editScheme(name: string) {
 function copyScheme(name: string) {
   // Don't copy if marked for deletion
   if (pendingDeleteSchemes.value.has(name)) return
-  
+
   // First select this scheme
   selectedScheme.value = name
-  
+
   const scheme = schemes.value[name]
   if (scheme) {
     editingScheme.value = { ...scheme }
@@ -222,8 +225,12 @@ async function saveScheme() {
   try {
     const isCopy = editMode.value === 'copy'
     const targetName = isCopy ? newSchemeName.value : editingScheme.value.name
-    const origName = isCopy ? null : (originalSchemeName.value !== targetName ? originalSchemeName.value : null)
-    
+    const origName = isCopy
+      ? null
+      : originalSchemeName.value !== targetName
+        ? originalSchemeName.value
+        : null
+
     await invoke('save_color_scheme', {
       name: targetName,
       scheme: editingScheme.value,
@@ -231,7 +238,7 @@ async function saveScheme() {
     })
     showEditor.value = false
     styleData.value = await invoke('get_style_data')
-    
+
     // If we modified the currently active scheme, set it as pending
     if (!isCopy && originalSchemeName.value === currentActiveScheme.value) {
       pendingScheme.value = targetName
@@ -261,7 +268,11 @@ function toggleDeleteScheme(name: string) {
     emitBusEvent(BusEvents.REMOVE_PENDING_DELETE, { delete_type: 'theme', identifier: name })
   } else {
     pendingDeleteSchemes.value.add(name)
-    emitBusEvent(BusEvents.ADD_PENDING_DELETE, { delete_type: 'theme', identifier: name, label: `主题: ${name}` })
+    emitBusEvent(BusEvents.ADD_PENDING_DELETE, {
+      delete_type: 'theme',
+      identifier: name,
+      label: `主题: ${name}`,
+    })
     // If this scheme was pending apply, cancel it
     if (pendingScheme.value === name) {
       pendingScheme.value = null
@@ -275,7 +286,7 @@ async function importColorScheme() {
     directory: false,
     multiple: false,
     title: '选择配色方案文件',
-    filters: [{ name: 'YAML Files', extensions: ['yaml', 'yml'] }]
+    filters: [{ name: 'YAML Files', extensions: ['yaml', 'yml'] }],
   })
   if (selected && typeof selected === 'string') {
     try {
@@ -341,15 +352,21 @@ async function saveStyle() {
     <DeployNotice />
 
     <div class="tabs">
-      <button :class="['tab', { active: activeTab === 'light' }]" @click="activeTab = 'light'">亮色主题</button>
-      <button :class="['tab', { active: activeTab === 'dark' }]" @click="activeTab = 'dark'">暗色主题</button>
-      <button :class="['tab', { active: activeTab === 'style' }]" @click="activeTab = 'style'">样式</button>
+      <button :class="['tab', { active: activeTab === 'light' }]" @click="activeTab = 'light'">
+        亮色主题
+      </button>
+      <button :class="['tab', { active: activeTab === 'dark' }]" @click="activeTab = 'dark'">
+        暗色主题
+      </button>
+      <button :class="['tab', { active: activeTab === 'style' }]" @click="activeTab = 'style'">
+        样式
+      </button>
     </div>
 
     <div v-if="activeTab !== 'style'" class="scheme-list">
       <div class="list-header">
         <h3>{{ activeTab === 'light' ? '亮色主题' : '暗色主题' }}</h3>
-        <button class="btn btn-sm" @click="importColorScheme">📥 导入主题</button>
+        <button class="wv-btn btn-sm" @click="importColorScheme">📥 导入主题</button>
       </div>
       <!-- Pending notice -->
       <div v-if="pendingScheme" class="pending-notice">
@@ -358,21 +375,34 @@ async function saveStyle() {
       <div
         v-for="(scheme, name) in schemes"
         :key="name"
-        :class="['scheme-item', { 
-          'is-active': currentActiveScheme === name && pendingScheme !== name, 
-          'is-pending': pendingScheme === name, 
-          'is-selected': selectedScheme === name,
-          'is-deleting': pendingDeleteSchemes.has(name as string)
-        }]"
+        :class="[
+          'scheme-item',
+          {
+            'is-active': currentActiveScheme === name && pendingScheme !== name,
+            'is-pending': pendingScheme === name,
+            'is-selected': selectedScheme === name,
+            'is-deleting': pendingDeleteSchemes.has(name as string),
+          },
+        ]"
         @click="selectScheme(name as string)"
       >
         <div class="scheme-color" :style="{ background: colorToRgba(scheme.back_color) }"></div>
         <div class="scheme-info">
           <div class="scheme-name-row">
             <span class="scheme-name">{{ name }}</span>
-            <span v-if="currentActiveScheme === name && pendingScheme !== name && !pendingDeleteSchemes.has(name as string)" class="badge badge-active">使用中</span>
+            <span
+              v-if="
+                currentActiveScheme === name &&
+                pendingScheme !== name &&
+                !pendingDeleteSchemes.has(name as string)
+              "
+              class="badge badge-active"
+              >使用中</span
+            >
             <span v-if="pendingScheme === name" class="badge badge-pending">待生效</span>
-            <span v-if="pendingDeleteSchemes.has(name as string)" class="badge badge-deleting">待删除</span>
+            <span v-if="pendingDeleteSchemes.has(name as string)" class="badge badge-deleting"
+              >待删除</span
+            >
           </div>
           <div v-if="scheme.author" class="scheme-author">{{ scheme.author }}</div>
         </div>
@@ -380,23 +410,31 @@ async function saveStyle() {
           v-if="pendingDeleteSchemes.has(name as string)"
           class="action-btn btn-cancel-delete"
           @click.stop="toggleDeleteScheme(name as string)"
-        >取消删除</button>
+        >
+          取消删除
+        </button>
         <button
           v-else-if="pendingScheme === name"
           class="action-btn btn-cancel"
           @click.stop="applyScheme(name)"
-        >取消应用</button>
-        <button
-          v-else
-          class="action-btn btn-apply"
-          @click.stop="applyScheme(name)"
-        >应用主题</button>
+        >
+          取消应用
+        </button>
+        <button v-else class="action-btn btn-apply" @click.stop="applyScheme(name)">
+          应用主题
+        </button>
         <button class="edit-btn" @click.stop="editScheme(name as string)">编辑</button>
         <button class="edit-btn" @click.stop="copyScheme(name as string)">复制</button>
         <button
           class="edit-btn btn-delete"
           :disabled="!canDeleteScheme(name as string)"
-          :title="!canDeleteScheme(name as string) ? (currentActiveScheme === name ? '使用中不可删除' : '待生效不可删除') : '删除'"
+          :title="
+            !canDeleteScheme(name as string)
+              ? currentActiveScheme === name
+                ? '使用中不可删除'
+                : '待生效不可删除'
+              : '删除'
+          "
           @click.stop="toggleDeleteScheme(name as string)"
         >
           {{ pendingDeleteSchemes.has(name as string) ? '✖' : '🗑' }}
@@ -415,7 +453,13 @@ async function saveStyle() {
           </div>
           <div class="style-field">
             <label>字号</label>
-            <input type="number" v-model.number="localStyle.font_point" step="0.5" min="8" max="72" />
+            <input
+              v-model.number="localStyle.font_point"
+              type="number"
+              step="0.5"
+              min="8"
+              max="72"
+            />
           </div>
           <div class="style-field">
             <label>序号字体</label>
@@ -423,7 +467,13 @@ async function saveStyle() {
           </div>
           <div class="style-field">
             <label>序号字号</label>
-            <input type="number" v-model.number="localStyle.label_font_point" step="0.5" min="8" max="72" />
+            <input
+              v-model.number="localStyle.label_font_point"
+              type="number"
+              step="0.5"
+              min="8"
+              max="72"
+            />
           </div>
           <div class="style-field">
             <label>注释字体</label>
@@ -431,7 +481,13 @@ async function saveStyle() {
           </div>
           <div class="style-field">
             <label>注释字号</label>
-            <input type="number" v-model.number="localStyle.comment_font_point" step="0.5" min="8" max="72" />
+            <input
+              v-model.number="localStyle.comment_font_point"
+              type="number"
+              step="0.5"
+              min="8"
+              max="72"
+            />
           </div>
         </div>
       </div>
@@ -455,7 +511,10 @@ async function saveStyle() {
           </div>
           <div class="style-field">
             <label>候选格式</label>
-            <input v-model="localStyle.candidate_format" placeholder="[label]. [candidate] [comment]" />
+            <input
+              v-model="localStyle.candidate_format"
+              placeholder="[label]. [candidate] [comment]"
+            />
           </div>
           <div class="style-field">
             <label>状态提示</label>
@@ -474,35 +533,71 @@ async function saveStyle() {
         <div class="style-grid">
           <div class="style-field">
             <label>圆角半径</label>
-            <input type="number" v-model.number="localStyle.corner_radius" step="1" min="0" max="50" />
+            <input
+              v-model.number="localStyle.corner_radius"
+              type="number"
+              step="1"
+              min="0"
+              max="50"
+            />
           </div>
           <div class="style-field">
             <label>高亮圆角</label>
-            <input type="number" v-model.number="localStyle.hilited_corner_radius" step="1" min="0" max="50" />
+            <input
+              v-model.number="localStyle.hilited_corner_radius"
+              type="number"
+              step="1"
+              min="0"
+              max="50"
+            />
           </div>
           <div class="style-field">
             <label>行间距</label>
-            <input type="number" v-model.number="localStyle.line_spacing" step="1" min="0" max="50" />
+            <input
+              v-model.number="localStyle.line_spacing"
+              type="number"
+              step="1"
+              min="0"
+              max="50"
+            />
           </div>
           <div class="style-field">
             <label>间距</label>
-            <input type="number" v-model.number="localStyle.spacing" step="1" min="0" max="50" />
+            <input v-model.number="localStyle.spacing" type="number" step="1" min="0" max="50" />
           </div>
           <div class="style-field">
             <label>边框高度</label>
-            <input type="number" v-model.number="localStyle.border_height" step="1" min="-20" max="50" />
+            <input
+              v-model.number="localStyle.border_height"
+              type="number"
+              step="1"
+              min="-20"
+              max="50"
+            />
           </div>
           <div class="style-field">
             <label>边框宽度</label>
-            <input type="number" v-model.number="localStyle.border_width" step="1" min="-20" max="50" />
+            <input
+              v-model.number="localStyle.border_width"
+              type="number"
+              step="1"
+              min="-20"
+              max="50"
+            />
           </div>
           <div class="style-field">
             <label>阴影大小</label>
-            <input type="number" v-model.number="localStyle.shadow_size" step="1" min="0" max="30" />
+            <input
+              v-model.number="localStyle.shadow_size"
+              type="number"
+              step="1"
+              min="0"
+              max="30"
+            />
           </div>
           <div class="style-field">
             <label>透明度</label>
-            <input type="number" v-model.number="localStyle.alpha" step="0.05" min="0" max="1" />
+            <input v-model.number="localStyle.alpha" type="number" step="0.05" min="0" max="1" />
           </div>
         </div>
       </div>
@@ -511,41 +606,41 @@ async function saveStyle() {
         <h4>行为选项</h4>
         <div class="style-toggles">
           <label class="toggle-field">
-            <input type="checkbox" v-model="localStyle.inline_preedit" />
+            <input v-model="localStyle.inline_preedit" type="checkbox" />
             <span>内嵌编辑</span>
           </label>
           <label class="toggle-field">
-            <input type="checkbox" v-model="localStyle.inline_candidate" />
+            <input v-model="localStyle.inline_candidate" type="checkbox" />
             <span>内嵌候选</span>
           </label>
           <label class="toggle-field">
-            <input type="checkbox" v-model="localStyle.translucency" />
+            <input v-model="localStyle.translucency" type="checkbox" />
             <span>半透明</span>
           </label>
           <label class="toggle-field">
-            <input type="checkbox" v-model="localStyle.mutual_exclusive" />
+            <input v-model="localStyle.mutual_exclusive" type="checkbox" />
             <span>颜色互斥</span>
           </label>
           <label class="toggle-field">
-            <input type="checkbox" v-model="localStyle.memorize_size" />
+            <input v-model="localStyle.memorize_size" type="checkbox" />
             <span>记忆宽度</span>
           </label>
           <label class="toggle-field">
-            <input type="checkbox" v-model="localStyle.show_paging" />
+            <input v-model="localStyle.show_paging" type="checkbox" />
             <span>显示翻页</span>
           </label>
         </div>
       </div>
 
       <div class="style-actions">
-        <button class="btn btn-primary" @click="saveStyle">保存样式</button>
+        <button class="wv-btn wv-btn-primary" @click="saveStyle">保存样式</button>
       </div>
     </div>
 
     <!-- Simple preview -->
-    <div class="preview" v-if="activeTab !== 'style'">
+    <div v-if="activeTab !== 'style'" class="preview">
       <h3>预览</h3>
-      <div class="candidate-window" v-if="selectedScheme && schemes[selectedScheme]">
+      <div v-if="selectedScheme && schemes[selectedScheme]" class="candidate-window">
         <div
           class="candidate-bg"
           :style="{ background: colorToRgba(schemes[selectedScheme].back_color) }"
@@ -554,14 +649,21 @@ async function saveStyle() {
             class="candidate-item"
             :style="{
               background: colorToRgba(schemes[selectedScheme].hilited_candidate_back_color),
-              color: colorToRgba(schemes[selectedScheme].hilited_candidate_text_color)
+              color: colorToRgba(schemes[selectedScheme].hilited_candidate_text_color),
             }"
           >
             <span class="label">1.</span>
             <span class="text">候选词</span>
           </div>
-          <div class="candidate-item" :style="{ color: colorToRgba(schemes[selectedScheme].candidate_text_color) }">
-            <span class="label" :style="{ color: colorToRgba(schemes[selectedScheme].candidate_label_color) }">2.</span>
+          <div
+            class="candidate-item"
+            :style="{ color: colorToRgba(schemes[selectedScheme].candidate_text_color) }"
+          >
+            <span
+              class="label"
+              :style="{ color: colorToRgba(schemes[selectedScheme].candidate_label_color) }"
+              >2.</span
+            >
             <span class="text">示例</span>
           </div>
         </div>
@@ -571,27 +673,35 @@ async function saveStyle() {
     <!-- Edit / Copy modal -->
     <WeaselModal
       :show="showEditor && !!editingScheme"
-      :title="editMode === 'copy' ? `复制配色: ${originalSchemeName} → ${newSchemeName}` : `编辑配色: ${editingScheme!.name}`"
+      :title="
+        editMode === 'copy'
+          ? `复制配色: ${originalSchemeName} → ${newSchemeName}`
+          : `编辑配色: ${editingScheme!.name}`
+      "
       @close="cancelEdit"
     >
-      <div class="form-group" v-if="editMode === 'copy'">
+      <div v-if="editMode === 'copy'" class="wv-form-group">
         <label>新方案名称</label>
         <input v-model="newSchemeName" placeholder="输入新方案名称" />
       </div>
-      <div class="form-group">
+      <div class="wv-form-group">
         <label>作者</label>
         <input v-model="editingScheme!.author" />
       </div>
       <div class="color-grid">
-        <div class="color-field" v-for="(label, key) in {
-          'back_color': '背景色',
-          'text_color': '文字色',
-          'candidate_text_color': '候选文字',
-          'hilited_candidate_back_color': '高亮背景',
-          'hilited_candidate_text_color': '高亮文字',
-          'candidate_label_color': '编号色',
-          'comment_text_color': '注释色'
-        }" :key="key">
+        <div
+          v-for="(label, key) in {
+            back_color: '背景色',
+            text_color: '文字色',
+            candidate_text_color: '候选文字',
+            hilited_candidate_back_color: '高亮背景',
+            hilited_candidate_text_color: '高亮文字',
+            candidate_label_color: '编号色',
+            comment_text_color: '注释色',
+          }"
+          :key="key"
+          class="color-field"
+        >
           <label>{{ label }}</label>
           <div class="color-input">
             <input
@@ -604,14 +714,22 @@ async function saveStyle() {
         </div>
       </div>
       <template #actions>
-        <button class="btn" @click="cancelEdit">取消</button>
-        <button v-if="editMode === 'edit'" class="btn btn-primary" @click="saveScheme">保存</button>
-        <button v-if="editMode === 'copy'" class="btn btn-primary" @click="saveScheme" :disabled="!newSchemeName.trim()">保存为新主题</button>
+        <button class="wv-btn" @click="cancelEdit">取消</button>
+        <button v-if="editMode === 'edit'" class="wv-btn wv-btn-primary" @click="saveScheme">
+          保存
+        </button>
+        <button
+          v-if="editMode === 'copy'"
+          class="wv-btn wv-btn-primary"
+          :disabled="!newSchemeName.trim()"
+          @click="saveScheme"
+        >
+          保存为新主题
+        </button>
       </template>
     </WeaselModal>
   </div>
 </template>
-
 
 <style scoped>
 .theme-editor {
@@ -826,50 +944,19 @@ async function saveStyle() {
   opacity: 0.6;
 }
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--color-bg-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.modal {
-  background: var(--color-bg-modal);
-  border-radius: 12px;
-  padding: 24px;
-  width: 500px;
-  max-height: 80vh;
-  overflow-y: auto;
-  color: var(--color-text-primary);
-}
-
-.modal h3 {
-  margin-bottom: 16px;
-  color: var(--color-text-primary);
-}
-
-.form-group {
-  margin-bottom: 12px;
-}
-
-.form-group label {
-  display: block;
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  margin-bottom: 4px;
-}
-
-.form-group input {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid var(--color-border);
+.wv-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--color-btn-default-border);
+  background: var(--color-btn-default-bg);
   border-radius: 6px;
-  font-size: 14px;
-  background: var(--color-bg-input);
+  cursor: pointer;
   color: var(--color-text-primary);
+}
+
+.style-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .color-grid {
@@ -892,7 +979,7 @@ async function saveStyle() {
   gap: 8px;
 }
 
-.color-input input[type="color"] {
+.color-input input[type='color'] {
   width: 32px;
   height: 32px;
   border: none;
@@ -902,37 +989,6 @@ async function saveStyle() {
 .color-input span {
   font-size: 12px;
   color: var(--color-text-tertiary);
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.btn {
-  padding: 8px 16px;
-  border: 1px solid var(--color-btn-default-border);
-  background: var(--color-btn-default-bg);
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--color-text-primary);
-}
-
-.btn-primary {
-  background: var(--color-btn-primary-bg);
-  color: var(--color-text-inverse);
-  border: none;
-}
-
-.btn-primary:hover {
-  background: var(--color-btn-primary-hover);
-}
-
-.style-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
 }
 
 .style-section h4 {
@@ -984,7 +1040,7 @@ async function saveStyle() {
   cursor: pointer;
 }
 
-.toggle-field input[type="checkbox"] {
+.toggle-field input[type='checkbox'] {
   width: 16px;
   height: 16px;
 }
@@ -1045,5 +1101,4 @@ async function saveStyle() {
   background: var(--color-success);
   color: var(--color-text-inverse);
 }
-
 </style>

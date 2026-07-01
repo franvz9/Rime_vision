@@ -7,7 +7,6 @@ import { errorMessage } from '../utils'
 
 const toast = useToast()
 
-
 interface KeyBinding {
   when: string
   accept: string
@@ -79,7 +78,9 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => { keyMounted = false })
+onUnmounted(() => {
+  keyMounted = false
+})
 
 function addBinding() {
   bindings.value.push({
@@ -112,17 +113,39 @@ async function save() {
     <div class="section">
       <h3>快捷键绑定</h3>
       <p class="hint">配置全局快捷键绑定规则，定义在特定条件下按某个键时执行的操作</p>
-      
+
       <div class="info-box">
         <strong>💡 使用说明：</strong>
         <ul>
-          <li><strong>条件 (when)</strong>：触发条件，如 <code>composing</code>（正在输入中）、<code>always</code>（始终）等</li>
-          <li><strong>按键 (accept)</strong>：要捕获的按键组合，如 <code>Control+p</code>、<code>F4</code> 等</li>
-          <li><strong>发送 (send)</strong>：向应用程序发送的按键，如 <code>Up</code>、<code>Page_Up</code> 等</li>
-          <li><strong>切换 (toggle)</strong>：切换的状态，如 <code>ascii_mode</code>（中英文切换）、<code>simplification</code>（简繁切换）等</li>
-          <li><strong>选择 (select)</strong>：选择候选词的位置，如 <code>1</code>（第一个）、<code>2</code>（第二个）等</li>
+          <li>
+            <strong>条件 (when)</strong>：触发条件，如
+            <code>composing</code>（正在输入中）、<code>always</code>（始终）等
+          </li>
+          <li>
+            <strong>按键 (accept)</strong>：要捕获的按键组合，如 <code>Control+p</code>、<code
+              >F4</code
+            >
+            等
+          </li>
+          <li>
+            <strong>发送 (send)</strong>：向应用程序发送的按键，如 <code>Up</code>、<code
+              >Page_Up</code
+            >
+            等
+          </li>
+          <li>
+            <strong>切换 (toggle)</strong>：切换的状态，如
+            <code>ascii_mode</code>（中英文切换）、<code>simplification</code>（简繁切换）等
+          </li>
+          <li>
+            <strong>选择 (select)</strong>：选择候选词的位置，如
+            <code>1</code>（第一个）、<code>2</code>（第二个）等
+          </li>
         </ul>
-        <p><strong>示例：</strong><code>Control+n</code> → <code>Down</code> 表示在输入过程中按 Ctrl+N 向下移动光标</p>
+        <p>
+          <strong>示例：</strong><code>Control+n</code> → <code>Down</code> 表示在输入过程中按
+          Ctrl+N 向下移动光标
+        </p>
       </div>
 
       <div class="binding-list">
@@ -173,7 +196,7 @@ async function save() {
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary" @click="save">保存</button>
+      <button class="wv-btn wv-btn-primary" @click="save">保存</button>
     </div>
   </div>
 </template>
@@ -310,22 +333,9 @@ async function save() {
   margin-top: 16px;
 }
 
-.btn {
+.wv-btn {
   padding: 8px 20px;
   border: none;
-  border-radius: 6px;
-  cursor: pointer;
   font-size: 14px;
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
-}
-
-.btn-primary {
-  background: var(--color-btn-primary-bg);
-  color: var(--color-text-inverse);
-}
-
-.btn-primary:hover {
-  background: var(--color-btn-primary-hover);
 }
 </style>

@@ -48,7 +48,7 @@ function addToast(type: Toast['type'], message: string, duration = 4000) {
 }
 
 function dismissToast(id: number) {
-  const idx = toasts.value.findIndex(t => t.id === id)
+  const idx = toasts.value.findIndex((t) => t.id === id)
   if (idx === -1) return
 
   const toast = toasts.value[idx]
@@ -60,9 +60,14 @@ function dismissToast(id: number) {
 
   toast.visible = false
 
+  // Clear any existing remove timer before setting a new one
+  if (toast.removeTimer !== null) {
+    clearTimeout(toast.removeTimer)
+  }
+
   // Remove from array after animation
   toast.removeTimer = setTimeout(() => {
-    toasts.value = toasts.value.filter(t => t.id !== id)
+    toasts.value = toasts.value.filter((t) => t.id !== id)
   }, 300)
 }
 
@@ -93,6 +98,15 @@ export function useToast() {
     /** Dismiss a specific toast by id */
     dismiss(id: number) {
       dismissToast(id)
+    },
+
+    /** Clear all timers and remove all toasts (call on unmount to prevent dangling timers) */
+    clearAll() {
+      for (const toast of toasts.value) {
+        if (toast.timer !== null) clearTimeout(toast.timer)
+        if (toast.removeTimer !== null) clearTimeout(toast.removeTimer)
+      }
+      toasts.value = []
     },
   }
 }

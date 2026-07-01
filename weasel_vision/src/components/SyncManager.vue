@@ -36,7 +36,12 @@ interface SyncResult {
   errors: string[]
 }
 
-const settings = ref<SyncSettings>({ sync_dir: null, installation_id: '', sync_user_dict: true, sync_config: true })
+const settings = ref<SyncSettings>({
+  sync_dir: null,
+  installation_id: '',
+  sync_user_dict: true,
+  sync_config: true,
+})
 const status = ref<SyncStatus | null>(null)
 const devices = ref<SyncedDevice[]>([])
 const isSyncing = ref(false)
@@ -50,14 +55,16 @@ onMounted(async () => {
   await loadData()
 })
 
-onUnmounted(() => { smMounted = false })
+onUnmounted(() => {
+  smMounted = false
+})
 
 async function loadData() {
   try {
     const [settingsResult, statusResult, devicesResult] = await Promise.all([
       invoke<SyncSettings>('get_sync_settings'),
       invoke<SyncStatus | null>('get_sync_status'),
-      invoke<SyncedDevice[]>('list_synced_devices')
+      invoke<SyncedDevice[]>('list_synced_devices'),
     ])
     if (!smMounted) return
     settings.value = settingsResult
@@ -103,7 +110,7 @@ async function selectFolder() {
   const selected = await dialogOpen({
     directory: true,
     multiple: false,
-    title: '选择同步目录'
+    title: '选择同步目录',
   })
   if (selected && typeof selected === 'string') {
     editingDir.value = selected
@@ -130,9 +137,22 @@ async function openSyncDir() {
       </div>
       <div class="status-row">
         <span class="label">同步目录:</span>
-        <span class="value mono clickable" @click="openSyncDir" v-if="settings.sync_dir" title="点击打开此目录">{{ settings.sync_dir }}</span>
-        <span class="value mono" v-else>未配置</span>
-        <button v-if="settings.sync_dir" type="button" class="btn btn-small" @click="openSyncDir">📂 打开</button>
+        <span
+          v-if="settings.sync_dir"
+          class="value wv-mono clickable"
+          title="点击打开此目录"
+          @click="openSyncDir"
+          >{{ settings.sync_dir }}</span
+        >
+        <span v-else class="value wv-mono">未配置</span>
+        <button
+          v-if="settings.sync_dir"
+          type="button"
+          class="wv-btn btn-small"
+          @click="openSyncDir"
+        >
+          📂 打开
+        </button>
       </div>
       <div class="status-row">
         <span class="label">上次同步:</span>
@@ -146,15 +166,22 @@ async function openSyncDir() {
       </div>
 
       <div class="status-actions">
-        <button class="btn btn-primary" @click="executeSync" :disabled="isSyncing || !status?.configured">
+        <button
+          class="wv-btn wv-btn-primary"
+          :disabled="isSyncing || !status?.configured"
+          @click="executeSync"
+        >
           {{ isSyncing ? '同步中...' : '立即同步' }}
         </button>
-        <button class="btn" @click="openSettings">修改设置</button>
+        <button class="wv-btn" @click="openSettings">修改设置</button>
       </div>
     </div>
 
     <!-- Sync result -->
-    <div v-if="syncResult" :class="['result-card', { success: syncResult.success, error: !syncResult.success }]">
+    <div
+      v-if="syncResult"
+      :class="['result-card', { success: syncResult.success, error: !syncResult.success }]"
+    >
       <h4>{{ syncResult.success ? '同步完成' : '同步部分完成' }}</h4>
       <div v-if="syncResult.uploaded.length" class="result-section">
         <span class="result-label">上传:</span>
@@ -173,7 +200,7 @@ async function openSyncDir() {
     <!-- Synced devices -->
     <div class="devices-section">
       <h3>已同步的设备</h3>
-      <div v-if="devices.length === 0" class="empty-state">
+      <div v-if="devices.length === 0" class="wv-empty-state">
         <p>暂无其他设备</p>
       </div>
       <div v-else class="device-list">
@@ -183,7 +210,9 @@ async function openSyncDir() {
             <div class="device-id">{{ device.id }}</div>
             <div class="device-meta">
               上次同步: {{ device.last_sync }}
-              <span v-if="device.synced_dicts.length"> · 词典: {{ device.synced_dicts.join(', ') }}</span>
+              <span v-if="device.synced_dicts.length">
+                · 词典: {{ device.synced_dicts.join(', ') }}</span
+              >
             </div>
           </div>
         </div>
@@ -196,7 +225,9 @@ async function openSyncDir() {
         <p><strong>ℹ️ 说明：</strong></p>
         <ul>
           <li>Rime 的同步功能<strong>没有自带同步服务</strong>，只是将用户内容读写到指定文件夹</li>
-          <li>这个文件夹配合 <strong>iCloud、WebDAV、坚果云</strong>等文件同步服务可实现多设备同步</li>
+          <li>
+            这个文件夹配合 <strong>iCloud、WebDAV、坚果云</strong>等文件同步服务可实现多设备同步
+          </li>
           <li>如果不配置同步服务，只是读写到这个指定文件夹而已</li>
         </ul>
         <p class="small">同步内容包括：</p>
@@ -204,25 +235,34 @@ async function openSyncDir() {
           <li>用户自定义配置（*.custom.yaml，如 default.custom.yaml 等）</li>
           <li>用户词典快照（*.userdb.txt，即用户词库的文本导出）</li>
         </ul>
-        <p class="small">注意：同步不会备份方案主配置文件（如 rime_mint.schema.yaml）和系统词典文件。</p>
+        <p class="small">
+          注意：同步不会备份方案主配置文件（如 rime_mint.schema.yaml）和系统词典文件。
+        </p>
       </div>
-      
-      <div class="form-group">
+
+      <div class="wv-form-group">
         <label>同步目录</label>
-        <div style="display: flex; gap: 8px;">
-          <input v-model="editingDir" placeholder="/path/to/sync/folder" class="input" style="flex: 1;" />
-          <button type="button" class="btn btn-secondary" @click="selectFolder">📁 选择文件夹</button>
+        <div style="display: flex; gap: 8px">
+          <input
+            v-model="editingDir"
+            placeholder="/path/to/sync/folder"
+            class="input"
+            style="flex: 1"
+          />
+          <button type="button" class="wv-btn btn-secondary" @click="selectFolder">
+            📁 选择文件夹
+          </button>
         </div>
         <p class="hint">例如: /Users/fred/Dropbox/RimeSync 或 D:\Dropbox\RimeSync</p>
       </div>
-      <div class="form-group">
+      <div class="wv-form-group">
         <label>设备标识</label>
         <input v-model="settings.installation_id" class="input" />
         <p class="hint">建议使用小写字母、数字、横线和下划线</p>
       </div>
       <template #actions>
-        <button class="btn" @click="showSettings = false">取消</button>
-        <button class="btn btn-primary" @click="saveSettings">保存</button>
+        <button class="wv-btn" @click="showSettings = false">取消</button>
+        <button class="wv-btn wv-btn-primary" @click="saveSettings">保存</button>
       </template>
     </WeaselModal>
   </div>
@@ -256,7 +296,7 @@ async function openSyncDir() {
   min-width: 80px;
 }
 
-.mono {
+.wv-mono {
   font-family: monospace;
 }
 
@@ -368,60 +408,23 @@ async function openSyncDir() {
   color: var(--color-text-tertiary);
 }
 
-.empty-state {
+.wv-empty-state {
   text-align: center;
-  color: var(--color-text-tertiary);
   padding: 20px;
   font-size: 13px;
 }
 
-.btn {
+.wv-btn {
   padding: 6px 14px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
   border-radius: 6px;
-  cursor: pointer;
   font-size: 13px;
 }
 
-.btn-primary {
-  background: var(--color-accent);
-  color: white;
-  border: none;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--color-bg-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.modal {
-  background: var(--color-bg-modal);
-  border-radius: 12px;
-  padding: 24px;
-  width: 450px;
-}
-
-.modal h3 {
+.wv-form-group {
   margin-bottom: 16px;
 }
 
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group label {
+.wv-form-group label {
   display: block;
   font-size: 13px;
   font-weight: 500;
@@ -475,13 +478,7 @@ async function openSyncDir() {
   color: var(--color-text-secondary);
 }
 
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.status-row .mono.clickable:hover {
+.status-row .wv-mono.clickable:hover {
   color: var(--color-accent);
   cursor: pointer;
   text-decoration: underline;

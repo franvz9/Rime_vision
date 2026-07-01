@@ -68,7 +68,9 @@ onMounted(async () => {
   await loadDicts()
 })
 
-onUnmounted(() => { dmMounted = false })
+onUnmounted(() => {
+  dmMounted = false
+})
 
 async function loadDicts() {
   try {
@@ -131,7 +133,7 @@ async function loadSnapshots() {
       if (result.length > 0 && entries.value) {
         selectedDict.value = {
           ...selectedDict.value,
-          entry_count: entries.value.total
+          entry_count: entries.value.total,
         }
       }
     }
@@ -149,7 +151,7 @@ async function generateSnapshot() {
     await loadSnapshots()
   } catch (e: unknown) {
     const errorMsg = String(e)
-    
+
     if (errorMsg.includes('SYNC_NOT_CONFIGURED')) {
       showSyncNotConfigured.value = true
     } else {
@@ -173,11 +175,11 @@ async function applySnapshot() {
 async function confirmApplySnapshot() {
   showApplyConfirm.value = false
   if (!selectedDict.value || snapshots.value.length === 0) return
-  
+
   try {
     await invoke('apply_modified_snapshot', {
       dictId: selectedDict.value.dict_id,
-      fileName: snapshots.value[0].file_name
+      fileName: snapshots.value[0].file_name,
     })
     toast.success('修改已应用！Rime 正在重新部署...')
     setTimeout(async () => {
@@ -346,7 +348,7 @@ async function addNewEntry() {
     <div class="layout">
       <div class="dict-list">
         <h3>用户词典</h3>
-        <div v-if="dicts.length === 0" class="empty-state">
+        <div v-if="dicts.length === 0" class="wv-empty-state">
           <p>未找到用户词典</p>
           <p class="hint">使用输入法打字后自动生成</p>
         </div>
@@ -361,13 +363,18 @@ async function addNewEntry() {
             <div class="dict-info">
               <div class="dict-name">{{ dict.display_name }}</div>
               <div class="dict-meta">
-                            <template v-if="dict.entry_count < 0">
-                              <span class="hint" title="词典数据存在但未导出为文本快照。请在 Rime 输入法中执行「同步用户资料」以生成快照。">需同步生成快照</span> · {{ formatSize(dict.file_size) }}
-                            </template>
-                            <template v-else>
-                              {{ dict.entry_count.toLocaleString() }} 词条 · {{ formatSize(dict.file_size) }}
-                            </template>
-                          </div>
+                <template v-if="dict.entry_count < 0">
+                  <span
+                    class="hint"
+                    title="词典数据存在但未导出为文本快照。请在 Rime 输入法中执行「同步用户资料」以生成快照。"
+                    >需同步生成快照</span
+                  >
+                  · {{ formatSize(dict.file_size) }}
+                </template>
+                <template v-else>
+                  {{ dict.entry_count.toLocaleString() }} 词条 · {{ formatSize(dict.file_size) }}
+                </template>
+              </div>
             </div>
           </div>
         </div>
@@ -378,8 +385,18 @@ async function addNewEntry() {
           <div class="detail-header">
             <h3>{{ selectedDict.display_name }}</h3>
             <div class="tabs">
-              <button :class="['tab', { active: activeTab === 'entries' }]" @click="activeTab = 'entries'">词条</button>
-              <button :class="['tab', { active: activeTab === 'snapshots' }]" @click="activeTab = 'snapshots'">快照</button>
+              <button
+                :class="['tab', { active: activeTab === 'entries' }]"
+                @click="activeTab = 'entries'"
+              >
+                词条
+              </button>
+              <button
+                :class="['tab', { active: activeTab === 'snapshots' }]"
+                @click="activeTab = 'snapshots'"
+              >
+                快照
+              </button>
             </div>
           </div>
 
@@ -388,116 +405,159 @@ async function addNewEntry() {
             <!-- Show generate snapshot button when no snapshot exists -->
             <div v-if="snapshots.length === 0" class="snapshot-hint">
               <p>📭 此词典尚未生成文本快照</p>
-                        
+
               <!-- Check if userdb directory has any data -->
               <template v-if="selectedDict.file_size > 1024">
-                <p class="hint-text">检测到用户词典数据存在（{{ formatSize(selectedDict.file_size) }}），但尚未导出为文本格式。</p>
-                <button class="btn btn-primary" :disabled="isGenerating" @click="generateSnapshot">
+                <p class="hint-text">
+                  检测到用户词典数据存在（{{
+                    formatSize(selectedDict.file_size)
+                  }}），但尚未导出为文本格式。
+                </p>
+                <button
+                  class="wv-btn wv-btn-primary"
+                  :disabled="isGenerating"
+                  @click="generateSnapshot"
+                >
                   {{ isGenerating ? '生成中...' : '🔄 触发同步并生成快照' }}
                 </button>
                 <p class="hint-text small">点击后将触发 Rime 同步，将用户词典导出到同步目录。</p>
               </template>
               <template v-else>
                 <p class="hint-text">⚠️ 此方案下尚未产生任何用户词条。</p>
-                <p class="hint-text">请先使用该输入法方案打字，Rime 会自动记录您输入过的词语，然后执行「同步用户资料」即可看到词条。</p>
+                <p class="hint-text">
+                  请先使用该输入法方案打字，Rime
+                  会自动记录您输入过的词语，然后执行「同步用户资料」即可看到词条。
+                </p>
               </template>
             </div>
 
             <template v-else>
-            <div class="toolbar">
-              <input
-                v-model="searchQuery"
-                placeholder="搜索编码或文字..."
-                class="search-input"
-                @keyup.enter="onSearch"
-              />
-              <select v-model="sortBy" @change="onSortChange" class="sort-select">
-                <option value="frequency_desc">词频 ↓</option>
-                <option value="frequency_asc">词频 ↑</option>
-                <option value="word_asc">文字 ↑</option>
-                <option value="code_asc">编码 ↑</option>
-              </select>
-              <button class="btn btn-primary" @click="showAddModal = true">+ 新增词条</button>
-            </div>
-
-            <div v-if="entries" class="entries-table">
-              <!-- Show hint when no snapshot available -->
-              <div v-if="selectedDict.entry_count < 0 && entries.entries.length === 0" class="empty-state">
-                <p>📭 此词典尚未生成文本快照</p>
-                <p class="hint-text">请在 Rime 输入法中执行「同步用户资料」以生成快照，然后即可查看和编辑词条。</p>
-                <p class="hint-text small">提示：点击系统托盘的 Rime 图标 → 选择「同步用户资料」</p>
-              </div>
-              
-              <!-- Show hint when snapshot exists but is empty -->
-              <div v-else-if="entries.entries.length === 0" class="empty-state">
-                <p>📭 快照文件中没有词条数据</p>
-                <p class="hint-text">这可能是因为：</p>
-                <ul class="hint-list">
-                  <li>您还没有使用这个方案打字（Rime 只会记录实际输入过的词）</li>
-                  <li>或者需要先在 Rime 中执行「同步用户资料」来导出当前数据</li>
-                </ul>
-                <button class="btn btn-primary" :disabled="isGenerating" @click="generateSnapshot">
-                  {{ isGenerating ? '生成中...' : '🔄 重新同步' }}
+              <div class="toolbar">
+                <input
+                  v-model="searchQuery"
+                  placeholder="搜索编码或文字..."
+                  class="search-input"
+                  @keyup.enter="onSearch"
+                />
+                <select v-model="sortBy" class="sort-select" @change="onSortChange">
+                  <option value="frequency_desc">词频 ↓</option>
+                  <option value="frequency_asc">词频 ↑</option>
+                  <option value="word_asc">文字 ↑</option>
+                  <option value="code_asc">编码 ↑</option>
+                </select>
+                <button class="wv-btn wv-btn-primary" @click="showAddModal = true">
+                  + 新增词条
                 </button>
               </div>
-              
-              <template v-else>
-              <div class="table-header">
-                <span class="col-idx">#</span>
-                <span class="col-word">文字</span>
-                <span class="col-code">编码</span>
-                <span class="col-freq">词频</span>
-                <span class="col-actions">操作</span>
-              </div>
-              <div v-for="(entry, idx) in entries.entries" :key="entry.word + entry.code" class="table-row">
-                <template v-if="editingEntry?.word === entry.word && editingEntry?.code === entry.code">
-                  <span class="col-idx">{{ entries.page * perPage + idx + 1 }}</span>
-                  <span class="col-word">{{ entry.word }}</span>
-                  <span class="col-code">{{ entry.code }}</span>
-                  <span class="col-freq">
-                    <input type="number" v-model.number="editFreq" class="freq-input" min="0" />
-                  </span>
-                  <span class="col-actions">
-                    <button class="icon-btn save" @click="saveEdit">✓</button>
-                    <button class="icon-btn" @click="cancelEdit">✕</button>
-                  </span>
-                </template>
+
+              <div v-if="entries" class="entries-table">
+                <!-- Show hint when no snapshot available -->
+                <div
+                  v-if="selectedDict.entry_count < 0 && entries.entries.length === 0"
+                  class="wv-empty-state"
+                >
+                  <p>📭 此词典尚未生成文本快照</p>
+                  <p class="hint-text">
+                    请在 Rime 输入法中执行「同步用户资料」以生成快照，然后即可查看和编辑词条。
+                  </p>
+                  <p class="hint-text small">
+                    提示：点击系统托盘的 Rime 图标 → 选择「同步用户资料」
+                  </p>
+                </div>
+
+                <!-- Show hint when snapshot exists but is empty -->
+                <div v-else-if="entries.entries.length === 0" class="wv-empty-state">
+                  <p>📭 快照文件中没有词条数据</p>
+                  <p class="hint-text">这可能是因为：</p>
+                  <ul class="hint-list">
+                    <li>您还没有使用这个方案打字（Rime 只会记录实际输入过的词）</li>
+                    <li>或者需要先在 Rime 中执行「同步用户资料」来导出当前数据</li>
+                  </ul>
+                  <button
+                    class="wv-btn wv-btn-primary"
+                    :disabled="isGenerating"
+                    @click="generateSnapshot"
+                  >
+                    {{ isGenerating ? '生成中...' : '🔄 重新同步' }}
+                  </button>
+                </div>
+
                 <template v-else>
-                  <span class="col-idx">{{ entries.page * perPage + idx + 1 }}</span>
-                  <span class="col-word">{{ entry.word }}</span>
-                  <span class="col-code">{{ entry.code }}</span>
-                  <span class="col-freq">{{ formatFreq(entry.frequency) }}</span>
-                  <span class="col-actions">
-                    <button class="icon-btn" @click="startEdit(entry)">📝</button>
-                    <button class="icon-btn danger" @click="deleteEntry(entry)">🗑</button>
-                  </span>
+                  <div class="table-header">
+                    <span class="col-idx">#</span>
+                    <span class="col-word">文字</span>
+                    <span class="col-code">编码</span>
+                    <span class="col-freq">词频</span>
+                    <span class="col-actions">操作</span>
+                  </div>
+                  <div
+                    v-for="(entry, idx) in entries.entries"
+                    :key="entry.word + entry.code"
+                    class="table-row"
+                  >
+                    <template
+                      v-if="editingEntry?.word === entry.word && editingEntry?.code === entry.code"
+                    >
+                      <span class="col-idx">{{ entries.page * perPage + idx + 1 }}</span>
+                      <span class="col-word">{{ entry.word }}</span>
+                      <span class="col-code">{{ entry.code }}</span>
+                      <span class="col-freq">
+                        <input v-model.number="editFreq" type="number" class="freq-input" min="0" />
+                      </span>
+                      <span class="col-actions">
+                        <button class="wv-icon-btn save" @click="saveEdit">✓</button>
+                        <button class="wv-icon-btn" @click="cancelEdit">✕</button>
+                      </span>
+                    </template>
+                    <template v-else>
+                      <span class="col-idx">{{ entries.page * perPage + idx + 1 }}</span>
+                      <span class="col-word">{{ entry.word }}</span>
+                      <span class="col-code">{{ entry.code }}</span>
+                      <span class="col-freq">{{ formatFreq(entry.frequency) }}</span>
+                      <span class="col-actions">
+                        <button class="wv-icon-btn" @click="startEdit(entry)">📝</button>
+                        <button class="wv-icon-btn danger" @click="deleteEntry(entry)">🗑</button>
+                      </span>
+                    </template>
+                  </div>
                 </template>
               </div>
-              </template>
-            </div>
 
-            <div v-if="entries && entries.entries.length > 0" class="pagination">
-              <span class="page-info">
-                共 {{ entries.total.toLocaleString() }} 词条 · 总词频 {{ formatFreq(entries.total_frequency) }}
-              </span>
-              <div class="page-buttons">
-                <button class="btn btn-sm" @click="prevPage" :disabled="currentPage === 0">上一页</button>
-                <span class="page-num">{{ currentPage + 1 }} / {{ Math.ceil(entries.total / perPage) }}</span>
-                <button class="btn btn-sm" @click="nextPage" :disabled="(currentPage + 1) * perPage >= entries.total">下一页</button>
+              <div v-if="entries && entries.entries.length > 0" class="pagination">
+                <span class="page-info">
+                  共 {{ entries.total.toLocaleString() }} 词条 · 总词频
+                  {{ formatFreq(entries.total_frequency) }}
+                </span>
+                <div class="page-buttons">
+                  <button class="wv-btn btn-sm" :disabled="currentPage === 0" @click="prevPage">
+                    上一页
+                  </button>
+                  <span class="page-num"
+                    >{{ currentPage + 1 }} / {{ Math.ceil(entries.total / perPage) }}</span
+                  >
+                  <button
+                    class="wv-btn btn-sm"
+                    :disabled="(currentPage + 1) * perPage >= entries.total"
+                    @click="nextPage"
+                  >
+                    下一页
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div class="batch-actions">
-              <button class="btn btn-sm" @click="showBatchDelete = true">批量删除低频</button>
-              <button class="btn btn-sm" @click="exportDict">导出码表</button>
-              <button class="btn btn-sm danger" @click="showClearConfirm = true">清空词典</button>
-            </div>
+              <div class="batch-actions">
+                <button class="wv-btn btn-sm" @click="showBatchDelete = true">批量删除低频</button>
+                <button class="wv-btn btn-sm" @click="exportDict">导出码表</button>
+                <button class="wv-btn btn-sm danger" @click="showClearConfirm = true">
+                  清空词典
+                </button>
+              </div>
             </template>
           </div>
 
           <!-- Snapshots tab -->
           <div v-if="activeTab === 'snapshots'">
-            <div v-if="snapshots.length === 0" class="empty-state">
+            <div v-if="snapshots.length === 0" class="wv-empty-state">
               <p>📭 暂无快照</p>
               <p class="hint-text">请先在「词条」标签页生成快照</p>
             </div>
@@ -521,9 +581,7 @@ async function addNewEntry() {
                   </div>
                 </div>
                 <div class="card-actions">
-                  <button class="btn btn-primary" @click="applySnapshot">
-                    ✅ 应用修改
-                  </button>
+                  <button class="wv-btn wv-btn-primary" @click="applySnapshot">✅ 应用修改</button>
                 </div>
               </div>
               <div class="hint-box">
@@ -532,14 +590,18 @@ async function addNewEntry() {
                   <li>此快照来自 Rime 同步目录，是最新的用户词典数据</li>
                   <li>您可以在「词条」标签页中编辑词条（新增、删除、修改词频）</li>
                   <li>编辑完成后点击「应用修改」，将更新写回 Rime 用户词典</li>
-                  <li><strong style="color: var(--color-danger);">⚠️ 应用后会自动触发 Rime 重新部署，使更改生效</strong></li>
+                  <li>
+                    <strong style="color: var(--color-danger)"
+                      >⚠️ 应用后会自动触发 Rime 重新部署，使更改生效</strong
+                    >
+                  </li>
                   <li>如需获取最新快照，请前往「同步管理」页面执行完整同步</li>
                 </ul>
               </div>
             </div>
           </div>
         </template>
-        <div v-else class="empty-detail">
+        <div v-else class="wv-empty-detail">
           <p>选择一个词典查看详情</p>
         </div>
       </div>
@@ -548,13 +610,13 @@ async function addNewEntry() {
     <!-- Batch delete modal -->
     <WeaselModal :show="showBatchDelete" title="批量删除低频词条" @close="showBatchDelete = false">
       <p class="hint">删除词频低于阈值的所有词条</p>
-      <div class="form-group">
+      <div class="wv-form-group">
         <label>词频阈值:</label>
-        <input type="number" v-model.number="batchThreshold" min="1" class="input" />
+        <input v-model.number="batchThreshold" type="number" min="1" class="input" />
       </div>
       <template #actions>
-        <button class="btn" @click="showBatchDelete = false">取消</button>
-        <button class="btn btn-danger" @click="batchDelete">删除</button>
+        <button class="wv-btn" @click="showBatchDelete = false">取消</button>
+        <button class="wv-btn wv-btn-danger" @click="batchDelete">删除</button>
       </template>
     </WeaselModal>
 
@@ -562,8 +624,8 @@ async function addNewEntry() {
     <WeaselModal :show="showClearConfirm" title="清空词典" @close="showClearConfirm = false">
       <p class="warning">此操作将删除「{{ selectedDict?.display_name }}」的所有词条，不可撤销！</p>
       <template #actions>
-        <button class="btn" @click="showClearConfirm = false">取消</button>
-        <button class="btn btn-danger" @click="clearDict">确认清空</button>
+        <button class="wv-btn" @click="showClearConfirm = false">取消</button>
+        <button class="wv-btn wv-btn-danger" @click="clearDict">确认清空</button>
       </template>
     </WeaselModal>
 
@@ -571,56 +633,73 @@ async function addNewEntry() {
     <WeaselModal :show="showExportResult" title="导出完成" @close="showExportResult = false">
       <p>已导出 {{ exportCount.toLocaleString() }} 个词条</p>
       <template #actions>
-        <button class="btn btn-primary" @click="showExportResult = false">确定</button>
+        <button class="wv-btn wv-btn-primary" @click="showExportResult = false">确定</button>
       </template>
     </WeaselModal>
 
     <!-- Add entry modal -->
     <WeaselModal :show="showAddModal" title="新增词条" @close="showAddModal = false">
-      <div class="form-group">
+      <div class="wv-form-group">
         <label>文字:</label>
         <input v-model="newEntryWord" class="input" placeholder="输入汉字" />
       </div>
-      <div class="form-group">
+      <div class="wv-form-group">
         <label>编码:</label>
         <input v-model="newEntryCode" class="input" placeholder="如：nihao" />
       </div>
-      <div class="form-group">
+      <div class="wv-form-group">
         <label>初始词频:</label>
-        <input type="number" v-model.number="newEntryFreq" class="input" min="1" />
+        <input v-model.number="newEntryFreq" type="number" class="input" min="1" />
       </div>
       <template #actions>
-        <button class="btn" @click="showAddModal = false">取消</button>
-        <button class="btn btn-primary" @click="addNewEntry" :disabled="!newEntryWord || !newEntryCode">添加</button>
+        <button class="wv-btn" @click="showAddModal = false">取消</button>
+        <button
+          class="wv-btn wv-btn-primary"
+          :disabled="!newEntryWord || !newEntryCode"
+          @click="addNewEntry"
+        >
+          添加
+        </button>
       </template>
     </WeaselModal>
 
     <!-- Apply snapshot confirm modal -->
     <WeaselModal :show="showApplyConfirm" title="确认应用修改" @close="showApplyConfirm = false">
       <p>应用修改后，将执行以下操作：</p>
-      <ul style="padding-left: 20px; margin: 8px 0; font-size: 13px; color: var(--color-text-secondary);">
+      <ul
+        style="
+          padding-left: 20px;
+          margin: 8px 0;
+          font-size: 13px;
+          color: var(--color-text-secondary);
+        "
+      >
         <li>将修改后的词条数据写回 Rime 用户词典</li>
         <li>触发 Rime 重新部署（需要几秒时间）</li>
       </ul>
       <template #actions>
-        <button class="btn" @click="showApplyConfirm = false">取消</button>
-        <button class="btn btn-primary" @click="confirmApplySnapshot">确认应用</button>
+        <button class="wv-btn" @click="showApplyConfirm = false">取消</button>
+        <button class="wv-btn wv-btn-primary" @click="confirmApplySnapshot">确认应用</button>
       </template>
     </WeaselModal>
 
     <!-- Sync not configured modal -->
-    <WeaselModal :show="showSyncNotConfigured" title="需要配置同步目录" @close="showSyncNotConfigured = false">
+    <WeaselModal
+      :show="showSyncNotConfigured"
+      title="需要配置同步目录"
+      @close="showSyncNotConfigured = false"
+    >
       <p>生成快照需要先配置同步目录。</p>
-      <p style="font-size: 13px; color: var(--color-text-secondary); margin-top: 8px;">
-        Rime 的同步功能会将用户词典和配置导出到指定文件夹，
-        配合 iCloud、WebDAV、坚果云等文件同步服务可实现多设备同步。
+      <p style="font-size: 13px; color: var(--color-text-secondary); margin-top: 8px">
+        Rime 的同步功能会将用户词典和配置导出到指定文件夹， 配合
+        iCloud、WebDAV、坚果云等文件同步服务可实现多设备同步。
       </p>
-      <p style="font-size: 13px; color: var(--color-text-secondary); margin-top: 4px;">
+      <p style="font-size: 13px; color: var(--color-text-secondary); margin-top: 4px">
         是否立即前往同步设置？
       </p>
       <template #actions>
-        <button class="btn" @click="showSyncNotConfigured = false">取消</button>
-        <button class="btn btn-primary" @click="goToSyncSettings">前往设置</button>
+        <button class="wv-btn" @click="showSyncNotConfigured = false">取消</button>
+        <button class="wv-btn wv-btn-primary" @click="goToSyncSettings">前往设置</button>
       </template>
     </WeaselModal>
   </div>
@@ -824,20 +903,15 @@ async function addNewEntry() {
   color: var(--color-text-primary);
 }
 
-.icon-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
+.wv-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
   font-size: 12px;
-  padding: 2px 4px;
 }
 
-.icon-btn.danger {
-  color: var(--color-danger);
-}
-
-.icon-btn.save {
-  color: var(--color-success);
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 .pagination {
@@ -859,21 +933,6 @@ async function addNewEntry() {
   font-size: 12px;
   min-width: 60px;
   text-align: center;
-}
-
-.btn {
-  padding: 4px 10px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .snapshot-list {
@@ -920,18 +979,14 @@ async function addNewEntry() {
   font-size: 12px;
 }
 
-.snapshot-item .icon-btn {
+.snapshot-item .wv-icon-btn {
   margin-left: auto;
 }
 
-.empty-state,
-.empty-detail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 200px;
-  color: var(--color-text-tertiary);
+.wv-empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
 }
 
 .hint {
@@ -947,40 +1002,9 @@ async function addNewEntry() {
   border-top: 1px solid var(--color-border);
 }
 
-.btn.danger {
+.wv-btn.danger {
   color: var(--color-danger);
   border-color: var(--color-danger);
-}
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--color-bg-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.modal {
-  background: var(--color-bg-modal);
-  border-radius: 12px;
-  padding: 24px;
-  width: 400px;
-}
-
-.modal h3 {
-  margin-bottom: 8px;
-}
-
-.form-group {
-  margin-bottom: 12px;
-}
-
-.form-group label {
-  display: block;
-  font-size: 13px;
-  margin-bottom: 4px;
 }
 
 .input {
@@ -995,35 +1019,6 @@ async function addNewEntry() {
   color: var(--color-danger);
   font-size: 14px;
   margin: 12px 0;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.btn-primary {
-  background: var(--color-accent);
-  color: white;
-  border: none;
-}
-
-.btn-danger {
-  background: var(--color-danger);
-  color: white;
-  border: none;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px 20px;
-  color: var(--color-text-secondary);
-}
-
-.empty-state p {
-  margin: 8px 0;
 }
 
 .hint-text {
@@ -1140,7 +1135,7 @@ async function addNewEntry() {
   color: var(--color-text-secondary);
 }
 
-.snapshot-hint .btn-primary {
+.snapshot-hint .wv-btn-primary {
   margin: 16px 0;
   padding: 10px 20px;
   font-size: 14px;

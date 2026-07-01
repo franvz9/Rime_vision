@@ -39,7 +39,7 @@ impl RimeConfig {
         if cfg!(target_os = "macos") {
             Self {
                 user_dir: dirs::home_dir()
-                    .unwrap_or_else(|| PathBuf::from("/Users"))
+                    .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
                     .join("Library/Rime"),
                 build_dir: None,
                 style_file: "squirrel.yaml".into(),

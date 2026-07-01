@@ -329,7 +329,7 @@ fn parse_color(dict: &serde_yaml::Mapping, key: &str) -> Option<RimeColor> {
     }
     // Handle integer format: 0xBBGGRR (serde_yaml parses unquoted 0x... as integers)
     if let Some(i) = value.as_i64() {
-        if i >= 0 && i <= 0xFFFFFF {
+        if (0..=0xFFFFFF).contains(&i) {
             // 6-digit: 0xBBGGRR -> pad with alpha=FF
             let hex = format!("0xFF{:06X}", i as u32);
             return RimeColor::from_hex(&hex);

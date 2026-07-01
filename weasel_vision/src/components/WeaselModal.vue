@@ -29,11 +29,11 @@ const emit = defineEmits<{
 
 <template>
   <Teleport to="body">
-    <div v-if="show" class="modal-overlay" @click.self="emit('close')">
-      <div :class="['modal', { 'modal-wide': wide }]">
+    <div v-if="show" class="wv-modal-overlay" @click.self="emit('close')">
+      <div :class="['wv-modal', { 'wv-modal-wide': wide }]">
         <h3 v-if="title">{{ title }}</h3>
         <slot />
-        <div v-if="$slots.actions" class="modal-actions">
+        <div v-if="$slots.actions" class="wv-modal-actions">
           <slot name="actions" />
         </div>
       </div>
@@ -42,51 +42,5 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--color-bg-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.modal-overlay.z-high {
-  z-index: 1000;
-}
-
-.modal {
-  background: var(--color-bg-modal);
-  border-radius: 12px;
-  padding: 24px;
-  width: 400px;
-  max-height: 80vh;
-  overflow-y: auto;
-  box-shadow: var(--shadow-lg);
-  color: var(--color-text-primary);
-}
-
-.modal-wide {
-  width: 600px;
-}
-
-.modal h3 {
-  margin-bottom: 12px;
-  font-size: 16px;
-  color: var(--color-text-primary);
-}
-
-.modal h4 {
-  margin-bottom: 8px;
-  font-size: 14px;
-  color: var(--color-text-secondary);
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-}
+/* All modal styles provided by shared.css (.wv-modal-*) */
 </style>

@@ -8,7 +8,6 @@ import WeaselModal from './WeaselModal.vue'
 
 const toast = useToast()
 
-
 interface PunctRule {
   key: string
   commit: string
@@ -29,13 +28,17 @@ const showSaved = ref(false)
 const editType = ref<'commit' | 'pair' | 'list'>('commit')
 const originalKey = ref('')
 
-watch(editingRule, (rule) => {
-  if (rule) {
-    if (rule.pair?.length) editType.value = 'pair'
-    else if (rule.list?.length) editType.value = 'list'
-    else editType.value = 'commit'
-  }
-}, { immediate: true })
+watch(
+  editingRule,
+  (rule) => {
+    if (rule) {
+      if (rule.pair?.length) editType.value = 'pair'
+      else if (rule.list?.length) editType.value = 'list'
+      else editType.value = 'commit'
+    }
+  },
+  { immediate: true },
+)
 
 const currentRules = computed(() => {
   if (!data.value) return []
@@ -54,7 +57,9 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => { punctMounted = false })
+onUnmounted(() => {
+  punctMounted = false
+})
 
 function editRule(rule: PunctRule) {
   originalKey.value = rule.key
@@ -100,13 +105,13 @@ async function save() {
       full: data.value.full_shape,
     })
     showSaved.value = true
-    setTimeout(() => { showSaved.value = false }, 2000)
+    setTimeout(() => {
+      showSaved.value = false
+    }, 2000)
   } catch (e) {
     toast.error(`保存标点设置失败: ${errorMessage(e)}`)
   }
 }
-
-
 </script>
 
 <template>
@@ -114,8 +119,12 @@ async function save() {
     <DeployNotice />
 
     <div class="tabs">
-      <button :class="['tab', { active: activeTab === 'half' }]" @click="activeTab = 'half'">半角标点</button>
-      <button :class="['tab', { active: activeTab === 'full' }]" @click="activeTab = 'full'">全角标点</button>
+      <button :class="['tab', { active: activeTab === 'half' }]" @click="activeTab = 'half'">
+        半角标点
+      </button>
+      <button :class="['tab', { active: activeTab === 'full' }]" @click="activeTab = 'full'">
+        全角标点
+      </button>
       <button class="btn-add" @click="addRule">+</button>
     </div>
 
@@ -124,67 +133,92 @@ async function save() {
         <span class="rule-key">{{ rule.key }}</span>
         <span class="arrow">→</span>
         <span class="rule-value">
-          {{ rule.commit || (rule.pair.length ? `[${rule.pair.join(', ')}]` : rule.list.length ? `[${rule.list.join(', ')}]` : '') }}
+          {{
+            rule.commit ||
+            (rule.pair.length
+              ? `[${rule.pair.join(', ')}]`
+              : rule.list.length
+                ? `[${rule.list.join(', ')}]`
+                : '')
+          }}
         </span>
         <span class="rule-type">
           {{ rule.commit ? 'commit' : rule.pair.length ? 'pair' : 'list' }}
         </span>
         <span class="rule-actions">
-          <button class="icon-btn" @click="editRule(rule)">📝</button>
-          <button class="icon-btn danger" @click="deleteRule(rule.key)">🗑</button>
+          <button class="wv-icon-btn" @click="editRule(rule)">📝</button>
+          <button class="wv-icon-btn danger" @click="deleteRule(rule.key)">🗑</button>
         </span>
       </div>
     </div>
 
     <div class="actions">
-      <span v-if="showSaved" class="saved-hint">已保存</span>
-      <button class="btn btn-primary" @click="save">保存到 default.custom.yaml</button>
+      <span v-if="showSaved" class="wv-saved-hint">已保存</span>
+      <button class="wv-btn wv-btn-primary" @click="save">保存到 default.custom.yaml</button>
     </div>
 
     <!-- Edit modal -->
     <WeaselModal :show="showEditor && !!editingRule" title="编辑标点" @close="showEditor = false">
-      <div class="form-group">
+      <div class="wv-form-group">
         <label>按键:</label>
         <input v-model="editingRule!.key" maxlength="4" />
       </div>
-      <div class="form-group">
+      <div class="wv-form-group">
         <label>类型:</label>
         <div class="radio-group">
           <label class="radio-item">
-            <input type="radio" value="commit" v-model="editType" />
+            <input v-model="editType" type="radio" value="commit" />
             <span>直接上屏</span>
           </label>
           <label class="radio-item">
-            <input type="radio" value="pair" v-model="editType" />
+            <input v-model="editType" type="radio" value="pair" />
             <span>配对输入</span>
           </label>
           <label class="radio-item">
-            <input type="radio" value="list" v-model="editType" />
+            <input v-model="editType" type="radio" value="list" />
             <span>候选列表</span>
           </label>
         </div>
       </div>
-      <div class="form-group" v-if="editType === 'commit'">
+      <div v-if="editType === 'commit'" class="wv-form-group">
         <label>输出:</label>
         <input v-model="editingRule!.commit" />
       </div>
-      <div class="form-group" v-else-if="editType === 'pair'">
+      <div v-else-if="editType === 'pair'" class="wv-form-group">
         <label>配对 (逗号分隔):</label>
-        <input :value="editingRule!.pair.join(', ')" @input="editingRule!.pair = ($event.target as HTMLInputElement).value.split(',').map(s => s.trim())" />
+        <input
+          :value="editingRule!.pair.join(', ')"
+          @input="
+            editingRule!.pair = ($event.target as HTMLInputElement).value
+              .split(',')
+              .map((s) => s.trim())
+          "
+        />
       </div>
-      <div class="form-group" v-else>
+      <div v-else class="wv-form-group">
         <label>候选 (逗号分隔):</label>
-        <input :value="editingRule!.list.join(', ')" @input="editingRule!.list = ($event.target as HTMLInputElement).value.split(',').map(s => s.trim())" />
+        <input
+          :value="editingRule!.list.join(', ')"
+          @input="
+            editingRule!.list = ($event.target as HTMLInputElement).value
+              .split(',')
+              .map((s) => s.trim())
+          "
+        />
       </div>
       <template #actions>
-        <button class="btn" @click="showEditor = false">取消</button>
-        <button class="btn btn-primary" @click="saveEditedRule(editingRule!)" :disabled="!editingRule?.key">保存</button>
+        <button class="wv-btn" @click="showEditor = false">取消</button>
+        <button
+          class="wv-btn wv-btn-primary"
+          :disabled="!editingRule?.key"
+          @click="saveEditedRule(editingRule!)"
+        >
+          保存
+        </button>
       </template>
     </WeaselModal>
   </div>
 </template>
-
-
 
 <style scoped>
 .punctuation-settings {
@@ -280,17 +314,10 @@ async function save() {
   gap: 4px;
 }
 
-.icon-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
+.wv-icon-btn {
   font-size: 18px;
   padding: 4px 6px;
   line-height: 1;
-}
-
-.icon-btn.danger {
-  color: var(--color-danger);
 }
 
 .actions {
@@ -299,65 +326,27 @@ async function save() {
   gap: 12px;
 }
 
-.btn {
+.wv-btn {
   padding: 8px 16px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
   border-radius: 6px;
-  cursor: pointer;
   font-size: 13px;
 }
 
-.btn-primary {
-  background: var(--color-accent);
-  color: white;
-  border: none;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.saved-hint {
-  color: var(--color-success);
+.wv-saved-hint {
   font-size: 13px;
 }
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--color-bg-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.modal {
-  background: var(--color-bg-modal);
-  border-radius: 12px;
-  padding: 24px;
-  min-width: 420px;
-}
-
-.modal h3 {
-  margin-bottom: 16px;
-}
-
-.form-group {
+.wv-form-group {
   margin-bottom: 12px;
 }
 
-.form-group label {
-  display: block;
+.wv-form-group label {
   font-size: 13px;
   color: var(--color-text-secondary);
   margin-bottom: 4px;
 }
 
-.form-group input {
+.wv-form-group input {
   width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--color-border);
@@ -380,12 +369,5 @@ async function save() {
   font-size: 13px;
   cursor: pointer;
   padding: 4px 0;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
 }
 </style>

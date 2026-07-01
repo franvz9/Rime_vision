@@ -4,19 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::rime::{backup::write_atomic, config::RimeConfig};
 
+/// Sync polling constants (used by create_snapshot)
+const SYNC_POLL_INTERVAL_MS: u64 = 100;
+const SYNC_POLL_MAX_ATTEMPTS: u32 = 100;
+
 /// Validate a file path for import operations (prevents path traversal)
 pub fn validate_import_path(path: &str) -> Result<(), String> {
-    if path.is_empty() {
-        return Err("路径为空".to_string());
-    }
-    // Only reject path traversal components, not path separators (absolute paths are valid)
-    if path.contains("..") {
-        return Err("路径包含路径遍历字符".to_string());
-    }
-    if path.contains('\0') || path.contains('\n') || path.contains('\r') || path.contains('\t') {
-        return Err("路径包含控制字符".to_string());
-    }
-    Ok(())
+    crate::rime::utils::validate_safe_path(path)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -662,29 +656,27 @@ pub fn batch_delete_low_frequency(dict_id: String, threshold: i64) -> Result<usi
 pub fn export_user_dict(dict_id: String, output_path: String) -> Result<usize, String> {
     validate_dict_id(&dict_id)?;
     let output = std::path::PathBuf::from(&output_path);
-    // Validate output path
+    // Basic security checks
     if output_path.is_empty() {
         return Err("Output path is empty".to_string());
     }
     if output_path.contains("..") {
         return Err("Output path contains path traversal".to_string());
     }
-    // Ensure output path is under user's home directory
-    // Find the first existing parent and validate it
-    if let Some(home) = dirs::home_dir() {
-        let canonical_home = home.canonicalize().unwrap_or(home);
-        let mut current = output.clone();
-        // Walk up to find first existing parent
-        while !current.exists() {
-            match current.parent() {
-                Some(parent) => current = parent.to_path_buf(),
-                None => return Err("Output path must be within user home directory".to_string()),
-            }
-        }
-        let canonical_parent = current.canonicalize().map_err(|e| format!("Failed to resolve path: {}", e))?;
-        if !canonical_parent.starts_with(&canonical_home) {
-            return Err("Output path must be within user home directory".to_string());
-        }
+    // Block system-critical directories
+    let path_str = output_path.replace('\\', "/");
+    #[cfg(target_os = "macos")]
+    if path_str.starts_with("/System") || path_str.starts_with("/usr") || path_str.starts_with("/private") {
+        return Err("不允许写入系统关键目录".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    if path_str.starts_with("C:/Windows") || path_str.starts_with("C:/Program Files") {
+        return Err("不允许写入系统关键目录".to_string());
+    }
+    // Validate file extension (.yaml or .txt)
+    let ext = output.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if ext != "yaml" && ext != "txt" {
+        return Err("文件扩展名必须为 .yaml 或 .txt".to_string());
     }
     if output.exists() && !output.is_file() {
         return Err("Output path is not a file".to_string());
@@ -848,8 +840,8 @@ pub async fn create_snapshot(dict_id: String) -> Result<String, String> {
     
     // Wait for Squirrel to process the sync and generate snapshot files
     // Poll for up to 10 seconds
-    for _ in 0..100 {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    for _ in 0..SYNC_POLL_MAX_ATTEMPTS {
+        tokio::time::sleep(std::time::Duration::from_millis(SYNC_POLL_INTERVAL_MS)).await;
         if let Ok(snapshot_path) = find_snapshot(&dict_id) {
             return Ok(snapshot_path.to_string_lossy().to_string());
         }

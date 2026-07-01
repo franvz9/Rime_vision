@@ -1,5 +1,5 @@
-import { createApp } from "vue";
-import App from "./App.vue";
-import "./styles/shared.css";
+import { createApp } from 'vue'
+import App from './App.vue'
+import './styles/shared.css'
 
-createApp(App).mount("#app");
+createApp(App).mount('#app')

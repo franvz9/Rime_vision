@@ -65,7 +65,7 @@ function onIndividualCategoryChange() {
   if (fullBackupMode.value) {
     fullBackupMode.value = false
     // Remove 'full' from selectedCategories
-    selectedCategories.value = selectedCategories.value.filter(c => c !== 'full')
+    selectedCategories.value = selectedCategories.value.filter((c) => c !== 'full')
   }
 }
 
@@ -75,7 +75,9 @@ onMounted(async () => {
   await loadBackups()
 })
 
-onUnmounted(() => { bmMounted = false })
+onUnmounted(() => {
+  bmMounted = false
+})
 
 async function loadBackups() {
   try {
@@ -90,7 +92,7 @@ async function selectBackup(backup: BackupInfo) {
   try {
     const detail = await invoke('get_backup_detail', { backupId: backup.id })
     selectedBackup.value = detail as BackupDetail
-    restoreFiles.value = selectedBackup.value.files.map(f => f.name)
+    restoreFiles.value = selectedBackup.value.files.map((f) => f.name)
   } catch (e) {
     toast.error(`加载备份详情失败: ${errorMessage(e)}`)
   }
@@ -104,10 +106,12 @@ async function confirmCreateBackup() {
   isCreating.value = true
   try {
     // When full backup mode, only send ["full"] to backend
-    const categories = fullBackupMode.value ? ['full'] : selectedCategories.value.filter(c => c !== 'full')
-    await invoke('create_backup', { 
+    const categories = fullBackupMode.value
+      ? ['full']
+      : selectedCategories.value.filter((c) => c !== 'full')
+    await invoke('create_backup', {
       categories,
-      note: createNote.value || null 
+      note: createNote.value || null,
     })
     createNote.value = ''
     selectedCategories.value = ['core', 'schemas', 'themes', 'dicts'] // reset to default
@@ -183,7 +187,7 @@ function typeName(type: string): string {
       <div class="backup-list">
         <div class="list-header">
           <h3>备份列表</h3>
-          <button class="btn btn-primary btn-sm" @click="createBackup" :disabled="isCreating">
+          <button class="wv-btn wv-btn-primary btn-sm" :disabled="isCreating" @click="createBackup">
             {{ isCreating ? '创建中...' : '+ 创建备份' }}
           </button>
         </div>
@@ -191,12 +195,14 @@ function typeName(type: string): string {
         <div class="auto-backup-hint">
           <p>💡 每次部署前会自动备份，最多保留 10 个，滚动更新。</p>
           <p class="hint-sub">
-            <strong>备份规则：</strong>默认包含配置、主题、方案等文件；若本次部署涉及模型删除，则自动升级为全量备份（含 .gram 模型文件），确保可恢复。
+            <strong>备份规则：</strong
+            >默认包含配置、主题、方案等文件；若本次部署涉及模型删除，则自动升级为全量备份（含 .gram
+            模型文件），确保可恢复。
           </p>
           <p class="hint-sub">此备份功能独立于 Rime 原生同步，不会被 Rime 同步到其他设备。</p>
         </div>
 
-        <div v-if="backups.length === 0" class="empty-state">
+        <div v-if="backups.length === 0" class="wv-empty-state">
           <p>暂无备份</p>
           <p class="hint">点击「创建备份」保存当前所有配置</p>
         </div>
@@ -212,10 +218,11 @@ function typeName(type: string): string {
             <div class="backup-info">
               <div class="backup-id">{{ backup.id }}</div>
               <div class="backup-meta">
-                {{ typeName(backup.backup_type) }} · {{ backup.file_count }} 文件 · {{ formatSize(backup.total_size) }}
+                {{ typeName(backup.backup_type) }} · {{ backup.file_count }} 文件 ·
+                {{ formatSize(backup.total_size) }}
               </div>
             </div>
-            <button class="icon-btn danger" @click.stop="deleteBackup(backup.id)">🗑</button>
+            <button class="wv-icon-btn danger" @click.stop="deleteBackup(backup.id)">🗑</button>
           </div>
         </div>
       </div>
@@ -230,8 +237,12 @@ function typeName(type: string): string {
           <div class="detail-meta">
             <div><span class="label">时间:</span> {{ selectedBackup.info.created_at }}</div>
             <div><span class="label">文件数:</span> {{ selectedBackup.info.file_count }}</div>
-            <div><span class="label">大小:</span> {{ formatSize(selectedBackup.info.total_size) }}</div>
-            <div v-if="selectedBackup.info.note"><span class="label">备注:</span> {{ selectedBackup.info.note }}</div>
+            <div>
+              <span class="label">大小:</span> {{ formatSize(selectedBackup.info.total_size) }}
+            </div>
+            <div v-if="selectedBackup.info.note">
+              <span class="label">备注:</span> {{ selectedBackup.info.note }}
+            </div>
           </div>
 
           <h4>包含文件</h4>
@@ -240,109 +251,168 @@ function typeName(type: string): string {
               <span class="file-icon">📄</span>
               <span class="file-name">{{ file.name }}</span>
               <span class="file-size">{{ formatSize(file.size) }}</span>
-              <button class="icon-btn" @click="compareBackup(file.name)">对比</button>
+              <button class="wv-icon-btn" @click="compareBackup(file.name)">对比</button>
             </div>
           </div>
 
           <div class="detail-actions">
-            <button class="btn btn-primary" @click="showRestoreDialog = true">恢复此备份</button>
+            <button class="wv-btn wv-btn-primary" @click="showRestoreDialog = true">
+              恢复此备份
+            </button>
           </div>
         </template>
-        <div v-else class="empty-detail">
+        <div v-else class="wv-empty-detail">
           <p>选择一个备份查看详情</p>
         </div>
       </div>
     </div>
 
     <!-- Restore dialog -->
-    <WeaselModal :show="showRestoreDialog" :title="`恢复备份 — ${selectedBackup?.info.id}`" @close="showRestoreDialog = false">
+    <WeaselModal
+      :show="showRestoreDialog"
+      :title="`恢复备份 — ${selectedBackup?.info.id}`"
+      @close="showRestoreDialog = false"
+    >
       <p class="hint">选择要恢复的文件，当前文件会被备份到 backups/auto/</p>
       <div class="restore-files">
         <label v-for="file in selectedBackup?.files" :key="file.name" class="checkbox">
-          <input type="checkbox" :value="file.name" v-model="restoreFiles" />
+          <input v-model="restoreFiles" type="checkbox" :value="file.name" />
           {{ file.name }}
         </label>
       </div>
       <template #actions>
-        <button class="btn" @click="showRestoreDialog = false">取消</button>
-        <button class="btn btn-primary" @click="restoreBackup" :disabled="restoreFiles.length === 0 || isRestoring">
+        <button class="wv-btn" @click="showRestoreDialog = false">取消</button>
+        <button
+          class="wv-btn wv-btn-primary"
+          :disabled="restoreFiles.length === 0 || isRestoring"
+          @click="restoreBackup"
+        >
           {{ isRestoring ? '恢复中...' : '确认恢复' }}
         </button>
       </template>
     </WeaselModal>
 
     <!-- Compare dialog -->
-    <WeaselModal :show="showCompareDialog && !!compareDiff" :title="`对比: ${compareDiff?.file_name}`" wide @close="showCompareDialog = false">
+    <WeaselModal
+      :show="showCompareDialog && !!compareDiff"
+      :title="`对比: ${compareDiff?.file_name}`"
+      wide
+      @close="showCompareDialog = false"
+    >
       <div class="diff-view">
         <div v-if="compareDiff?.current === null" class="diff-note">当前文件不存在</div>
         <pre v-else class="diff-current">{{ compareDiff?.current }}</pre>
         <pre class="diff-backup">{{ compareDiff?.backup }}</pre>
       </div>
       <template #actions>
-        <button class="btn" @click="showCompareDialog = false">关闭</button>
+        <button class="wv-btn" @click="showCompareDialog = false">关闭</button>
       </template>
     </WeaselModal>
 
     <!-- Delete confirm dialog -->
     <WeaselModal :show="showDeleteConfirm" title="确认删除" @close="showDeleteConfirm = false">
-      <p>确定要删除备份 <strong>{{ backupToDelete }}</strong> 吗？此操作不可撤销。</p>
+      <p>
+        确定要删除备份 <strong>{{ backupToDelete }}</strong> 吗？此操作不可撤销。
+      </p>
       <template #actions>
-        <button class="btn" @click="showDeleteConfirm = false">取消</button>
-        <button class="btn btn-danger" @click="confirmDelete">删除</button>
+        <button class="wv-btn" @click="showDeleteConfirm = false">取消</button>
+        <button class="wv-btn wv-btn-danger" @click="confirmDelete">删除</button>
       </template>
     </WeaselModal>
 
     <!-- Create backup dialog -->
     <WeaselModal :show="showCreateDialog" title="创建备份" wide @close="showCreateDialog = false">
-      <p class="hint-text" style="color: var(--color-danger); font-weight: bold;">
+      <p class="hint-text" style="color: var(--color-danger); font-weight: bold">
         ⚠️ 注意：此备份不是 Rime 原生备份功能，不会被 Rime 原生同步同步
       </p>
       <h4>选择备份类别：</h4>
       <div class="category-list" :class="{ disabled: fullBackupMode }">
         <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-          <input type="checkbox" value="core" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <input
+            v-model="selectedCategories"
+            type="checkbox"
+            value="core"
+            :disabled="fullBackupMode"
+            @change="onIndividualCategoryChange"
+          />
           <div>
             <strong>核心配置</strong>
             <span class="desc">default.yaml, installation.yaml, user.yaml, squirrel.yaml 等</span>
           </div>
         </label>
         <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-          <input type="checkbox" value="schemas" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <input
+            v-model="selectedCategories"
+            type="checkbox"
+            value="schemas"
+            :disabled="fullBackupMode"
+            @change="onIndividualCategoryChange"
+          />
           <div>
             <strong>方案定义</strong>
             <span class="desc">*.schema.yaml 文件</span>
           </div>
         </label>
         <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-          <input type="checkbox" value="themes" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <input
+            v-model="selectedCategories"
+            type="checkbox"
+            value="themes"
+            :disabled="fullBackupMode"
+            @change="onIndividualCategoryChange"
+          />
           <div>
             <strong>主题配色</strong>
             <span class="desc">squirrel.custom.yaml, weasel.custom.yaml 等</span>
           </div>
         </label>
         <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-          <input type="checkbox" value="dicts" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <input
+            v-model="selectedCategories"
+            type="checkbox"
+            value="dicts"
+            :disabled="fullBackupMode"
+            @change="onIndividualCategoryChange"
+          />
           <div>
             <strong>用户词典</strong>
             <span class="desc">user_dictionaries/*.userdb.txt</span>
           </div>
         </label>
         <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-          <input type="checkbox" value="models" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <input
+            v-model="selectedCategories"
+            type="checkbox"
+            value="models"
+            :disabled="fullBackupMode"
+            @change="onIndividualCategoryChange"
+          />
           <div>
             <strong>语言模型</strong>
             <span class="desc">*.gram 文件</span>
           </div>
         </label>
         <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-          <input type="checkbox" value="opencc" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <input
+            v-model="selectedCategories"
+            type="checkbox"
+            value="opencc"
+            :disabled="fullBackupMode"
+            @change="onIndividualCategoryChange"
+          />
           <div>
             <strong>OpenCC 数据</strong>
             <span class="desc">opencc/ 目录</span>
           </div>
         </label>
         <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-          <input type="checkbox" value="lua" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <input
+            v-model="selectedCategories"
+            type="checkbox"
+            value="lua"
+            :disabled="fullBackupMode"
+            @change="onIndividualCategoryChange"
+          />
           <div>
             <strong>Lua 脚本</strong>
             <span class="desc">lua/ 目录</span>
@@ -359,8 +429,12 @@ function typeName(type: string): string {
       <h4>备注（可选）：</h4>
       <textarea v-model="createNote" placeholder="例如：修改主题前的备份" rows="2"></textarea>
       <template #actions>
-        <button class="btn" @click="showCreateDialog = false">取消</button>
-        <button class="btn btn-primary" @click="confirmCreateBackup" :disabled="isCreating || selectedCategories.length === 0">
+        <button class="wv-btn" @click="showCreateDialog = false">取消</button>
+        <button
+          class="wv-btn wv-btn-primary"
+          :disabled="isCreating || selectedCategories.length === 0"
+          @click="confirmCreateBackup"
+        >
           {{ isCreating ? '创建中...' : '确认创建' }}
         </button>
       </template>
@@ -540,14 +614,9 @@ function typeName(type: string): string {
   margin-top: 16px;
 }
 
-.empty-state,
-.empty-detail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+.wv-empty-state,
+.wv-empty-detail {
   height: 200px;
-  color: var(--color-text-tertiary);
 }
 
 .hint {
@@ -555,83 +624,15 @@ function typeName(type: string): string {
   color: var(--color-text-tertiary);
 }
 
-.btn {
+.wv-btn {
   padding: 6px 14px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
   border-radius: 6px;
-  cursor: pointer;
   font-size: 13px;
 }
 
 .btn-sm {
   padding: 4px 10px;
   font-size: 12px;
-}
-
-.btn-primary {
-  background: var(--color-accent);
-  color: white;
-  border: none;
-}
-
-.btn-danger {
-  background: var(--color-danger);
-  color: white;
-  border: none;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.icon-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 12px;
-  padding: 2px 4px;
-  color: var(--color-text-primary);
-}
-
-.icon-btn.danger {
-  color: var(--color-danger);
-}
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--color-bg-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.modal {
-  background: var(--color-bg-modal);
-  border-radius: 12px;
-  padding: 24px;
-  width: 400px;
-  max-height: 80vh;
-  overflow-y: auto;
-}
-
-.modal-wide {
-  width: 700px;
-}
-
-.modal h3 {
-  margin-bottom: 8px;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
 }
 
 .restore-files {
@@ -709,7 +710,7 @@ function typeName(type: string): string {
   background: var(--color-bg-hover);
 }
 
-.checkbox-item input[type="checkbox"] {
+.checkbox-item input[type='checkbox'] {
   margin-top: 4px;
   width: 16px;
   height: 16px;

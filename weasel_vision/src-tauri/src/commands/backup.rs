@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::rime::config::RimeConfig;
 
+/// Maximum recursion depth for directory traversal to prevent stack overflow
+/// from symlink cycles or excessively deep directory trees.
+const MAX_DIR_DEPTH: u32 = 32;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupInfo {
     pub id: String,
@@ -32,6 +36,12 @@ pub struct FileDiff {
     pub file_name: String,
     pub current: Option<String>,
     pub backup: String,
+}
+
+/// 判断目录是否应被备份排除
+fn is_backup_excluded_dir(name: &str) -> bool {
+    let excluded_exact = ["backups", "build", ".restore_temp"];
+    excluded_exact.contains(&name) || name.starts_with(".restore_temp")
 }
 
 fn backups_dir() -> PathBuf {
@@ -175,13 +185,24 @@ fn get_files_by_category(category: &str) -> Result<Vec<PathBuf>, String> {
 }
 
 fn collect_all_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    collect_all_files_inner(dir, files, 0)
+}
+
+fn collect_all_files_inner(dir: &Path, files: &mut Vec<PathBuf>, depth: u32) -> Result<(), String> {
+    if depth > MAX_DIR_DEPTH {
+        return Ok(());
+    }
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
+            // Skip symbolic links to prevent infinite loops from symlink cycles
+            if path.is_symlink() {
+                continue;
+            }
             if path.is_file() {
                 files.push(path);
             } else if path.is_dir() {
-                collect_all_files(&path, files)?;
+                collect_all_files_inner(&path, files, depth + 1)?;
             }
         }
     }
@@ -189,15 +210,17 @@ fn collect_all_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String>
 }
 
 fn collect_user_dir(user_dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    let exclude_dirs = ["backups", "build", ".restore_temp"];
-    
     if let Ok(entries) = std::fs::read_dir(user_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
+            // Skip symbolic links to prevent infinite loops from symlink cycles
+            if path.is_symlink() {
+                continue;
+            }
             
             if path.is_dir() {
                 if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-                    if exclude_dirs.contains(&dir_name) {
+                    if is_backup_excluded_dir(dir_name) {
                         continue;
                     }
                 }
@@ -220,6 +243,18 @@ fn copy_dir_filtered(
     dst: &Path,
     skip_file: &dyn Fn(&str) -> bool,
 ) -> Result<usize, String> {
+    copy_dir_filtered_inner(src, dst, skip_file, 0)
+}
+
+fn copy_dir_filtered_inner(
+    src: &Path,
+    dst: &Path,
+    skip_file: &dyn Fn(&str) -> bool,
+    depth: u32,
+) -> Result<usize, String> {
+    if depth > MAX_DIR_DEPTH {
+        return Ok(0);
+    }
     std::fs::create_dir_all(dst).map_err(|e| format!("Failed to create dir {:?}: {}", dst, e))?;
     let mut count = 0;
 
@@ -227,6 +262,11 @@ fn copy_dir_filtered(
         for entry in entries.flatten() {
             let src_path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
+
+            // Skip symbolic links to prevent infinite loops from symlink cycles
+            if src_path.is_symlink() {
+                continue;
+            }
 
             // Validate file name to prevent path traversal
             if let Err(e) = validate_file_name(&name) {
@@ -251,7 +291,7 @@ fn copy_dir_filtered(
             }
 
             if src_path.is_dir() {
-                count += copy_dir_filtered(&src_path, &dst_path, skip_file)?;
+                count += copy_dir_filtered_inner(&src_path, &dst_path, skip_file, depth + 1)?;
             } else {
                 match std::fs::copy(&src_path, &dst_path) {
                     Ok(_) => count += 1,
@@ -386,8 +426,6 @@ pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<Ba
     
     if is_full {
         // For full backup: directly copy entire user directory structure
-        let exclude_dirs = ["backups", "build", ".restore_temp"];
-        
         // user_dir is always the correct Rime root directory
         let actual_backup_source = cfg.user_dir.clone();
         
@@ -397,7 +435,7 @@ pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<Ba
                 let name = entry.file_name().to_string_lossy().to_string();
                 
                 // Skip excluded directories
-                if src_path.is_dir() && exclude_dirs.contains(&name.as_str()) {
+                if src_path.is_dir() && is_backup_excluded_dir(&name) {
                     continue;
                 }
                 
@@ -472,144 +510,129 @@ pub fn restore_backup(backup_id: String, restore_files: Vec<String>) -> Result<(
     let cfg = RimeConfig::detect();
     let dir = find_backup_dir(&backup_id)?;
 
-    // Check if this is a full restore (restore_files is empty or contains all files)
-    let is_full_restore = restore_files.is_empty();
+    if restore_files.is_empty() {
+        restore_full(&cfg, &dir)
+    } else {
+        restore_partial(&cfg, &dir, restore_files)
+    }
+}
 
-    if is_full_restore {
-        // Full restore: copy entire backup directory back to user directory
-        // Strategy: copy to temp dir first, then swap atomically
+/// Full restore: copy entire backup directory back to user directory.
+/// Strategy: stage backup files, then atomically swap with current files.
+fn restore_full(cfg: &RimeConfig, backup_dir: &Path) -> Result<(), String> {
+    // Create auto-backup of current state
+    let auto_backup_dir = auto_backups_dir().join(format!("pre_restore_{}", timestamp()));
+    std::fs::create_dir_all(&auto_backup_dir).map_err(|e| e.to_string())?;
 
-        // Create auto-backup of current state
-        let auto_backup_dir = auto_backups_dir().join(format!("pre_restore_{}", timestamp()));
-        std::fs::create_dir_all(&auto_backup_dir).map_err(|e| e.to_string())?;
+    if let Ok(entries) = std::fs::read_dir(&cfg.user_dir) {
+        for entry in entries.flatten() {
+            let src_path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
 
-        let exclude_dirs = ["backups", "build", ".restore_temp", ".restore_temp_new"];
-        if let Ok(entries) = std::fs::read_dir(&cfg.user_dir) {
-            for entry in entries.flatten() {
-                let src_path = entry.path();
-                let name = entry.file_name().to_string_lossy().to_string();
-
-                if src_path.is_dir() && exclude_dirs.contains(&name.as_str()) {
-                    continue;
-                }
-
-                let dst_path = auto_backup_dir.join(&name);
-                if src_path.is_dir() {
-                    copy_dir_recursive(&src_path, &dst_path)
-                        .map_err(|e| format!("自动备份目录失败 {:?}: {}", src_path, e))?;
-                } else {
-                    std::fs::copy(&src_path, &dst_path)
-                        .map_err(|e| format!("自动备份文件失败 {:?}: {}", src_path, e))?;
-                }
+            if src_path.is_dir() && is_backup_excluded_dir(&name) {
+                continue;
             }
-        }
 
-        // Phase 1: Copy backup to a staging directory
-        let restore_id = uuid::Uuid::new_v4().to_string();
-        let staging_dir = cfg.user_dir.join(format!(".restore_temp_new_{}", restore_id));
-        std::fs::create_dir_all(&staging_dir).map_err(|e| e.to_string())?;
-
-        let mut staged_files = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                let src_path = entry.path();
-                let name = entry.file_name().to_string_lossy().to_string();
-
-                if name == "manifest.json" {
-                    continue;
-                }
-
-                if let Err(e) = validate_file_name(&name) {
-                    eprintln!("Skipping invalid backup entry: {} - {}", name, e);
-                    continue;
-                }
-
-                let staged_path = staging_dir.join(&name);
-                if src_path.is_dir() {
-                    copy_dir_recursive(&src_path, &staged_path)?;
-                } else {
-                    std::fs::copy(&src_path, &staged_path).map_err(|e| e.to_string())?;
-                }
-                staged_files.push((name, src_path.is_dir()));
-            }
-        }
-
-        // Phase 2: Atomically replace current files with staged files.
-        // Strategy: rename original to .bak first, then rename staged to destination.
-        // If the staged rename fails, restore from .bak. This prevents partial data loss.
-        let bak_suffix = format!(".restore_bak_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
-        
-        for (name, is_dir) in &staged_files {
-            let staged_path = staging_dir.join(name);
-            let dst_path = cfg.user_dir.join(name);
-
-            if *is_dir {
-                if dst_path.exists() {
-                    let bak_path = cfg.user_dir.join(format!("{}{}", name, bak_suffix));
-                    // Safeguard: ensure bak path does not pre-exist
-                    if bak_path.exists() {
-                        let _ = std::fs::remove_dir_all(&bak_path);
-                    }
-                    // Step 1: rename original → .bak
-                    std::fs::rename(&dst_path, &bak_path)
-                        .map_err(|e| format!("Failed to back up directory {:?}: {}", dst_path, e))?;
-                    // Step 2: rename staged → destination
-                    if let Err(e) = std::fs::rename(&staged_path, &dst_path) {
-                        // Recover: rename .bak back to original
-                        let _ = std::fs::rename(&bak_path, &dst_path);
-                        return Err(format!("Failed to restore directory {}: {}", name, e));
-                    }
-                    // Step 3: remove .bak
-                    let _ = std::fs::remove_dir_all(&bak_path);
-                } else {
-                    // New directory: simple rename
-                    std::fs::rename(&staged_path, &dst_path)
-                        .map_err(|e| format!("Failed to restore new directory {}: {}", name, e))?;
-                }
+            let dst_path = auto_backup_dir.join(&name);
+            if src_path.is_dir() {
+                copy_dir_recursive(&src_path, &dst_path)
+                    .map_err(|e| format!("自动备份目录失败 {:?}: {}", src_path, e))?;
             } else {
-                // File: rename is atomic on same filesystem
-                if std::fs::rename(&staged_path, &dst_path).is_err() {
-                    // Fallback: copy + remove
-                    if dst_path.exists() {
-                        // Back up existing before overwrite
-                        let bak = dst_path.with_extension(format!("{}.{}", dst_path.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default(), bak_suffix));
-                        let _ = std::fs::copy(&dst_path, &bak);
-                        let _ = std::fs::remove_file(&dst_path);
-                    }
-                    std::fs::copy(&staged_path, &dst_path)
-                        .map_err(|e| format!("Failed to restore {}: {}", name, e))?;
-                }
+                std::fs::copy(&src_path, &dst_path)
+                    .map_err(|e| format!("自动备份文件失败 {:?}: {}", src_path, e))?;
             }
         }
-
-        // Cleanup staging directory
-        let _ = std::fs::remove_dir_all(&staging_dir);
-
-        return Ok(());
     }
 
-    // Partial restore: file-by-file approach
-    let files = restore_files;
+    // Phase 1: Copy backup to a staging directory
+    let restore_id = uuid::Uuid::new_v4().to_string();
+    let staging_dir = cfg.user_dir.join(format!(".restore_temp_new_{}", restore_id));
+    std::fs::create_dir_all(&staging_dir).map_err(|e| e.to_string())?;
 
-    // Phase 1: Validate and stage all files into a temp directory first.
-    // This ensures we don't partially overwrite files if any source is missing or unreadable.
-    // Use UUID-based random directory name to prevent TOCTOU race conditions.
+    let mut staged_files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(backup_dir) {
+        for entry in entries.flatten() {
+            let src_path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            if name == "manifest.json" {
+                continue;
+            }
+
+            if let Err(e) = validate_file_name(&name) {
+                eprintln!("Skipping invalid backup entry: {} - {}", name, e);
+                continue;
+            }
+
+            let staged_path = staging_dir.join(&name);
+            if src_path.is_dir() {
+                copy_dir_recursive(&src_path, &staged_path)?;
+            } else {
+                std::fs::copy(&src_path, &staged_path).map_err(|e| e.to_string())?;
+            }
+            staged_files.push((name, src_path.is_dir()));
+        }
+    }
+
+    // Phase 2: Atomically replace current files with staged files.
+    let bak_suffix = format!(".restore_bak_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
+
+    for (name, is_dir) in &staged_files {
+        let staged_path = staging_dir.join(name);
+        let dst_path = cfg.user_dir.join(name);
+
+        if *is_dir {
+            if dst_path.exists() {
+                let bak_path = cfg.user_dir.join(format!("{}{}", name, bak_suffix));
+                if bak_path.exists() {
+                    let _ = std::fs::remove_dir_all(&bak_path);
+                }
+                std::fs::rename(&dst_path, &bak_path)
+                    .map_err(|e| format!("Failed to back up directory {:?}: {}", dst_path, e))?;
+                if let Err(e) = std::fs::rename(&staged_path, &dst_path) {
+                    let _ = std::fs::rename(&bak_path, &dst_path);
+                    return Err(format!("Failed to restore directory {}: {}", name, e));
+                }
+                let _ = std::fs::remove_dir_all(&bak_path);
+            } else {
+                std::fs::rename(&staged_path, &dst_path)
+                    .map_err(|e| format!("Failed to restore new directory {}: {}", name, e))?;
+            }
+        } else {
+            if std::fs::rename(&staged_path, &dst_path).is_err() {
+                if dst_path.exists() {
+                    let bak = dst_path.with_extension(format!("{}.{}", dst_path.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default(), bak_suffix));
+                    let _ = std::fs::copy(&dst_path, &bak);
+                    let _ = std::fs::remove_file(&dst_path);
+                }
+                std::fs::copy(&staged_path, &dst_path)
+                    .map_err(|e| format!("Failed to restore {}: {}", name, e))?;
+            }
+        }
+    }
+
+    // Cleanup staging directory
+    let _ = std::fs::remove_dir_all(&staging_dir);
+    Ok(())
+}
+
+/// Partial restore: file-by-file approach with staged copies.
+fn restore_partial(cfg: &RimeConfig, backup_dir: &Path, files: Vec<String>) -> Result<(), String> {
     let restore_id = uuid::Uuid::new_v4().to_string();
     let temp_dir = cfg.user_dir.join(format!(".restore_temp_{}", restore_id));
     std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
 
-    let mut files_to_restore: Vec<(String, PathBuf)> = Vec::new(); // (file_name, staged_path)
+    let mut files_to_restore: Vec<(String, PathBuf)> = Vec::new();
 
     for file_name in &files {
         validate_file_name(file_name).inspect_err(|_| {
             let _ = std::fs::remove_dir_all(&temp_dir);
         })?;
-        let src = dir.join(file_name);
+        let src = backup_dir.join(file_name);
         if !src.exists() {
             continue;
         }
         let staged = temp_dir.join(file_name);
-        // Create parent directory for subdirectory files
         if let Some(parent) = staged.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -620,23 +643,17 @@ pub fn restore_backup(backup_id: String, restore_files: Vec<String>) -> Result<(
         files_to_restore.push((file_name.clone(), staged));
     }
 
-    // Phase 2: Auto-backup current files, then replace from staged copies.
-    // Since all source files are already in temp, a failure here only affects
-    // files already processed — but originals of unprocessed files remain intact.
     let mut restore_errors = Vec::new();
 
     for (file_name, staged_path) in &files_to_restore {
         let dst = cfg.user_dir.join(file_name);
 
-        // Ensure parent directory exists for subdirectory files
         if let Some(parent) = dst.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
 
-        // Auto-backup current file before overwriting
         if dst.exists() {
-            // Use relative path for backup name to avoid collisions
-            let safe_name = file_name.replace('/', "_").replace('\\', "_");
+            let safe_name = file_name.replace(['/', '\\'], "_");
             let backup_path =
                 auto_backups_dir().join(format!("{}.{}.bak", safe_name, timestamp()));
             if let Err(e) = std::fs::create_dir_all(
@@ -656,7 +673,6 @@ pub fn restore_backup(backup_id: String, restore_files: Vec<String>) -> Result<(
         }
     }
 
-    // Cleanup temp directory
     let _ = std::fs::remove_dir_all(&temp_dir);
 
     if !restore_errors.is_empty() {
@@ -725,12 +741,10 @@ fn validate_backup_id(id: &str) -> Result<(), String> {
 }
 
 fn validate_file_name(name: &str) -> Result<(), String> {
-    if name.is_empty() || name.len() > 512 {
-        return Err("Invalid file name".to_string());
-    }
-    // Block path traversal, null bytes, absolute paths, and single dot
-    if name.contains("..") || name.contains('\0') || name.starts_with('/') || name.starts_with('\\') || name == "." {
-        return Err("File name contains invalid characters".to_string());
+    crate::rime::utils::validate_safe_path(name)?;
+    // Block absolute paths and single dot (file-name-specific rules)
+    if name.starts_with('/') || name.starts_with('\\') || name == "." {
+        return Err("文件名无效".to_string());
     }
     Ok(())
 }
@@ -745,9 +759,20 @@ fn dir_size(dir: &Path) -> i64 {
 
 /// Recursively collect files from backup dir, storing relative paths
 fn collect_backup_files_recursive(base_dir: &Path, current_dir: &Path, files: &mut Vec<BackupFile>) {
+    collect_backup_files_recursive_inner(base_dir, current_dir, files, 0);
+}
+
+fn collect_backup_files_recursive_inner(base_dir: &Path, current_dir: &Path, files: &mut Vec<BackupFile>, depth: u32) {
+    if depth > MAX_DIR_DEPTH {
+        return;
+    }
     if let Ok(entries) = std::fs::read_dir(current_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
+            // Skip symbolic links to prevent infinite loops from symlink cycles
+            if path.is_symlink() {
+                continue;
+            }
             if path.is_file() {
                 // Skip manifest.json
                 if path.extension().and_then(|e| e.to_str()) == Some("json")
@@ -774,7 +799,7 @@ fn collect_backup_files_recursive(base_dir: &Path, current_dir: &Path, files: &m
                         .unwrap_or_default(),
                 });
             } else if path.is_dir() {
-                collect_backup_files_recursive(base_dir, &path, files);
+                collect_backup_files_recursive_inner(base_dir, &path, files, depth + 1);
             }
         }
     }
@@ -790,13 +815,12 @@ pub fn create_deploy_backup(include_models: bool) -> Result<BackupInfo, String> 
 
     // Copy user directory, optionally excluding large model files (.gram)
     // When no model deletion is planned, skip .gram files to save space
-    let exclude_dirs = ["backups", "build", ".restore_temp"];
     if let Ok(entries) = std::fs::read_dir(&cfg.user_dir) {
         for entry in entries.flatten() {
             let src_path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
 
-            if src_path.is_dir() && exclude_dirs.contains(&name.as_str()) {
+            if src_path.is_dir() && is_backup_excluded_dir(&name) {
                 continue;
             }
 

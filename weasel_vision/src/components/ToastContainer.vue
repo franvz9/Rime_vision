@@ -21,11 +21,9 @@ const { toasts, dismiss } = useToast()
             <template v-else>ℹ</template>
           </span>
           <span class="toast-message">{{ toast.message }}</span>
-          <button
-            class="toast-close"
-            @click="dismiss(toast.id)"
-            aria-label="Dismiss notification"
-          >✕</button>
+          <button class="toast-close" aria-label="Dismiss notification" @click="dismiss(toast.id)">
+            ✕
+          </button>
         </div>
       </TransitionGroup>
     </div>
