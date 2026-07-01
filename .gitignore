@@ -69,3 +69,6 @@ archive/RimeVision/docs/
 docs/code-review/
 docs/code-review*.md
 weasel_vision/docs/code-review*.md
+weasel_vision/docs/feature-plan*.md
+weasel_vision/docs/v0.3.0-improvement-plan.md
+weasel_vision/src/assets/donate-qrcode.jpg
