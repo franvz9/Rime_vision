@@ -67,3 +67,5 @@ archive/RimeVision/docs/
 
 # Code review docs (internal only)
 docs/code-review/
+docs/code-review*.md
+weasel_vision/docs/code-review*.md
