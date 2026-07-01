@@ -534,23 +534,47 @@ pub fn restore_backup(backup_id: String, restore_files: Vec<String>) -> Result<(
             }
         }
 
-        // Phase 2: Replace current files with staged files
-        for (name, is_dir) in staged_files {
-            let staged_path = staging_dir.join(&name);
-            let dst_path = cfg.user_dir.join(&name);
+        // Phase 2: Atomically replace current files with staged files.
+        // Strategy: rename original to .bak first, then rename staged to destination.
+        // If the staged rename fails, restore from .bak. This prevents partial data loss.
+        let bak_suffix = format!(".restore_bak_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
+        
+        for (name, is_dir) in &staged_files {
+            let staged_path = staging_dir.join(name);
+            let dst_path = cfg.user_dir.join(name);
 
-            if is_dir {
+            if *is_dir {
                 if dst_path.exists() {
-                    std::fs::remove_dir_all(&dst_path)
-                        .map_err(|e| format!("删除已有目录失败 {:?}: {}", dst_path, e))?;
+                    let bak_path = cfg.user_dir.join(format!("{}{}", name, bak_suffix));
+                    // Safeguard: ensure bak path does not pre-exist
+                    if bak_path.exists() {
+                        let _ = std::fs::remove_dir_all(&bak_path);
+                    }
+                    // Step 1: rename original → .bak
+                    std::fs::rename(&dst_path, &bak_path)
+                        .map_err(|e| format!("Failed to back up directory {:?}: {}", dst_path, e))?;
+                    // Step 2: rename staged → destination
+                    if let Err(e) = std::fs::rename(&staged_path, &dst_path) {
+                        // Recover: rename .bak back to original
+                        let _ = std::fs::rename(&bak_path, &dst_path);
+                        return Err(format!("Failed to restore directory {}: {}", name, e));
+                    }
+                    // Step 3: remove .bak
+                    let _ = std::fs::remove_dir_all(&bak_path);
+                } else {
+                    // New directory: simple rename
+                    std::fs::rename(&staged_path, &dst_path)
+                        .map_err(|e| format!("Failed to restore new directory {}: {}", name, e))?;
                 }
-                // Use copy for directories to avoid Windows rename issues
-                copy_dir_recursive(&staged_path, &dst_path)?;
             } else {
-                // For files, try rename first, fall back to copy
+                // File: rename is atomic on same filesystem
                 if std::fs::rename(&staged_path, &dst_path).is_err() {
+                    // Fallback: copy + remove
                     if dst_path.exists() {
-                        std::fs::remove_file(&dst_path).ok();
+                        // Back up existing before overwrite
+                        let bak = dst_path.with_extension(format!("{}.{}", dst_path.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default(), bak_suffix));
+                        let _ = std::fs::copy(&dst_path, &bak);
+                        let _ = std::fs::remove_file(&dst_path);
                     }
                     std::fs::copy(&staged_path, &dst_path)
                         .map_err(|e| format!("Failed to restore {}: {}", name, e))?;
@@ -818,7 +842,8 @@ pub fn create_deploy_backup(include_models: bool) -> Result<BackupInfo, String> 
     Ok(info)
 }
 
-/// Remove oldest deploy backups when count exceeds `max_count`
+/// Remove oldest deploy backups when count exceeds `max_count`.
+/// Safety: only removes directories that are direct children of the deploy backups dir.
 fn cleanup_old_deploy_backups(max_count: usize) {
     let dir = deploy_backups_dir();
     if !dir.exists() {
@@ -828,9 +853,11 @@ fn cleanup_old_deploy_backups(max_count: usize) {
     let mut backups: Vec<(String, PathBuf)> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&dir) {
         for entry in entries.flatten() {
-            if entry.path().is_dir() {
+            let path = entry.path();
+            // Safety: only consider direct children of deploy_backups_dir
+            if path.is_dir() && path.parent() == Some(&dir) {
                 let name = entry.file_name().to_string_lossy().to_string();
-                backups.push((name, entry.path()));
+                backups.push((name, path));
             }
         }
     }
@@ -839,9 +866,16 @@ fn cleanup_old_deploy_backups(max_count: usize) {
     backups.sort_by(|a, b| b.0.cmp(&a.0));
 
     // Remove backups beyond the limit
-    for (_, path) in backups.iter().skip(max_count) {
+    for (name, path) in backups.iter().skip(max_count) {
+        // Double-check: path must still be under deploy_backups_dir
+        if path.parent() != Some(&dir) {
+            eprintln!("Warning: refusing to remove backup outside deploy dir: {:?}", path);
+            continue;
+        }
         if let Err(e) = std::fs::remove_dir_all(path) {
-            eprintln!("Warning: failed to remove old backup {:?}: {}", path, e);
+            eprintln!("Warning: failed to remove old deploy backup {}: {}", name, e);
+        } else {
+            eprintln!("Removed old deploy backup: {}", name);
         }
     }
 }

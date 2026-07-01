@@ -3,6 +3,7 @@ pub mod color;
 pub mod color_scheme;
 pub mod config;
 pub mod deployer;
+pub mod error;
 pub mod grammar;
 pub mod patch;
 pub mod schema;

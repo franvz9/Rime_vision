@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { useToast } from '../composables/useToast'
+import { errorMessage } from '../utils'
+import WeaselModal from './WeaselModal.vue'
+
+const toast = useToast()
 
 
 interface ConfigFileInfo {
@@ -21,23 +26,30 @@ const customFileNames = computed(() => {
     .join('、') || '自定义配置文件'
 })
 
+let advMounted = true
+
 onMounted(async () => {
   try {
     userDir.value = await invoke('get_rime_user_dir')
+    if (!advMounted) return
     configFiles.value = await invoke('get_config_files')
+    if (!advMounted) return
   } catch (e) {
-    console.error('Failed to load settings:', e)
+    if (!advMounted) return
+    toast.error(`加载设置失败: ${errorMessage(e)}`)
   }
 })
+
+onUnmounted(() => { advMounted = false })
 
 async function resetConfig() {
   showResetConfirm.value = false
   try {
     await invoke('reset_config')
     configFiles.value = await invoke('get_config_files')
+    toast.success('配置已重置')
   } catch (e) {
-    console.error('Reset failed:', e)
-    alert('重置失败：' + String(e))
+    toast.error(`重置配置失败: ${errorMessage(e)}`)
   }
 }
 
@@ -45,8 +57,7 @@ async function openRimeDir() {
   try {
     await invoke('open_rime_dir')
   } catch (e) {
-    console.error('Failed to open Rime directory:', e)
-    alert('打开目录失败：' + String(e))
+    toast.error(`打开 Rime 目录失败: ${errorMessage(e)}`)
   }
 }
 </script>
@@ -94,16 +105,13 @@ async function openRimeDir() {
     </div>
 
     <!-- Reset confirm modal -->
-    <div v-if="showResetConfirm" class="modal-overlay" @click.self="showResetConfirm = false">
-      <div class="modal">
-        <h3>确认重置</h3>
-        <p>将删除自定义配置文件（{{ customFileNames }}），此操作不可撤销。</p>
-        <div class="modal-actions">
-          <button class="btn" @click="showResetConfirm = false">取消</button>
-          <button class="btn btn-danger" @click="resetConfig">确认重置</button>
-        </div>
-      </div>
-    </div>
+    <WeaselModal :show="showResetConfirm" title="确认重置" @close="showResetConfirm = false">
+      <p>将删除自定义配置文件（{{ customFileNames }}），此操作不可撤销。</p>
+      <template #actions>
+        <button class="btn" @click="showResetConfirm = false">取消</button>
+        <button class="btn btn-danger" @click="resetConfig">确认重置</button>
+      </template>
+    </WeaselModal>
   </div>
 </template>
 

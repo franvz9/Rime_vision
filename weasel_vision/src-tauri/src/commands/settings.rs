@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
+use std::sync::Mutex;
+use std::time::Instant;
 
 use crate::rime::config::{self, RimeConfig};
 
@@ -242,7 +244,7 @@ pub fn get_config_files() -> Result<Vec<ConfigFileInfo>, String> {
 }
 
 #[tauri::command]
-pub fn sync() -> Result<(), String> {
+pub fn sync_build_dir() -> Result<(), String> {
     crate::rime::deployer::sync().map(|_| ()).map_err(|e| e.to_string())
 }
 
@@ -278,28 +280,7 @@ pub fn open_dir(path: String) -> Result<(), String> {
         return Err("路径不是目录".to_string());
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to open directory: {}", e))?;
-    }
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to open directory: {}", e))?;
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to open directory: {}", e))?;
-    }
-
+    open::that(&path).map_err(|e| format!("Failed to open directory: {}", e))?;
     Ok(())
 }
 
@@ -344,8 +325,23 @@ pub struct PendingDelete {
     pub identifier: String,  // theme name, schema file name, or model filename
 }
 
+/// Minimum interval between deploy operations (2 seconds) to prevent
+/// rapid repeated deploys that could overwhelm the input method process.
+static LAST_DEPLOY: Mutex<Option<Instant>> = Mutex::new(None);
+const DEPLOY_THROTTLE_SECS: u64 = 2;
+
 #[tauri::command]
 pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), String> {
+    // Rate limiting: prevent rapid repeated deploys
+    {
+        let mut last = LAST_DEPLOY.lock().map_err(|e| e.to_string())?;
+        if let Some(t) = *last {
+            if t.elapsed().as_secs() < DEPLOY_THROTTLE_SECS {
+                return Err(format!("操作过于频繁，请 {} 秒后再试", DEPLOY_THROTTLE_SECS));
+            }
+        }
+        *last = Some(Instant::now());
+    }
     // Determine if any model deletion is planned
     let has_model_delete = pending_deletes.as_ref()
         .map_or(false, |deletes| deletes.iter().any(|d| d.delete_type == "model"));

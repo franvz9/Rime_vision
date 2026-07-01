@@ -1,10 +1,15 @@
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use serde_yaml::{Mapping, Value};
 
 use super::backup;
 use super::patch;
+
+/// Maximum YAML file size in bytes (10 MB). Larger files are rejected to prevent
+/// memory exhaustion from malformed or excessively large configuration files.
+const MAX_YAML_SIZE: u64 = 10 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct RimeConfig {
@@ -18,10 +23,16 @@ pub struct RimeConfig {
     pub default_custom: String,
 }
 
+fn cached_config() -> &'static RimeConfig {
+    static CONFIG: OnceLock<RimeConfig> = OnceLock::new();
+    CONFIG.get_or_init(RimeConfig::detect_inner)
+}
+
 impl RimeConfig {
-    /// Detect Rime config paths. Called on each command to reflect runtime changes.
+    /// Detect Rime config paths. Cached after first call — the user directory
+    /// is determined by the OS home directory and does not change during a session.
     pub fn detect() -> Self {
-        Self::detect_inner()
+        cached_config().clone()
     }
 
     fn detect_inner() -> Self {
@@ -124,6 +135,17 @@ impl RimeConfig {
     pub fn load_yaml(&self, path: &Path) -> Result<Value> {
         if !path.exists() {
             return Ok(Value::Mapping(Mapping::new()));
+        }
+        let size = std::fs::metadata(path)
+            .with_context(|| format!("Failed to read metadata for {}", path.display()))?
+            .len();
+        if size > MAX_YAML_SIZE {
+            return Err(anyhow::anyhow!(
+                "YAML file {} is too large ({} bytes, max {} bytes)",
+                path.display(),
+                size,
+                MAX_YAML_SIZE
+            ));
         }
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read {}", path.display()))?;

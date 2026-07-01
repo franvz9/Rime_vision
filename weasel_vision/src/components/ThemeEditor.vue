@@ -3,49 +3,74 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import DeployNotice from './DeployNotice.vue'
+import WeaselModal from './WeaselModal.vue'
+import { useToast } from '../composables/useToast'
+import { hexToRgb, rgbToHex, hexToRimeHex, errorMessage, emitBusEvent, BusEvents, type RgbColor } from '../utils'
 
-
-interface RimeColor {
-  r: number
-  g: number
-  b: number
-  a: number
-}
 
 interface ColorScheme {
   name: string
   author: string
   color_space: string
-  back_color: RimeColor | null
-  border_color: RimeColor | null
-  text_color: RimeColor | null
-  hilited_text_color: RimeColor | null
-  hilited_back_color: RimeColor | null
-  hilited_candidate_back_color: RimeColor | null
-  candidate_text_color: RimeColor | null
-  hilited_candidate_text_color: RimeColor | null
-  candidate_label_color: RimeColor | null
-  hilited_candidate_label_color: RimeColor | null
-  comment_text_color: RimeColor | null
-  hilited_comment_text_color: RimeColor | null
-  preedit_back_color: RimeColor | null
-  candidate_back_color: RimeColor | null
+  back_color: RgbColor | null
+  border_color: RgbColor | null
+  text_color: RgbColor | null
+  hilited_text_color: RgbColor | null
+  hilited_back_color: RgbColor | null
+  hilited_candidate_back_color: RgbColor | null
+  candidate_text_color: RgbColor | null
+  hilited_candidate_text_color: RgbColor | null
+  candidate_label_color: RgbColor | null
+  hilited_candidate_label_color: RgbColor | null
+  comment_text_color: RgbColor | null
+  hilited_comment_text_color: RgbColor | null
+  preedit_back_color: RgbColor | null
+  candidate_back_color: RgbColor | null
+}
+
+interface StyleSettings {
+  font_face?: string
+  font_point?: number
+  label_font_face?: string
+  label_font_point?: number
+  comment_font_face?: string
+  comment_font_point?: number
+  candidate_list_layout?: string
+  text_orientation?: string
+  candidate_format?: string
+  status_message_type?: string
+  corner_radius?: number
+  hilited_corner_radius?: number
+  line_spacing?: number
+  spacing?: number
+  border_height?: number
+  border_width?: number
+  shadow_size?: number
+  alpha?: number
+  inline_preedit?: boolean
+  inline_candidate?: boolean
+  translucency?: boolean
+  mutual_exclusive?: boolean
+  memorize_size?: boolean
+  show_paging?: boolean
+  [key: string]: unknown
 }
 
 interface StyleData {
-  style: any
+  style: StyleSettings
   light_schemes: Record<string, ColorScheme>
   dark_schemes: Record<string, ColorScheme>
   selected_light: string
   selected_dark: string
 }
 
+const toast = useToast()
 const styleData = ref<StyleData | null>(null)
 const activeTab = ref<'light' | 'dark' | 'style'>('light')
 const selectedScheme = ref<string>('')
 const editingScheme = ref<ColorScheme | null>(null)
 const showEditor = ref(false)
-const localStyle = ref<any>(null)
+const localStyle = ref<StyleSettings | null>(null)
 
 // Pending scheme (applied but not yet deployed)
 const pendingScheme = ref<string | null>(null)
@@ -87,25 +112,33 @@ const handleDeployComplete = async () => {
     localStyle.value = { ...styleData.value!.style }
     pendingScheme.value = null
   } catch (e) {
-    console.error('Failed to refresh style data:', e)
+    toast.error(`刷新主题数据失败: ${errorMessage(e)}`)
   }
 }
+
+let themeMounted = true
 
 onMounted(async () => {
   try {
     styleData.value = await invoke('get_style_data')
+    if (!themeMounted) return
     selectedScheme.value = activeTab.value === 'light'
       ? styleData.value!.selected_light
       : styleData.value!.selected_dark
     localStyle.value = { ...styleData.value!.style }
   } catch (e) {
-    console.error('Failed to load style data:', e)
+    if (!themeMounted) return
+    toast.error(`加载主题数据失败: ${errorMessage(e)}`)
+    return
   }
-  window.addEventListener('deploy-complete', handleDeployComplete)
+  if (themeMounted) {
+    window.addEventListener(BusEvents.DEPLOY_COMPLETE, handleDeployComplete)
+  }
 })
 
 onUnmounted(() => {
-  window.removeEventListener('deploy-complete', handleDeployComplete)
+  themeMounted = false
+  window.removeEventListener(BusEvents.DEPLOY_COMPLETE, handleDeployComplete)
 })
 
 function selectScheme(name: string) {
@@ -145,7 +178,7 @@ async function applyScheme(name: string) {
         }
       }
     } catch (e) {
-      console.error('Failed to save scheme selection:', e)
+      toast.error(`保存方案选择失败: ${errorMessage(e)}`)
     }
   }
 }
@@ -204,7 +237,7 @@ async function saveScheme() {
       pendingScheme.value = targetName
     }
   } catch (e) {
-    console.error('Failed to save scheme:', e)
+    toast.error(`保存配色方案失败: ${errorMessage(e)}`)
   }
 }
 
@@ -225,14 +258,10 @@ function toggleDeleteScheme(name: string) {
   if (!canDeleteScheme(name)) return
   if (pendingDeleteSchemes.value.has(name)) {
     pendingDeleteSchemes.value.delete(name)
-    window.dispatchEvent(new CustomEvent('remove-pending-delete', {
-      detail: { delete_type: 'theme', identifier: name }
-    }))
+    emitBusEvent(BusEvents.REMOVE_PENDING_DELETE, { delete_type: 'theme', identifier: name })
   } else {
     pendingDeleteSchemes.value.add(name)
-    window.dispatchEvent(new CustomEvent('add-pending-delete', {
-      detail: { delete_type: 'theme', identifier: name, label: `主题: ${name}` }
-    }))
+    emitBusEvent(BusEvents.ADD_PENDING_DELETE, { delete_type: 'theme', identifier: name, label: `主题: ${name}` })
     // If this scheme was pending apply, cancel it
     if (pendingScheme.value === name) {
       pendingScheme.value = null
@@ -252,34 +281,33 @@ async function importColorScheme() {
     try {
       await invoke('import_color_scheme', { filePath: selected })
       styleData.value = await invoke('get_style_data')
-      alert('配色方案导入成功！')
+      toast.success('配色方案导入成功')
     } catch (e) {
-      console.error('Failed to import color scheme:', e)
-      alert('导入失败：' + String(e))
+      toast.error(`导入配色方案失败: ${errorMessage(e)}`)
     }
   }
 }
 
-function parseColor(v: any): RimeColor | null {
+function parseColor(v: unknown): RgbColor | null {
   if (!v) return null
-  if (typeof v === 'object' && 'r' in v) return v as RimeColor
+  if (typeof v === 'object' && v !== null && 'r' in v) return v as RgbColor
   if (typeof v === 'string') return hexToRgb(v)
   return null
 }
 
-function colorToRgba(v: any): string {
+function colorToRgba(v: unknown): string {
   const c = parseColor(v)
   if (!c) return 'transparent'
   return `rgba(${c.r}, ${c.g}, ${c.b}, ${c.a / 255})`
 }
 
-function getColorHex(v: any): string {
+function getColorHex(v: unknown): string {
   const c = parseColor(v)
   if (!c) return '#000000'
   return rgbToHex(c)
 }
 
-function getHexDisplay(v: any): string {
+function getHexDisplay(v: unknown): string {
   const c = parseColor(v)
   if (!c) return ''
   if (c.a < 255) {
@@ -288,10 +316,10 @@ function getHexDisplay(v: any): string {
   return `0x${c.b.toString(16).padStart(2, '0')}${c.g.toString(16).padStart(2, '0')}${c.r.toString(16).padStart(2, '0')}`
 }
 
-function setColorHex(scheme: any, key: string, hex: string) {
+function setColorHex(scheme: ColorScheme, key: string, hex: string) {
   const rgb = hexToRgb(hexToRimeHex(hex))
   if (rgb) {
-    scheme[key] = rgb
+    ;(scheme as unknown as Record<string, unknown>)[key] = rgb
   }
 }
 
@@ -301,8 +329,9 @@ async function saveStyle() {
     await invoke('save_style', { newStyle: localStyle.value })
     styleData.value = await invoke('get_style_data')
     localStyle.value = { ...styleData.value!.style }
+    toast.success('样式已保存')
   } catch (e) {
-    console.error('Failed to save style:', e)
+    toast.error(`保存样式失败: ${errorMessage(e)}`)
   }
 }
 </script>
@@ -540,101 +569,49 @@ async function saveStyle() {
     </div>
 
     <!-- Edit / Copy modal -->
-    <div v-if="showEditor && editingScheme" class="modal-overlay" @click.self="cancelEdit">
-      <div class="modal">
-        <h3>{{ editMode === 'copy' ? '复制配色' : '编辑配色' }}: {{ editMode === 'copy' ? originalSchemeName + ' → ' + newSchemeName : editingScheme.name }}</h3>
-        <div class="form-group" v-if="editMode === 'copy'">
-          <label>新方案名称</label>
-          <input v-model="newSchemeName" placeholder="输入新方案名称" />
-        </div>
-        <div class="form-group">
-          <label>作者</label>
-          <input v-model="editingScheme.author" />
-        </div>
-        <div class="color-grid">
-          <div class="color-field" v-for="(label, key) in {
-            'back_color': '背景色',
-            'text_color': '文字色',
-            'candidate_text_color': '候选文字',
-            'hilited_candidate_back_color': '高亮背景',
-            'hilited_candidate_text_color': '高亮文字',
-            'candidate_label_color': '编号色',
-            'comment_text_color': '注释色'
-          }" :key="key">
-            <label>{{ label }}</label>
-            <div class="color-input">
-              <input
-                type="color"
-                :value="getColorHex(editingScheme[key as keyof ColorScheme])"
-                @input="setColorHex(editingScheme, key, ($event.target as HTMLInputElement).value)"
-              />
-              <span>{{ getHexDisplay(editingScheme[key as keyof ColorScheme]) }}</span>
-            </div>
+    <WeaselModal
+      :show="showEditor && !!editingScheme"
+      :title="editMode === 'copy' ? `复制配色: ${originalSchemeName} → ${newSchemeName}` : `编辑配色: ${editingScheme!.name}`"
+      @close="cancelEdit"
+    >
+      <div class="form-group" v-if="editMode === 'copy'">
+        <label>新方案名称</label>
+        <input v-model="newSchemeName" placeholder="输入新方案名称" />
+      </div>
+      <div class="form-group">
+        <label>作者</label>
+        <input v-model="editingScheme!.author" />
+      </div>
+      <div class="color-grid">
+        <div class="color-field" v-for="(label, key) in {
+          'back_color': '背景色',
+          'text_color': '文字色',
+          'candidate_text_color': '候选文字',
+          'hilited_candidate_back_color': '高亮背景',
+          'hilited_candidate_text_color': '高亮文字',
+          'candidate_label_color': '编号色',
+          'comment_text_color': '注释色'
+        }" :key="key">
+          <label>{{ label }}</label>
+          <div class="color-input">
+            <input
+              type="color"
+              :value="getColorHex(editingScheme![key as keyof ColorScheme])"
+              @input="setColorHex(editingScheme!, key, ($event.target as HTMLInputElement).value)"
+            />
+            <span>{{ getHexDisplay(editingScheme![key as keyof ColorScheme]) }}</span>
           </div>
         </div>
-        <div class="modal-actions">
-          <button class="btn" @click="cancelEdit">取消</button>
-          <button v-if="editMode === 'edit'" class="btn btn-primary" @click="saveScheme">保存</button>
-          <button v-if="editMode === 'copy'" class="btn btn-primary" @click="saveScheme" :disabled="!newSchemeName.trim()">保存为新主题</button>
-        </div>
       </div>
-    </div>
+      <template #actions>
+        <button class="btn" @click="cancelEdit">取消</button>
+        <button v-if="editMode === 'edit'" class="btn btn-primary" @click="saveScheme">保存</button>
+        <button v-if="editMode === 'copy'" class="btn btn-primary" @click="saveScheme" :disabled="!newSchemeName.trim()">保存为新主题</button>
+      </template>
+    </WeaselModal>
   </div>
 </template>
 
-<script lang="ts">
-function hexToRgb(hex: string): { r: number; g: number; b: number; a: number } | null {
-  if (!hex) return null
-  const cleaned = hex.replace(' ', '')
-  // Rime 0xAABBGGRR format (8 digits)
-  const match8 = cleaned.match(/^0x([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})$/)
-  if (match8) {
-    return {
-      a: parseInt(match8[1], 16),
-      b: parseInt(match8[2], 16),
-      g: parseInt(match8[3], 16),
-      r: parseInt(match8[4], 16),
-    }
-  }
-  // Rime 0xBBGGRR format (6 digits)
-  const match6 = cleaned.match(/^0x([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})$/)
-  if (match6) {
-    return {
-      b: parseInt(match6[1], 16),
-      g: parseInt(match6[2], 16),
-      r: parseInt(match6[3], 16),
-      a: 255,
-    }
-  }
-  // CSS #RRGGBB format (standard web format)
-  const matchCss = cleaned.match(/^#([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})$/)
-  if (matchCss) {
-    return {
-      r: parseInt(matchCss[1], 16),
-      g: parseInt(matchCss[2], 16),
-      b: parseInt(matchCss[3], 16),
-      a: 255,
-    }
-  }
-  return null
-}
-
-function rgbToHex(c: { r: number; g: number; b: number } | null): string {
-  if (!c) return '#000000'
-  return `#${c.r.toString(16).padStart(2, '0')}${c.g.toString(16).padStart(2, '0')}${c.b.toString(16).padStart(2, '0')}`
-}
-
-function hexToRimeHex(hex: string, a: number = 255): string {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  if (a < 255) {
-    return `0x${a.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${r.toString(16).padStart(2, '0')}`
-  }
-  return `0x${b.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${r.toString(16).padStart(2, '0')}`
-}
-
-</script>
 
 <style scoped>
 .theme-editor {

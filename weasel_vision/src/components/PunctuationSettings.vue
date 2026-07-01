@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import DeployNotice from './DeployNotice.vue'
+import { useToast } from '../composables/useToast'
+import { errorMessage } from '../utils'
+import WeaselModal from './WeaselModal.vue'
+
+const toast = useToast()
 
 
 interface PunctRule {
@@ -37,13 +42,19 @@ const currentRules = computed(() => {
   return activeTab.value === 'half' ? data.value.half_shape : data.value.full_shape
 })
 
+let punctMounted = true
+
 onMounted(async () => {
   try {
     data.value = await invoke('get_punctuation')
+    if (!punctMounted) return
   } catch (e) {
-    console.error('Failed to load punctuation:', e)
+    if (!punctMounted) return
+    toast.error(`加载标点设置失败: ${errorMessage(e)}`)
   }
 })
+
+onUnmounted(() => { punctMounted = false })
 
 function editRule(rule: PunctRule) {
   originalKey.value = rule.key
@@ -91,7 +102,7 @@ async function save() {
     showSaved.value = true
     setTimeout(() => { showSaved.value = false }, 2000)
   } catch (e) {
-    console.error('Failed to save punctuation:', e)
+    toast.error(`保存标点设置失败: ${errorMessage(e)}`)
   }
 }
 
@@ -131,48 +142,45 @@ async function save() {
     </div>
 
     <!-- Edit modal -->
-    <div v-if="showEditor && editingRule" class="modal-overlay" @click.self="showEditor = false">
-      <div class="modal">
-        <h3>编辑标点</h3>
-        <div class="form-group">
-          <label>按键:</label>
-          <input v-model="editingRule.key" maxlength="4" />
-        </div>
-        <div class="form-group">
-          <label>类型:</label>
-          <div class="radio-group">
-            <label class="radio-item">
-              <input type="radio" value="commit" v-model="editType" />
-              <span>直接上屏</span>
-            </label>
-            <label class="radio-item">
-              <input type="radio" value="pair" v-model="editType" />
-              <span>配对输入</span>
-            </label>
-            <label class="radio-item">
-              <input type="radio" value="list" v-model="editType" />
-              <span>候选列表</span>
-            </label>
-          </div>
-        </div>
-        <div class="form-group" v-if="editType === 'commit'">
-          <label>输出:</label>
-          <input v-model="editingRule.commit" />
-        </div>
-        <div class="form-group" v-else-if="editType === 'pair'">
-          <label>配对 (逗号分隔):</label>
-          <input :value="editingRule.pair.join(', ')" @input="editingRule.pair = ($event.target as HTMLInputElement).value.split(',').map(s => s.trim())" />
-        </div>
-        <div class="form-group" v-else>
-          <label>候选 (逗号分隔):</label>
-          <input :value="editingRule.list.join(', ')" @input="editingRule.list = ($event.target as HTMLInputElement).value.split(',').map(s => s.trim())" />
-        </div>
-        <div class="modal-actions">
-          <button class="btn" @click="showEditor = false">取消</button>
-          <button class="btn btn-primary" @click="saveEditedRule(editingRule)" :disabled="!editingRule?.key">保存</button>
+    <WeaselModal :show="showEditor && !!editingRule" title="编辑标点" @close="showEditor = false">
+      <div class="form-group">
+        <label>按键:</label>
+        <input v-model="editingRule!.key" maxlength="4" />
+      </div>
+      <div class="form-group">
+        <label>类型:</label>
+        <div class="radio-group">
+          <label class="radio-item">
+            <input type="radio" value="commit" v-model="editType" />
+            <span>直接上屏</span>
+          </label>
+          <label class="radio-item">
+            <input type="radio" value="pair" v-model="editType" />
+            <span>配对输入</span>
+          </label>
+          <label class="radio-item">
+            <input type="radio" value="list" v-model="editType" />
+            <span>候选列表</span>
+          </label>
         </div>
       </div>
-    </div>
+      <div class="form-group" v-if="editType === 'commit'">
+        <label>输出:</label>
+        <input v-model="editingRule!.commit" />
+      </div>
+      <div class="form-group" v-else-if="editType === 'pair'">
+        <label>配对 (逗号分隔):</label>
+        <input :value="editingRule!.pair.join(', ')" @input="editingRule!.pair = ($event.target as HTMLInputElement).value.split(',').map(s => s.trim())" />
+      </div>
+      <div class="form-group" v-else>
+        <label>候选 (逗号分隔):</label>
+        <input :value="editingRule!.list.join(', ')" @input="editingRule!.list = ($event.target as HTMLInputElement).value.split(',').map(s => s.trim())" />
+      </div>
+      <template #actions>
+        <button class="btn" @click="showEditor = false">取消</button>
+        <button class="btn btn-primary" @click="saveEditedRule(editingRule!)" :disabled="!editingRule?.key">保存</button>
+      </template>
+    </WeaselModal>
   </div>
 </template>
 

@@ -88,6 +88,13 @@ fn user_dict_snapshots_dir() -> PathBuf {
     cfg.user_dir.join("user_dictionaries")
 }
 
+/// Parse a single line from a Rime user dictionary snapshot file.
+///
+/// Format: "word\tcode\tc=N d=X.XX t=XXX"
+///
+/// Note: kept in dict.rs (not utils.rs) because it returns DictEntry which is
+/// defined in this module. Moving it would create a circular dependency or
+/// require moving DictEntry to a shared crate.
 fn parse_snapshot_line(line: &str) -> Option<DictEntry> {
     let parts: Vec<&str> = line.split('\t').collect();
     if parts.len() < 3 {
@@ -460,6 +467,11 @@ fn validate_dict_id(id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Get a human-readable display name for a known dictionary ID.
+/// Falls back to the raw ID if unknown.
+///
+/// TODO(v0.3.0): Read display names from schema definitions (*.schema.yaml)
+/// instead of maintaining this hardcoded map.
 fn dict_display_name(dict_id: &str) -> String {
     match dict_id {
         "luna_pinyin" => "朙月拼音".to_string(),

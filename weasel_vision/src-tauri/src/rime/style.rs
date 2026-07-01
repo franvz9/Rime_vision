@@ -150,20 +150,27 @@ impl Default for RimeStyle {
 
 fn platform_default_font() -> String {
     if cfg!(target_os = "macos") {
+        // PingFang SC is the default Chinese UI font since macOS 10.11
         "PingFang SC".to_string()
     } else if cfg!(target_os = "windows") {
+        // Microsoft YaHei is the default Chinese UI font on Windows
         "Microsoft YaHei".to_string()
     } else {
-        "Noto Sans CJK SC".to_string()
+        // Linux: provide a fallback chain — the font system will try them in order
+        // Noto Sans CJK SC (Google), WenQuanYi Micro Hei (popular), Sans fallback
+        "\"Noto Sans CJK SC\", \"WenQuanYi Micro Hei\", sans-serif".to_string()
     }
 }
 
 fn platform_label_font() -> String {
     if cfg!(target_os = "macos") {
-        "Lucida Grande".to_string()
+        // SF Pro Text is the system font since macOS 11, Lucida Grande is the classic
+        "\"SF Pro Text\", \"Lucida Grande\", sans-serif".to_string()
     } else if cfg!(target_os = "windows") {
-        "Segoe UI".to_string()
+        // Segoe UI is the Windows default, fall back to Arial
+        "\"Segoe UI\", Arial, sans-serif".to_string()
     } else {
-        "Noto Sans".to_string()
+        // Noto Sans is Google's default UI font on many Linux distros
+        "\"Noto Sans\", \"DejaVu Sans\", sans-serif".to_string()
     }
 }

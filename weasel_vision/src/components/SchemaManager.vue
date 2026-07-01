@@ -1,28 +1,42 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import DeployNotice from './DeployNotice.vue'
+import { useToast } from '../composables/useToast'
+import { errorMessage, emitBusEvent, BusEvents } from '../utils'
 
+const toast = useToast()
 
 interface Schema {
   schema: string
   enabled: boolean
 }
 
+interface SchemaListResponse {
+  schemas: Schema[]
+  current_schema: string
+}
+
 const schemas = ref<Schema[]>([])
 const currentSchema = ref<string>('')
 const pendingDeleteSchemas = ref<Set<string>>(new Set())
 
+let schemaMounted = true
+
 onMounted(async () => {
   try {
-    const data: any = await invoke('get_schemas')
+    const data: SchemaListResponse = await invoke('get_schemas')
+    if (!schemaMounted) return
     schemas.value = data.schemas
     currentSchema.value = data.current_schema || ''
   } catch (e) {
-    console.error('Failed to load schemas:', e)
+    if (!schemaMounted) return
+    toast.error(`加载输入方案失败: ${errorMessage(e)}`)
   }
 })
+
+onUnmounted(() => { schemaMounted = false })
 
 function toggleSchema(schema: Schema) {
   schema.enabled = !schema.enabled
@@ -31,8 +45,9 @@ function toggleSchema(schema: Schema) {
 async function save() {
   try {
     await invoke('save_schemas', { schemas: schemas.value })
+    toast.success('方案已保存')
   } catch (e) {
-    console.error('Failed to save schemas:', e)
+    toast.error(`保存方案失败: ${errorMessage(e)}`)
   }
 }
 
@@ -46,13 +61,12 @@ async function importSchema() {
   if (selected && typeof selected === 'string') {
     try {
       await invoke('import_schema', { filePath: selected })
-      const data: any = await invoke('get_schemas')
+      const data: SchemaListResponse = await invoke('get_schemas')
       schemas.value = data.schemas
       currentSchema.value = data.current_schema || ''
-      alert('输入方案导入成功！')
+      toast.success('输入方案导入成功')
     } catch (e) {
-      console.error('Failed to import schema:', e)
-      alert('导入失败：' + String(e))
+      toast.error(`导入方案失败: ${errorMessage(e)}`)
     }
   }
 }
@@ -68,14 +82,10 @@ function toggleDeleteSchema(schemaId: string) {
   const filename = `${schemaId}.schema.yaml`
   if (pendingDeleteSchemas.value.has(schemaId)) {
     pendingDeleteSchemas.value.delete(schemaId)
-    window.dispatchEvent(new CustomEvent('remove-pending-delete', {
-      detail: { delete_type: 'schema', identifier: filename }
-    }))
+    emitBusEvent(BusEvents.REMOVE_PENDING_DELETE, { delete_type: 'schema', identifier: filename })
   } else {
     pendingDeleteSchemas.value.add(schemaId)
-    window.dispatchEvent(new CustomEvent('add-pending-delete', {
-      detail: { delete_type: 'schema', identifier: filename, label: `方案: ${schemaId}` }
-    }))
+    emitBusEvent(BusEvents.ADD_PENDING_DELETE, { delete_type: 'schema', identifier: filename, label: `方案: ${schemaId}` })
   }
   pendingDeleteSchemas.value = new Set(pendingDeleteSchemas.value)
 }

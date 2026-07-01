@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import DeployNotice from './DeployNotice.vue'
+import { useToast } from '../composables/useToast'
+import { errorMessage } from '../utils'
+
+const toast = useToast()
 
 
 interface KeyBinding {
@@ -63,13 +67,19 @@ const selectOptions = [
 
 const bindings = ref<KeyBinding[]>([])
 
+let keyMounted = true
+
 onMounted(async () => {
   try {
     bindings.value = await invoke('get_keybindings')
+    if (!keyMounted) return
   } catch (e) {
-    console.error('Failed to load keybindings:', e)
+    if (!keyMounted) return
+    toast.error(`加载快捷键失败: ${errorMessage(e)}`)
   }
 })
+
+onUnmounted(() => { keyMounted = false })
 
 function addBinding() {
   bindings.value.push({
@@ -88,8 +98,9 @@ function removeBinding(index: number) {
 async function save() {
   try {
     await invoke('save_keybindings', { bindings: bindings.value })
+    toast.success('快捷键已保存')
   } catch (e) {
-    console.error('Failed to save keybindings:', e)
+    toast.error(`保存快捷键失败: ${errorMessage(e)}`)
   }
 }
 </script>

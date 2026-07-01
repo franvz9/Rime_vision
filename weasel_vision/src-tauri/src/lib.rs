@@ -28,7 +28,7 @@ pub fn run() {
             settings::open_dir,
             settings::open_rime_dir,
             settings::deploy,
-            settings::sync,
+            settings::sync_build_dir,
             settings::reset_config,
             grammar::get_grammar_data,
             grammar::mount_grammar,

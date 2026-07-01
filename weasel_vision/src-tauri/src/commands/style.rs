@@ -49,7 +49,10 @@ pub fn get_style_data() -> Result<StyleData, String> {
     let merged = config::value_as_mapping(&merged_value);
     let style_dict = config::get_mapping(merged, "style");
     let style: RimeStyle = serde_yaml::from_value(Value::Mapping(style_dict.clone()))
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            eprintln!("Warning: failed to parse style YAML, using defaults: {}", e);
+            RimeStyle::default()
+        });
 
     let schemes_dict = config::get_mapping(merged, "preset_color_schemes");
     let mut light_schemes = HashMap::new();

@@ -1,9 +1,11 @@
 use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
-use crate::rime::config::RimeConfig;
+use crate::rime::config::{self, RimeConfig};
 
 type Mapping = serde_yaml::Mapping;
 
@@ -65,17 +67,11 @@ fn save_installation_yaml(dict: &Mapping) -> Result<(), String> {
     Ok(())
 }
 
-fn get_string(dict: &Mapping, key: &str) -> Option<String> {
-    dict.get(Value::String(key.into()))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-}
-
 #[tauri::command]
 pub fn get_sync_settings() -> Result<SyncSettings, String> {
     let dict = load_installation_yaml()?;
-    let sync_dir = get_string(&dict, "sync_dir");
-    let installation_id = get_string(&dict, "installation_id").unwrap_or_else(uuid_simple);
+    let sync_dir = config::get_string(&dict, "sync_dir");
+    let installation_id = config::get_string(&dict, "installation_id").unwrap_or_else(uuid_simple);
 
     Ok(SyncSettings {
         sync_dir,
@@ -193,8 +189,24 @@ pub fn list_synced_devices() -> Result<Vec<SyncedDevice>, String> {
     Ok(devices)
 }
 
+/// Minimum interval between sync operations (3 seconds) to prevent
+/// rapid repeated syncs that could overwhelm the input method process.
+static LAST_SYNC: Mutex<Option<Instant>> = Mutex::new(None);
+const SYNC_THROTTLE_SECS: u64 = 3;
+
 #[tauri::command]
 pub async fn execute_sync() -> Result<SyncResult, String> {
+    // Rate limiting: prevent rapid repeated syncs
+    {
+        let mut last = LAST_SYNC.lock().map_err(|e| e.to_string())?;
+        if let Some(t) = *last {
+            if t.elapsed().as_secs() < SYNC_THROTTLE_SECS {
+                return Err(format!("操作过于频繁，请 {} 秒后再试", SYNC_THROTTLE_SECS));
+            }
+        }
+        *last = Some(Instant::now());
+    }
+    
     let settings = get_sync_settings()?;
     
     // Check if sync directory is configured

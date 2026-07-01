@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import DeployNotice from './DeployNotice.vue'
+import { useToast } from '../composables/useToast'
+import { errorMessage, emitBusEvent, BusEvents } from '../utils'
+import WeaselModal from './WeaselModal.vue'
+
+const toast = useToast()
 
 
 interface GrammarModel {
@@ -52,17 +57,24 @@ const batchConfig = ref<SchemaGrammarConfig>({
   max_homographs: 7,
 })
 
+let gmMounted = true
+
 onMounted(async () => {
   await loadData()
 })
 
+onUnmounted(() => { gmMounted = false })
+
 async function loadData() {
   try {
     const schemas = await invoke<{ schemas: Array<{ schema: string }> }>('get_schemas')
+    if (!gmMounted) return
     schemaIds.value = schemas.schemas.map((s) => s.schema)
     data.value = await invoke('get_grammar_data', { schemaIds: schemaIds.value })
+    if (!gmMounted) return
   } catch (e) {
-    console.error('Failed to load grammar data:', e)
+    if (!gmMounted) return
+    toast.error(`加载语言模型数据失败: ${errorMessage(e)}`)
   }
 }
 
@@ -76,10 +88,10 @@ async function importGrammar() {
   if (selected && typeof selected === 'string') {
     try {
       await invoke('import_grammar', { filePath: selected })
-      alert('✅ 语言模型导入成功！')
+      toast.success('语言模型导入成功')
       await loadData()
-    } catch (e: any) {
-      alert('导入失败：' + e.toString())
+    } catch (e) {
+      toast.error(`导入语言模型失败: ${errorMessage(e)}`)
     }
   }
 }
@@ -126,7 +138,7 @@ async function batchMount() {
       modelFilename: selectedModel.value!.filename,
       schemaId,
       config: { ...batchConfig.value, schema_id: schemaId },
-    }).catch(e => console.error('Mount failed:', e))
+    }).catch(e => toast.error(`挂载 ${schemaId} 失败: ${errorMessage(e)}`))
   )
   await Promise.all(promises)
   showBatchModal.value = false
@@ -135,7 +147,7 @@ async function batchMount() {
 
 async function batchUnmount() {
   const promises = Array.from(selectedSchemaIds.value).map(schemaId =>
-    invoke('unmount_grammar', { schemaId }).catch(e => console.error('Unmount failed:', e))
+    invoke('unmount_grammar', { schemaId }).catch(e => toast.error(`卸载 ${schemaId} 失败: ${errorMessage(e)}`))
   )
   await Promise.all(promises)
   showBatchModal.value = false
@@ -162,14 +174,10 @@ function toggleDeleteModel(model: GrammarModel) {
   const filename = `${model.filename}.gram`
   if (pendingDeleteModels.value.has(model.filename)) {
     pendingDeleteModels.value.delete(model.filename)
-    window.dispatchEvent(new CustomEvent('remove-pending-delete', {
-      detail: { delete_type: 'model', identifier: filename }
-    }))
+    emitBusEvent(BusEvents.REMOVE_PENDING_DELETE, { delete_type: 'model', identifier: filename })
   } else {
     pendingDeleteModels.value.add(model.filename)
-    window.dispatchEvent(new CustomEvent('add-pending-delete', {
-      detail: { delete_type: 'model', identifier: filename, label: `模型: ${model.display_name}` }
-    }))
+    emitBusEvent(BusEvents.ADD_PENDING_DELETE, { delete_type: 'model', identifier: filename, label: `模型: ${model.display_name}` })
     // If this model is selected, deselect it
     if (selectedModel.value?.filename === model.filename) {
       selectedModel.value = null
@@ -263,76 +271,73 @@ function toggleDeleteModel(model: GrammarModel) {
     </div>
 
     <!-- Batch mount modal -->
-    <div v-if="showBatchModal" class="modal-overlay" @click.self="showBatchModal = false">
-      <div class="modal">
-        <h3>批量挂载 — {{ selectedModel?.display_name }}</h3>
-        <div class="batch-layout">
-          <div class="schema-select">
-            <div class="select-header">
-              <span>选择方案</span>
-              <button class="link-btn" @click="selectedSchemaIds = new Set(schemaIds)">全选</button>
-              <button class="link-btn" @click="selectedSchemaIds = new Set()">清除</button>
-            </div>
-            <div v-for="id in schemaIds" :key="id" class="schema-check">
-              <label>
-                <input
-                  type="checkbox"
-                  :checked="selectedSchemaIds.has(id)"
-                  @change="toggleSchemaId(id)"
-                />
-                <span class="mono">{{ id }}</span>
-                <span v-if="isMounted(id)" class="mounted-tag">已挂载</span>
-              </label>
-            </div>
+    <WeaselModal :show="showBatchModal" :title="`批量挂载 — ${selectedModel?.display_name}`" wide @close="showBatchModal = false">
+      <div class="batch-layout">
+        <div class="schema-select">
+          <div class="select-header">
+            <span>选择方案</span>
+            <button class="link-btn" @click="selectedSchemaIds = new Set(schemaIds)">全选</button>
+            <button class="link-btn" @click="selectedSchemaIds = new Set()">清除</button>
           </div>
-          <div class="param-config">
-            <h4>参数配置</h4>
-            <div class="param-row">
-              <label>搭配最大长度</label>
-              <input type="number" v-model.number="batchConfig.collocation_max_length" min="3" max="10" />
-            </div>
-            <div class="param-row">
-              <label>搭配最小长度</label>
-              <input type="number" v-model.number="batchConfig.collocation_min_length" min="1" max="5" />
-            </div>
-            <div class="param-row">
-              <label>搭配惩罚</label>
-              <input type="number" v-model.number="batchConfig.collocation_penalty" min="-64" max="0" />
-            </div>
-            <div class="param-row">
-              <label>非搭配惩罚</label>
-              <input type="number" v-model.number="batchConfig.non_collocation_penalty" min="-64" max="0" />
-            </div>
-            <div class="param-row">
-              <label>弱搭配惩罚</label>
-              <input type="number" v-model.number="batchConfig.weak_collocation_penalty" min="-200" max="0" />
-            </div>
-            <div class="param-row">
-              <label>后置惩罚</label>
-              <input type="number" v-model.number="batchConfig.rear_penalty" min="-100" max="0" />
-            </div>
-            <hr />
-            <label class="checkbox">
-              <input type="checkbox" v-model="batchConfig.contextual_suggestions" />
-              启用上下文建议
+          <div v-for="id in schemaIds" :key="id" class="schema-check">
+            <label>
+              <input
+                type="checkbox"
+                :checked="selectedSchemaIds.has(id)"
+                @change="toggleSchemaId(id)"
+              />
+              <span class="mono">{{ id }}</span>
+              <span v-if="isMounted(id)" class="mounted-tag">已挂载</span>
             </label>
-            <div class="param-row">
-              <label>同音词数</label>
-              <input type="number" v-model.number="batchConfig.max_homophones" min="1" max="20" />
-            </div>
-            <div class="param-row">
-              <label>同形词数</label>
-              <input type="number" v-model.number="batchConfig.max_homographs" min="1" max="20" />
-            </div>
           </div>
         </div>
-        <div class="modal-actions">
-          <button class="btn btn-primary" @click="batchMount" :disabled="selectedSchemaIds.size === 0">批量挂载</button>
-          <button class="btn btn-outline" @click="batchUnmount" :disabled="selectedSchemaIds.size === 0">批量卸载</button>
-          <button class="btn" @click="showBatchModal = false">取消</button>
+        <div class="param-config">
+          <h4>参数配置</h4>
+          <div class="param-row">
+            <label>搭配最大长度</label>
+            <input type="number" v-model.number="batchConfig.collocation_max_length" min="3" max="10" />
+          </div>
+          <div class="param-row">
+            <label>搭配最小长度</label>
+            <input type="number" v-model.number="batchConfig.collocation_min_length" min="1" max="5" />
+          </div>
+          <div class="param-row">
+            <label>搭配惩罚</label>
+            <input type="number" v-model.number="batchConfig.collocation_penalty" min="-64" max="0" />
+          </div>
+          <div class="param-row">
+            <label>非搭配惩罚</label>
+            <input type="number" v-model.number="batchConfig.non_collocation_penalty" min="-64" max="0" />
+          </div>
+          <div class="param-row">
+            <label>弱搭配惩罚</label>
+            <input type="number" v-model.number="batchConfig.weak_collocation_penalty" min="-200" max="0" />
+          </div>
+          <div class="param-row">
+            <label>后置惩罚</label>
+            <input type="number" v-model.number="batchConfig.rear_penalty" min="-100" max="0" />
+          </div>
+          <hr />
+          <label class="checkbox">
+            <input type="checkbox" v-model="batchConfig.contextual_suggestions" />
+            启用上下文建议
+          </label>
+          <div class="param-row">
+            <label>同音词数</label>
+            <input type="number" v-model.number="batchConfig.max_homophones" min="1" max="20" />
+          </div>
+          <div class="param-row">
+            <label>同形词数</label>
+            <input type="number" v-model.number="batchConfig.max_homographs" min="1" max="20" />
+          </div>
         </div>
       </div>
-    </div>
+      <template #actions>
+        <button class="btn btn-primary" @click="batchMount" :disabled="selectedSchemaIds.size === 0">批量挂载</button>
+        <button class="btn btn-outline" @click="batchUnmount" :disabled="selectedSchemaIds.size === 0">批量卸载</button>
+        <button class="btn" @click="showBatchModal = false">取消</button>
+      </template>
+    </WeaselModal>
   </div>
 </template>
 

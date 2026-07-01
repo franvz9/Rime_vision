@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { formatSize } from '../utils'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { formatSize, errorMessage, emitBusEvent, BusEvents } from '../utils'
 import { invoke } from '@tauri-apps/api/core'
+import { useToast } from '../composables/useToast'
+import WeaselModal from './WeaselModal.vue'
+
+const toast = useToast()
 
 interface UserDictInfo {
   dict_id: string
@@ -58,15 +62,20 @@ const showSyncNotConfigured = ref(false)
 let loadEntriesRequestId = 0
 let loadSnapshotsRequestId = 0
 
+let dmMounted = true
+
 onMounted(async () => {
   await loadDicts()
 })
+
+onUnmounted(() => { dmMounted = false })
 
 async function loadDicts() {
   try {
     dicts.value = await invoke('list_user_dictionaries')
   } catch (e) {
-    console.error('Failed to load dicts:', e)
+    if (!dmMounted) return
+    toast.error(`加载词典列表失败: ${errorMessage(e)}`)
   }
 }
 
@@ -98,7 +107,7 @@ async function loadEntries() {
       entries.value = result
     }
   } catch (e) {
-    console.error('Failed to load entries:', e)
+    toast.error(`加载词条失败: ${errorMessage(e)}`)
   }
 }
 
@@ -127,7 +136,7 @@ async function loadSnapshots() {
       }
     }
   } catch (e) {
-    console.error('Failed to load snapshots:', e)
+    toast.error(`加载快照失败: ${errorMessage(e)}`)
   }
 }
 
@@ -138,13 +147,13 @@ async function generateSnapshot() {
     await invoke('create_snapshot', { dictId: selectedDict.value.dict_id })
     await loadEntries()
     await loadSnapshots()
-  } catch (e: any) {
-    const errorMsg = e.toString()
+  } catch (e: unknown) {
+    const errorMsg = String(e)
     
     if (errorMsg.includes('SYNC_NOT_CONFIGURED')) {
       showSyncNotConfigured.value = true
     } else {
-      alert('生成快照失败：' + errorMsg)
+      toast.error(`生成快照失败: ${errorMessage(e)}`)
     }
   } finally {
     isGenerating.value = false
@@ -153,7 +162,7 @@ async function generateSnapshot() {
 
 function goToSyncSettings() {
   showSyncNotConfigured.value = false
-  window.dispatchEvent(new CustomEvent('navigate-to-sync-settings'))
+  emitBusEvent(BusEvents.NAVIGATE_TO_SYNC_SETTINGS, undefined)
 }
 
 async function applySnapshot() {
@@ -170,13 +179,13 @@ async function confirmApplySnapshot() {
       dictId: selectedDict.value.dict_id,
       fileName: snapshots.value[0].file_name
     })
-    alert('✅ 修改已应用！Rime 正在重新部署...')
+    toast.success('修改已应用！Rime 正在重新部署...')
     setTimeout(async () => {
       await loadEntries()
       await loadSnapshots()
     }, 2000)
-  } catch (e: any) {
-    alert('应用修改失败：' + e.toString())
+  } catch (e) {
+    toast.error(`应用修改失败: ${errorMessage(e)}`)
   }
 }
 
@@ -227,7 +236,7 @@ async function batchDelete() {
       selectedDict.value = { ...selectedDict.value, entry_count: entries.value.total }
     }
   } catch (e) {
-    console.error('Batch delete failed:', e)
+    toast.error(`批量删除失败: ${errorMessage(e)}`)
   }
 }
 
@@ -247,7 +256,7 @@ async function exportDict() {
       showExportResult.value = true
     }
   } catch (e) {
-    console.error('Export failed:', e)
+    toast.error(`导出失败: ${errorMessage(e)}`)
   }
 }
 
@@ -261,7 +270,7 @@ async function clearDict() {
       selectedDict.value = { ...selectedDict.value, entry_count: 0 }
     }
   } catch (e) {
-    console.error('Clear failed:', e)
+    toast.error(`清空词典失败: ${errorMessage(e)}`)
   }
 }
 
@@ -287,7 +296,7 @@ async function saveEdit() {
     cancelEdit()
     await loadEntries()
   } catch (e) {
-    console.error('Failed to update entry:', e)
+    toast.error(`更新词条失败: ${errorMessage(e)}`)
   }
 }
 
@@ -303,7 +312,7 @@ async function deleteEntry(entry: DictEntry) {
       selectedDict.value = { ...selectedDict.value, entry_count: entries.value?.total || 0 }
     }
   } catch (e) {
-    console.error('Failed to delete entry:', e)
+    toast.error(`删除词条失败: ${errorMessage(e)}`)
   }
 }
 
@@ -327,8 +336,7 @@ async function addNewEntry() {
       selectedDict.value = { ...selectedDict.value, entry_count: entries.value.total }
     }
   } catch (e) {
-    console.error('Failed to add entry:', e)
-    alert(String(e))
+    toast.error(`添加词条失败: ${errorMessage(e)}`)
   }
 }
 </script>
@@ -538,101 +546,83 @@ async function addNewEntry() {
     </div>
 
     <!-- Batch delete modal -->
-    <div v-if="showBatchDelete" class="modal-overlay" @click.self="showBatchDelete = false">
-      <div class="modal">
-        <h3>批量删除低频词条</h3>
-        <p class="hint">删除词频低于阈值的所有词条</p>
-        <div class="form-group">
-          <label>词频阈值:</label>
-          <input type="number" v-model.number="batchThreshold" min="1" class="input" />
-        </div>
-        <div class="modal-actions">
-          <button class="btn" @click="showBatchDelete = false">取消</button>
-          <button class="btn btn-danger" @click="batchDelete">删除</button>
-        </div>
+    <WeaselModal :show="showBatchDelete" title="批量删除低频词条" @close="showBatchDelete = false">
+      <p class="hint">删除词频低于阈值的所有词条</p>
+      <div class="form-group">
+        <label>词频阈值:</label>
+        <input type="number" v-model.number="batchThreshold" min="1" class="input" />
       </div>
-    </div>
+      <template #actions>
+        <button class="btn" @click="showBatchDelete = false">取消</button>
+        <button class="btn btn-danger" @click="batchDelete">删除</button>
+      </template>
+    </WeaselModal>
 
     <!-- Clear confirm modal -->
-    <div v-if="showClearConfirm" class="modal-overlay" @click.self="showClearConfirm = false">
-      <div class="modal">
-        <h3>清空词典</h3>
-        <p class="warning">此操作将删除「{{ selectedDict?.display_name }}」的所有词条，不可撤销！</p>
-        <div class="modal-actions">
-          <button class="btn" @click="showClearConfirm = false">取消</button>
-          <button class="btn btn-danger" @click="clearDict">确认清空</button>
-        </div>
-      </div>
-    </div>
+    <WeaselModal :show="showClearConfirm" title="清空词典" @close="showClearConfirm = false">
+      <p class="warning">此操作将删除「{{ selectedDict?.display_name }}」的所有词条，不可撤销！</p>
+      <template #actions>
+        <button class="btn" @click="showClearConfirm = false">取消</button>
+        <button class="btn btn-danger" @click="clearDict">确认清空</button>
+      </template>
+    </WeaselModal>
 
     <!-- Export result modal -->
-    <div v-if="showExportResult" class="modal-overlay" @click.self="showExportResult = false">
-      <div class="modal">
-        <h3>导出完成</h3>
-        <p>已导出 {{ exportCount.toLocaleString() }} 个词条</p>
-        <div class="modal-actions">
-          <button class="btn btn-primary" @click="showExportResult = false">确定</button>
-        </div>
-      </div>
-    </div>
+    <WeaselModal :show="showExportResult" title="导出完成" @close="showExportResult = false">
+      <p>已导出 {{ exportCount.toLocaleString() }} 个词条</p>
+      <template #actions>
+        <button class="btn btn-primary" @click="showExportResult = false">确定</button>
+      </template>
+    </WeaselModal>
 
     <!-- Add entry modal -->
-    <div v-if="showAddModal" class="modal-overlay" @click.self="showAddModal = false">
-      <div class="modal">
-        <h3>新增词条</h3>
-        <div class="form-group">
-          <label>文字:</label>
-          <input v-model="newEntryWord" class="input" placeholder="输入汉字" />
-        </div>
-        <div class="form-group">
-          <label>编码:</label>
-          <input v-model="newEntryCode" class="input" placeholder="如：nihao" />
-        </div>
-        <div class="form-group">
-          <label>初始词频:</label>
-          <input type="number" v-model.number="newEntryFreq" class="input" min="1" />
-        </div>
-        <div class="modal-actions">
-          <button class="btn" @click="showAddModal = false">取消</button>
-          <button class="btn btn-primary" @click="addNewEntry" :disabled="!newEntryWord || !newEntryCode">添加</button>
-        </div>
+    <WeaselModal :show="showAddModal" title="新增词条" @close="showAddModal = false">
+      <div class="form-group">
+        <label>文字:</label>
+        <input v-model="newEntryWord" class="input" placeholder="输入汉字" />
       </div>
-    </div>
+      <div class="form-group">
+        <label>编码:</label>
+        <input v-model="newEntryCode" class="input" placeholder="如：nihao" />
+      </div>
+      <div class="form-group">
+        <label>初始词频:</label>
+        <input type="number" v-model.number="newEntryFreq" class="input" min="1" />
+      </div>
+      <template #actions>
+        <button class="btn" @click="showAddModal = false">取消</button>
+        <button class="btn btn-primary" @click="addNewEntry" :disabled="!newEntryWord || !newEntryCode">添加</button>
+      </template>
+    </WeaselModal>
 
     <!-- Apply snapshot confirm modal -->
-    <div v-if="showApplyConfirm" class="modal-overlay" @click.self="showApplyConfirm = false">
-      <div class="modal">
-        <h3>确认应用修改</h3>
-        <p>应用修改后，将执行以下操作：</p>
-        <ul style="padding-left: 20px; margin: 8px 0; font-size: 13px; color: var(--color-text-secondary);">
-          <li>将修改后的词条数据写回 Rime 用户词典</li>
-          <li>触发 Rime 重新部署（需要几秒时间）</li>
-        </ul>
-        <div class="modal-actions">
-          <button class="btn" @click="showApplyConfirm = false">取消</button>
-          <button class="btn btn-primary" @click="confirmApplySnapshot">确认应用</button>
-        </div>
-      </div>
-    </div>
+    <WeaselModal :show="showApplyConfirm" title="确认应用修改" @close="showApplyConfirm = false">
+      <p>应用修改后，将执行以下操作：</p>
+      <ul style="padding-left: 20px; margin: 8px 0; font-size: 13px; color: var(--color-text-secondary);">
+        <li>将修改后的词条数据写回 Rime 用户词典</li>
+        <li>触发 Rime 重新部署（需要几秒时间）</li>
+      </ul>
+      <template #actions>
+        <button class="btn" @click="showApplyConfirm = false">取消</button>
+        <button class="btn btn-primary" @click="confirmApplySnapshot">确认应用</button>
+      </template>
+    </WeaselModal>
 
     <!-- Sync not configured modal -->
-    <div v-if="showSyncNotConfigured" class="modal-overlay" @click.self="showSyncNotConfigured = false">
-      <div class="modal">
-        <h3>需要配置同步目录</h3>
-        <p>生成快照需要先配置同步目录。</p>
-        <p style="font-size: 13px; color: var(--color-text-secondary); margin-top: 8px;">
-          Rime 的同步功能会将用户词典和配置导出到指定文件夹，
-          配合 iCloud、WebDAV、坚果云等文件同步服务可实现多设备同步。
-        </p>
-        <p style="font-size: 13px; color: var(--color-text-secondary); margin-top: 4px;">
-          是否立即前往同步设置？
-        </p>
-        <div class="modal-actions">
-          <button class="btn" @click="showSyncNotConfigured = false">取消</button>
-          <button class="btn btn-primary" @click="goToSyncSettings">前往设置</button>
-        </div>
-      </div>
-    </div>
+    <WeaselModal :show="showSyncNotConfigured" title="需要配置同步目录" @close="showSyncNotConfigured = false">
+      <p>生成快照需要先配置同步目录。</p>
+      <p style="font-size: 13px; color: var(--color-text-secondary); margin-top: 8px;">
+        Rime 的同步功能会将用户词典和配置导出到指定文件夹，
+        配合 iCloud、WebDAV、坚果云等文件同步服务可实现多设备同步。
+      </p>
+      <p style="font-size: 13px; color: var(--color-text-secondary); margin-top: 4px;">
+        是否立即前往同步设置？
+      </p>
+      <template #actions>
+        <button class="btn" @click="showSyncNotConfigured = false">取消</button>
+        <button class="btn btn-primary" @click="goToSyncSettings">前往设置</button>
+      </template>
+    </WeaselModal>
   </div>
 </template>
 

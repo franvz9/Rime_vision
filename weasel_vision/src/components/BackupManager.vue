@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { formatSize } from '../utils'
+import { formatSize, errorMessage } from '../utils'
+import { useToast } from '../composables/useToast'
+import WeaselModal from './WeaselModal.vue'
+
+const toast = useToast()
 
 interface BackupInfo {
   id: string
@@ -65,15 +69,20 @@ function onIndividualCategoryChange() {
   }
 }
 
+let bmMounted = true
+
 onMounted(async () => {
   await loadBackups()
 })
+
+onUnmounted(() => { bmMounted = false })
 
 async function loadBackups() {
   try {
     backups.value = await invoke('list_backups')
   } catch (e) {
-    console.error('Failed to load backups:', e)
+    if (!bmMounted) return
+    toast.error(`加载备份列表失败: ${errorMessage(e)}`)
   }
 }
 
@@ -83,7 +92,7 @@ async function selectBackup(backup: BackupInfo) {
     selectedBackup.value = detail as BackupDetail
     restoreFiles.value = selectedBackup.value.files.map(f => f.name)
   } catch (e) {
-    console.error('Failed to load backup detail:', e)
+    toast.error(`加载备份详情失败: ${errorMessage(e)}`)
   }
 }
 
@@ -106,8 +115,7 @@ async function confirmCreateBackup() {
     showCreateDialog.value = false
     await loadBackups()
   } catch (e) {
-    console.error('Failed to create backup:', e)
-    alert('创建备份失败：' + String(e))
+    toast.error(`创建备份失败: ${errorMessage(e)}`)
   } finally {
     isCreating.value = false
   }
@@ -123,7 +131,7 @@ async function restoreBackup() {
     })
     showRestoreDialog.value = false
   } catch (e) {
-    console.error('Failed to restore backup:', e)
+    toast.error(`恢复备份失败: ${errorMessage(e)}`)
   } finally {
     isRestoring.value = false
   }
@@ -138,11 +146,11 @@ async function compareBackup(fileName: string) {
     })
     showCompareDialog.value = true
   } catch (e) {
-    console.error('Failed to compare backup:', e)
+    toast.error(`对比备份失败: ${errorMessage(e)}`)
   }
 }
 
-async function deleteBackup(id: string) {
+function deleteBackup(id: string) {
   backupToDelete.value = id
   showDeleteConfirm.value = true
 }
@@ -156,7 +164,7 @@ async function confirmDelete() {
     }
     await loadBackups()
   } catch (e) {
-    console.error('Failed to delete backup:', e)
+    toast.error(`删除备份失败: ${errorMessage(e)}`)
   } finally {
     showDeleteConfirm.value = false
     backupToDelete.value = null
@@ -247,131 +255,116 @@ function typeName(type: string): string {
     </div>
 
     <!-- Restore dialog -->
-    <div v-if="showRestoreDialog" class="modal-overlay" @click.self="showRestoreDialog = false">
-      <div class="modal">
-        <h3>恢复备份 — {{ selectedBackup?.info.id }}</h3>
-        <p class="hint">选择要恢复的文件，当前文件会被备份到 backups/auto/</p>
-        <div class="restore-files">
-          <label v-for="file in selectedBackup?.files" :key="file.name" class="checkbox">
-            <input type="checkbox" :value="file.name" v-model="restoreFiles" />
-            {{ file.name }}
-          </label>
-        </div>
-        <div class="modal-actions">
-          <button class="btn" @click="showRestoreDialog = false">取消</button>
-          <button class="btn btn-primary" @click="restoreBackup" :disabled="restoreFiles.length === 0 || isRestoring">
-            {{ isRestoring ? '恢复中...' : '确认恢复' }}
-          </button>
-        </div>
+    <WeaselModal :show="showRestoreDialog" :title="`恢复备份 — ${selectedBackup?.info.id}`" @close="showRestoreDialog = false">
+      <p class="hint">选择要恢复的文件，当前文件会被备份到 backups/auto/</p>
+      <div class="restore-files">
+        <label v-for="file in selectedBackup?.files" :key="file.name" class="checkbox">
+          <input type="checkbox" :value="file.name" v-model="restoreFiles" />
+          {{ file.name }}
+        </label>
       </div>
-    </div>
+      <template #actions>
+        <button class="btn" @click="showRestoreDialog = false">取消</button>
+        <button class="btn btn-primary" @click="restoreBackup" :disabled="restoreFiles.length === 0 || isRestoring">
+          {{ isRestoring ? '恢复中...' : '确认恢复' }}
+        </button>
+      </template>
+    </WeaselModal>
 
     <!-- Compare dialog -->
-    <div v-if="showCompareDialog && compareDiff" class="modal-overlay" @click.self="showCompareDialog = false">
-      <div class="modal modal-wide">
-        <h3>对比: {{ compareDiff.file_name }}</h3>
-        <div class="diff-view">
-          <div v-if="compareDiff.current === null" class="diff-note">当前文件不存在</div>
-          <pre v-else class="diff-current">{{ compareDiff.current }}</pre>
-          <pre class="diff-backup">{{ compareDiff.backup }}</pre>
-        </div>
-        <div class="modal-actions">
-          <button class="btn" @click="showCompareDialog = false">关闭</button>
-        </div>
+    <WeaselModal :show="showCompareDialog && !!compareDiff" :title="`对比: ${compareDiff?.file_name}`" wide @close="showCompareDialog = false">
+      <div class="diff-view">
+        <div v-if="compareDiff?.current === null" class="diff-note">当前文件不存在</div>
+        <pre v-else class="diff-current">{{ compareDiff?.current }}</pre>
+        <pre class="diff-backup">{{ compareDiff?.backup }}</pre>
       </div>
-    </div>
+      <template #actions>
+        <button class="btn" @click="showCompareDialog = false">关闭</button>
+      </template>
+    </WeaselModal>
 
     <!-- Delete confirm dialog -->
-    <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
-      <div class="modal">
-        <h3>确认删除</h3>
-        <p>确定要删除备份 <strong>{{ backupToDelete }}</strong> 吗？此操作不可撤销。</p>
-        <div class="modal-actions">
-          <button class="btn" @click="showDeleteConfirm = false">取消</button>
-          <button class="btn btn-danger" @click="confirmDelete">删除</button>
-        </div>
-      </div>
-    </div>
+    <WeaselModal :show="showDeleteConfirm" title="确认删除" @close="showDeleteConfirm = false">
+      <p>确定要删除备份 <strong>{{ backupToDelete }}</strong> 吗？此操作不可撤销。</p>
+      <template #actions>
+        <button class="btn" @click="showDeleteConfirm = false">取消</button>
+        <button class="btn btn-danger" @click="confirmDelete">删除</button>
+      </template>
+    </WeaselModal>
 
     <!-- Create backup dialog -->
-    <div v-if="showCreateDialog" class="modal-overlay" @click.self="showCreateDialog = false">
-      <div class="modal modal-wide">
-        <h3>创建备份</h3>
-        <p class="hint-text" style="color: var(--color-danger); font-weight: bold;">
-          ⚠️ 注意：此备份不是 Rime 原生备份功能，不会被 Rime 原生同步同步
-        </p>
-        
-        <h4>选择备份类别：</h4>
-        <div class="category-list" :class="{ disabled: fullBackupMode }">
-          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-            <input type="checkbox" value="core" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
-            <div>
-              <strong>核心配置</strong>
-              <span class="desc">default.yaml, installation.yaml, user.yaml, squirrel.yaml 等</span>
-            </div>
-          </label>
-          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-            <input type="checkbox" value="schemas" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
-            <div>
-              <strong>方案定义</strong>
-              <span class="desc">*.schema.yaml 文件</span>
-            </div>
-          </label>
-          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-            <input type="checkbox" value="themes" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
-            <div>
-              <strong>主题配色</strong>
-              <span class="desc">squirrel.custom.yaml, weasel.custom.yaml 等</span>
-            </div>
-          </label>
-          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-            <input type="checkbox" value="dicts" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
-            <div>
-              <strong>用户词典</strong>
-              <span class="desc">user_dictionaries/*.userdb.txt</span>
-            </div>
-          </label>
-          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-            <input type="checkbox" value="models" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
-            <div>
-              <strong>语言模型</strong>
-              <span class="desc">*.gram 文件</span>
-            </div>
-          </label>
-          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-            <input type="checkbox" value="opencc" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
-            <div>
-              <strong>OpenCC 数据</strong>
-              <span class="desc">opencc/ 目录</span>
-            </div>
-          </label>
-          <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
-            <input type="checkbox" value="lua" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
-            <div>
-              <strong>Lua 脚本</strong>
-              <span class="desc">lua/ 目录</span>
-            </div>
-          </label>
-          <label class="checkbox-item full-backup">
-            <input type="checkbox" :checked="fullBackupMode" @change="toggleFullBackup" />
-            <div>
-              <strong> 整个配置文件夹</strong>
-              <span class="desc">包含所有文件（自动排除 backups/ 和 build/ 目录）</span>
-            </div>
-          </label>
-        </div>
-
-        <h4>备注（可选）：</h4>
-        <textarea v-model="createNote" placeholder="例如：修改主题前的备份" rows="2"></textarea>
-
-        <div class="modal-actions">
-          <button class="btn" @click="showCreateDialog = false">取消</button>
-          <button class="btn btn-primary" @click="confirmCreateBackup" :disabled="isCreating || selectedCategories.length === 0">
-            {{ isCreating ? '创建中...' : '确认创建' }}
-          </button>
-        </div>
+    <WeaselModal :show="showCreateDialog" title="创建备份" wide @close="showCreateDialog = false">
+      <p class="hint-text" style="color: var(--color-danger); font-weight: bold;">
+        ⚠️ 注意：此备份不是 Rime 原生备份功能，不会被 Rime 原生同步同步
+      </p>
+      <h4>选择备份类别：</h4>
+      <div class="category-list" :class="{ disabled: fullBackupMode }">
+        <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+          <input type="checkbox" value="core" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <div>
+            <strong>核心配置</strong>
+            <span class="desc">default.yaml, installation.yaml, user.yaml, squirrel.yaml 等</span>
+          </div>
+        </label>
+        <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+          <input type="checkbox" value="schemas" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <div>
+            <strong>方案定义</strong>
+            <span class="desc">*.schema.yaml 文件</span>
+          </div>
+        </label>
+        <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+          <input type="checkbox" value="themes" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <div>
+            <strong>主题配色</strong>
+            <span class="desc">squirrel.custom.yaml, weasel.custom.yaml 等</span>
+          </div>
+        </label>
+        <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+          <input type="checkbox" value="dicts" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <div>
+            <strong>用户词典</strong>
+            <span class="desc">user_dictionaries/*.userdb.txt</span>
+          </div>
+        </label>
+        <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+          <input type="checkbox" value="models" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <div>
+            <strong>语言模型</strong>
+            <span class="desc">*.gram 文件</span>
+          </div>
+        </label>
+        <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+          <input type="checkbox" value="opencc" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <div>
+            <strong>OpenCC 数据</strong>
+            <span class="desc">opencc/ 目录</span>
+          </div>
+        </label>
+        <label class="checkbox-item" :class="{ disabled: fullBackupMode }">
+          <input type="checkbox" value="lua" v-model="selectedCategories" :disabled="fullBackupMode" @change="onIndividualCategoryChange" />
+          <div>
+            <strong>Lua 脚本</strong>
+            <span class="desc">lua/ 目录</span>
+          </div>
+        </label>
+        <label class="checkbox-item full-backup">
+          <input type="checkbox" :checked="fullBackupMode" @change="toggleFullBackup" />
+          <div>
+            <strong> 整个配置文件夹</strong>
+            <span class="desc">包含所有文件（自动排除 backups/ 和 build/ 目录）</span>
+          </div>
+        </label>
       </div>
-    </div>
+      <h4>备注（可选）：</h4>
+      <textarea v-model="createNote" placeholder="例如：修改主题前的备份" rows="2"></textarea>
+      <template #actions>
+        <button class="btn" @click="showCreateDialog = false">取消</button>
+        <button class="btn btn-primary" @click="confirmCreateBackup" :disabled="isCreating || selectedCategories.length === 0">
+          {{ isCreating ? '创建中...' : '确认创建' }}
+        </button>
+      </template>
+    </WeaselModal>
   </div>
 </template>
 

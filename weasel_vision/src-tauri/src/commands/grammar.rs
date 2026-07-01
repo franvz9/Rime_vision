@@ -238,8 +238,7 @@ pub fn import_grammar(file_path: String) -> Result<(), String> {
     if let Ok(content_str) = std::str::from_utf8(&content) {
         // If it's valid UTF-8, check for expected markers
         if !content_str.contains("# Rime grammar") && !content_str.contains("language:") {
-            // Allow binary gram files without these markers
-            eprintln!("Warning: Grammar file may not have standard Rime format, but importing anyway");
+            return Err("Grammar file does not appear to be a valid Rime grammar file. Expected '# Rime grammar' or 'language:' header.".to_string());
         }
     }
     // If conversion fails, it's likely a binary file, which is acceptable

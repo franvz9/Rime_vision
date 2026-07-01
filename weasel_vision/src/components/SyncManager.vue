@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
+import { useToast } from '../composables/useToast'
+import { errorMessage } from '../utils'
+import WeaselModal from './WeaselModal.vue'
+
+const toast = useToast()
 
 interface SyncSettings {
   sync_dir: string | null
@@ -39,9 +44,13 @@ const syncResult = ref<SyncResult | null>(null)
 const showSettings = ref(false)
 const editingDir = ref('')
 
+let smMounted = true
+
 onMounted(async () => {
   await loadData()
 })
+
+onUnmounted(() => { smMounted = false })
 
 async function loadData() {
   try {
@@ -50,11 +59,13 @@ async function loadData() {
       invoke<SyncStatus | null>('get_sync_status'),
       invoke<SyncedDevice[]>('list_synced_devices')
     ])
+    if (!smMounted) return
     settings.value = settingsResult
     status.value = statusResult
     devices.value = devicesResult
   } catch (e) {
-    console.error('Failed to load sync data:', e)
+    if (!smMounted) return
+    toast.error(`加载同步数据失败: ${errorMessage(e)}`)
   }
 }
 
@@ -65,7 +76,7 @@ async function executeSync() {
     syncResult.value = await invoke('execute_sync')
     await loadData()
   } catch (e) {
-    console.error('Sync failed:', e)
+    toast.error(`同步失败: ${errorMessage(e)}`)
     syncResult.value = { success: false, uploaded: [], downloaded: [], errors: [String(e)] }
   } finally {
     isSyncing.value = false
@@ -84,7 +95,7 @@ async function saveSettings() {
     showSettings.value = false
     await loadData()
   } catch (e) {
-    console.error('Failed to save sync settings:', e)
+    toast.error(`保存同步设置失败: ${errorMessage(e)}`)
   }
 }
 
@@ -104,8 +115,7 @@ async function openSyncDir() {
   try {
     await invoke('open_dir', { path: settings.value.sync_dir })
   } catch (e) {
-    console.error('Failed to open sync directory:', e)
-    alert('打开目录失败：' + String(e))
+    toast.error(`打开同步目录失败: ${errorMessage(e)}`)
   }
 }
 </script>
@@ -181,44 +191,40 @@ async function openSyncDir() {
     </div>
 
     <!-- Settings modal -->
-    <div v-if="showSettings" class="modal-overlay" @click.self="showSettings = false">
-      <div class="modal">
-        <h3>同步设置</h3>
-        
-        <div class="info-box">
-          <p><strong>ℹ️ 说明：</strong></p>
-          <ul>
-            <li>Rime 的同步功能<strong>没有自带同步服务</strong>，只是将用户内容读写到指定文件夹</li>
-            <li>这个文件夹配合 <strong>iCloud、WebDAV、坚果云</strong>等文件同步服务可实现多设备同步</li>
-            <li>如果不配置同步服务，只是读写到这个指定文件夹而已</li>
-          </ul>
-          <p class="small">同步内容包括：</p>
-          <ul class="small">
-            <li>用户自定义配置（*.custom.yaml，如 default.custom.yaml 等）</li>
-            <li>用户词典快照（*.userdb.txt，即用户词库的文本导出）</li>
-          </ul>
-          <p class="small">注意：同步不会备份方案主配置文件（如 rime_mint.schema.yaml）和系统词典文件。</p>
-        </div>
-        
-        <div class="form-group">
-          <label>同步目录</label>
-          <div style="display: flex; gap: 8px;">
-            <input v-model="editingDir" placeholder="/path/to/sync/folder" class="input" style="flex: 1;" />
-            <button type="button" class="btn btn-secondary" @click="selectFolder">📁 选择文件夹</button>
-          </div>
-          <p class="hint">例如: /Users/fred/Dropbox/RimeSync 或 D:\Dropbox\RimeSync</p>
-        </div>
-        <div class="form-group">
-          <label>设备标识</label>
-          <input v-model="settings.installation_id" class="input" />
-          <p class="hint">建议使用小写字母、数字、横线和下划线</p>
-        </div>
-        <div class="modal-actions">
-          <button class="btn" @click="showSettings = false">取消</button>
-          <button class="btn btn-primary" @click="saveSettings">保存</button>
-        </div>
+    <WeaselModal :show="showSettings" title="同步设置" @close="showSettings = false">
+      <div class="info-box">
+        <p><strong>ℹ️ 说明：</strong></p>
+        <ul>
+          <li>Rime 的同步功能<strong>没有自带同步服务</strong>，只是将用户内容读写到指定文件夹</li>
+          <li>这个文件夹配合 <strong>iCloud、WebDAV、坚果云</strong>等文件同步服务可实现多设备同步</li>
+          <li>如果不配置同步服务，只是读写到这个指定文件夹而已</li>
+        </ul>
+        <p class="small">同步内容包括：</p>
+        <ul class="small">
+          <li>用户自定义配置（*.custom.yaml，如 default.custom.yaml 等）</li>
+          <li>用户词典快照（*.userdb.txt，即用户词库的文本导出）</li>
+        </ul>
+        <p class="small">注意：同步不会备份方案主配置文件（如 rime_mint.schema.yaml）和系统词典文件。</p>
       </div>
-    </div>
+      
+      <div class="form-group">
+        <label>同步目录</label>
+        <div style="display: flex; gap: 8px;">
+          <input v-model="editingDir" placeholder="/path/to/sync/folder" class="input" style="flex: 1;" />
+          <button type="button" class="btn btn-secondary" @click="selectFolder">📁 选择文件夹</button>
+        </div>
+        <p class="hint">例如: /Users/fred/Dropbox/RimeSync 或 D:\Dropbox\RimeSync</p>
+      </div>
+      <div class="form-group">
+        <label>设备标识</label>
+        <input v-model="settings.installation_id" class="input" />
+        <p class="hint">建议使用小写字母、数字、横线和下划线</p>
+      </div>
+      <template #actions>
+        <button class="btn" @click="showSettings = false">取消</button>
+        <button class="btn btn-primary" @click="saveSettings">保存</button>
+      </template>
+    </WeaselModal>
   </div>
 </template>
 

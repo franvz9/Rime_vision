@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import DeployNotice from './DeployNotice.vue'
+import { useToast } from '../composables/useToast'
+import { errorMessage } from '../utils'
+
+const toast = useToast()
 
 
 interface GeneralSettings {
@@ -67,13 +71,19 @@ function formatKeyDisplay(keyName: string): string {
   }).join(', ')
 }
 
+let mounted = true
+
 onMounted(async () => {
   try {
     settings.value = await invoke('get_general_settings')
+    if (!mounted) return
   } catch (e) {
-    console.error('Failed to load settings:', e)
+    if (!mounted) return
+    toast.error(`加载通用设置失败: ${errorMessage(e)}`)
   }
 })
+
+onUnmounted(() => { mounted = false })
 
 // Caps Lock 动作选项（后端参数 -> 显示文本）
 const capsLockOptions = [
@@ -96,7 +106,7 @@ async function save() {
     showSaved.value = true
     setTimeout(() => { showSaved.value = false }, 2000)
   } catch (e) {
-    console.error('Failed to save settings:', e)
+    toast.error(`保存设置失败: ${errorMessage(e)}`)
   }
 }
 </script>

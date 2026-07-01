@@ -1,0 +1,62 @@
+/**
+ * WeaselVision Shared Utility Styles
+ *
+ * Design tokens and utility classes that are NOT overridden by component scoped styles.
+ * Component-specific patterns (.btn, .modal, .tabs, .form-group, .toggle) live in
+ * each component's <style scoped> block for full control and zero CSS conflicts.
+ */
+
+/* ── Typography Utilities ─────────────────────────────────────────── */
+
+.mono {
+  font-family: monospace;
+}
+
+/* ── Empty State ──────────────────────────────────────────────────── */
+
+.empty-state,
+.empty-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--color-text-tertiary);
+  text-align: center;
+}
+
+.empty-state p,
+.empty-detail p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+/* ── Misc Utilities ───────────────────────────────────────────────── */
+
+.saved-hint {
+  color: var(--color-success);
+  font-size: 14px;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  color: var(--color-text-primary);
+}
+
+.icon-btn.danger {
+  color: var(--color-danger);
+}
+
+.icon-btn.save {
+  color: var(--color-success);
+}
+
+/* ── Z-Index Overrides ────────────────────────────────────────────── */
+
+.z-high {
+  z-index: 1000;
+}

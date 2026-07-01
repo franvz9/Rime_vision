@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { useToast } from './composables/useToast'
+import { errorMessage, emitBusEvent, BusEvents } from './utils'
+import ToastContainer from './components/ToastContainer.vue'
 
 // Lazy load heavy components for better initial load performance
 const GeneralSettings = defineAsyncComponent(() => import('./components/GeneralSettings.vue'))
@@ -14,46 +17,55 @@ const DictManager = defineAsyncComponent(() => import('./components/DictManager.
 const SyncManager = defineAsyncComponent(() => import('./components/SyncManager.vue'))
 const AdvancedSettings = defineAsyncComponent(() => import('./components/AdvancedSettings.vue'))
 
+// ── State ──────────────────────────────────────────────────────────────
+
 interface PendingDelete {
   delete_type: string
   identifier: string
   label: string
 }
 
+const toast = useToast()
 const selectedTab = ref('general')
 const isDeploying = ref(false)
 const pendingDeletes = ref<PendingDelete[]>([])
 
-// Event handler functions for proper cleanup
+// ── Event Handlers ─────────────────────────────────────────────────────
+
 const handleNavigateToSync = () => {
   selectedTab.value = 'sync'
 }
 
-const handleAddPendingDelete = (e: Event) => {
-  const { delete_type, identifier, label } = (e as CustomEvent).detail
+const handleAddPendingDelete = (detail: import('./utils').BusEventMap[typeof BusEvents.ADD_PENDING_DELETE]) => {
+  const { delete_type, identifier, label } = detail
   if (!pendingDeletes.value.find(d => d.delete_type === delete_type && d.identifier === identifier)) {
-    pendingDeletes.value.push({ delete_type, identifier, label })
+    pendingDeletes.value.push({ delete_type, identifier, label: label || '' })
   }
 }
 
-const handleRemovePendingDelete = (e: Event) => {
-  const { delete_type, identifier } = (e as CustomEvent).detail
+const handleRemovePendingDelete = (detail: import('./utils').BusEventMap[typeof BusEvents.REMOVE_PENDING_DELETE]) => {
+  const { delete_type, identifier } = detail
   pendingDeletes.value = pendingDeletes.value.filter(
     d => !(d.delete_type === delete_type && d.identifier === identifier)
   )
 }
 
-// Register event listeners on mount, clean up on unmount
+// ── Mount / Unmount ─────────────────────────────────────────────────────
+
+// Named wrapper functions so removeEventListener references match addEventListener
+const onAddPendingDelete = (e: Event) => handleAddPendingDelete((e as CustomEvent).detail)
+const onRemovePendingDelete = (e: Event) => handleRemovePendingDelete((e as CustomEvent).detail)
+
 onMounted(() => {
-  window.addEventListener('navigate-to-sync-settings', handleNavigateToSync)
-  window.addEventListener('add-pending-delete', handleAddPendingDelete)
-  window.addEventListener('remove-pending-delete', handleRemovePendingDelete)
+  window.addEventListener(BusEvents.NAVIGATE_TO_SYNC_SETTINGS, handleNavigateToSync)
+  window.addEventListener(BusEvents.ADD_PENDING_DELETE, onAddPendingDelete)
+  window.addEventListener(BusEvents.REMOVE_PENDING_DELETE, onRemovePendingDelete)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('navigate-to-sync-settings', handleNavigateToSync)
-  window.removeEventListener('add-pending-delete', handleAddPendingDelete)
-  window.removeEventListener('remove-pending-delete', handleRemovePendingDelete)
+  window.removeEventListener(BusEvents.NAVIGATE_TO_SYNC_SETTINGS, handleNavigateToSync)
+  window.removeEventListener(BusEvents.ADD_PENDING_DELETE, onAddPendingDelete)
+  window.removeEventListener(BusEvents.REMOVE_PENDING_DELETE, onRemovePendingDelete)
 })
 
 const tabs = [
@@ -80,9 +92,10 @@ async function deploy() {
     // Clear pending deletes after successful deploy
     pendingDeletes.value = []
     // Notify all components that deploy completed
-    window.dispatchEvent(new CustomEvent('deploy-complete'))
+    emitBusEvent(BusEvents.DEPLOY_COMPLETE, null)
+    toast.success('部署成功')
   } catch (e) {
-    console.error('Deploy failed:', e)
+    toast.error(`部署失败: ${errorMessage(e)}`)
   } finally {
     isDeploying.value = false
   }
@@ -140,10 +153,15 @@ async function deploy() {
         <AdvancedSettings v-else-if="selectedTab === 'advanced'" />
       </div>
     </main>
+    <ToastContainer />
   </div>
 </template>
 
 <style>
+/* ═════════════════════════════════════════════════════════════════════
+   Global: Design Tokens + Resets
+   ═════════════════════════════════════════════════════════════════════ */
+
 :root {
   /* ========== 亮色模式（默认）========== */
   
@@ -290,6 +308,13 @@ body {
   color: var(--color-text-primary);
   overflow: hidden;
 }
+
+</style>
+
+<style scoped>
+/* ═════════════════════════════════════════════════════════════════════
+   Component-Scoped: App Layout + Toolbar
+   ═════════════════════════════════════════════════════════════════════ */
 
 .app {
   display: flex;

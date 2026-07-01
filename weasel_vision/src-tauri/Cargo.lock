@@ -4348,6 +4348,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "dirs 5.0.1",
+ "open",
  "parking_lot",
  "regex",
  "serde",
@@ -4358,6 +4359,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
  "tauri-plugin-shell",
+ "thiserror 1.0.69",
  "tokio",
  "uuid",
 ]

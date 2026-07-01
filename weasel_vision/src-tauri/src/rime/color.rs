@@ -2,11 +2,11 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
-static RE8: LazyLock<Regex> = LazyLock::new(|| {
+static HEX8_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^0x([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})$").unwrap()
 });
 
-static RE6: LazyLock<Regex> = LazyLock::new(|| {
+static HEX6_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^0x([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})([A-Fa-f0-9]{2})$").unwrap()
 });
 
@@ -26,7 +26,7 @@ impl RimeColor {
     pub fn from_hex(hex: &str) -> Option<Self> {
         let cleaned = hex.replace(' ', "");
 
-        if let Some(caps) = RE8.captures(&cleaned) {
+        if let Some(caps) = HEX8_PATTERN.captures(&cleaned) {
             let alpha = u8::from_str_radix(&caps[1], 16).ok()?;
             let blue = u8::from_str_radix(&caps[2], 16).ok()?;
             let green = u8::from_str_radix(&caps[3], 16).ok()?;
@@ -34,7 +34,7 @@ impl RimeColor {
             return Some(Self::new(red, green, blue, alpha));
         }
 
-        if let Some(caps) = RE6.captures(&cleaned) {
+        if let Some(caps) = HEX6_PATTERN.captures(&cleaned) {
             let blue = u8::from_str_radix(&caps[1], 16).ok()?;
             let green = u8::from_str_radix(&caps[2], 16).ok()?;
             let red = u8::from_str_radix(&caps[3], 16).ok()?;
@@ -56,7 +56,7 @@ impl RimeColor {
     }
 
     /// Convert RGBA color to CSS rgba() string format
-    /// Reserved for future CSS color output support.
+    /// TODO(v0.3.0): Use this for CSS color output in theme export
     #[allow(dead_code)]
     pub fn to_css(self) -> String {
         if self.a < 255 {
@@ -73,6 +73,7 @@ impl RimeColor {
     }
 
     /// Pure white color (255, 255, 255, 255)
+    /// TODO(v0.3.0): Use for default initializers and fallback values
     #[allow(dead_code)]
     pub const WHITE: Self = Self {
         r: 255,
@@ -81,6 +82,7 @@ impl RimeColor {
         a: 255,
     };
     /// Pure black color (0, 0, 0, 255)
+    /// TODO(v0.3.0): Use for default initializers and fallback values
     #[allow(dead_code)]
     pub const BLACK: Self = Self {
         r: 0,
@@ -89,6 +91,7 @@ impl RimeColor {
         a: 255,
     };
     /// Fully transparent color (0, 0, 0, 0)
+    /// TODO(v0.3.0): Use for default initializers and fallback values
     #[allow(dead_code)]
     pub const CLEAR: Self = Self {
         r: 0,
