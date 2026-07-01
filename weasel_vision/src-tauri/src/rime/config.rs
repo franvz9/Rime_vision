@@ -137,6 +137,23 @@ impl RimeConfig {
         self.build_dir.as_deref().unwrap_or(&self.user_dir)
     }
 
+    /// 动态检测 build_dir（deploy 后调用，获取最新状态）
+    /// 由于 OnceLock 缓存不可变，此方法绕过缓存重新检测
+    pub fn detect_build_dir(rime_dir: &Path) -> Option<PathBuf> {
+        #[cfg(target_os = "windows")]
+        {
+            let build_dir_path = rime_dir.join("build");
+            if build_dir_path.exists() {
+                return Some(build_dir_path);
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = rime_dir;
+        }
+        None
+    }
+
     pub fn load_yaml(&self, path: &Path) -> Result<Value> {
         if !path.exists() {
             return Ok(Value::Mapping(Mapping::new()));

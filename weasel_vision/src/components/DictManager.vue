@@ -403,6 +403,10 @@ async function addNewEntry() {
             </div>
 
             <template v-else>
+              <div class="snapshot-warning">
+                <span>⚠️</span>
+                <span>以下操作仅修改快照文件（.userdb.txt），Rime 同步后可能被覆盖</span>
+              </div>
               <div class="toolbar">
                 <input
                   v-model="searchQuery"
@@ -1110,5 +1114,18 @@ async function addNewEntry() {
   margin: 16px 0;
   padding: 10px 20px;
   font-size: 14px;
+}
+
+.snapshot-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--color-warning-dark);
+  background: var(--color-warning-light);
+  border: 1px solid var(--color-warning);
+  border-radius: 6px;
 }
 </style>

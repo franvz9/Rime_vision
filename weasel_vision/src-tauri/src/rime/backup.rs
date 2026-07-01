@@ -31,12 +31,14 @@ pub fn write_atomic(path: &Path, content: &str) -> Result<()> {
     let temp_path = path.parent().unwrap_or(Path::new(".")).join(&temp_name);
     std::fs::write(&temp_path, content)?;
     // Try direct rename first (works on Windows 10 1607+ and Unix)
-    // If it fails (older Windows), fall back to remove + rename
-    if std::fs::rename(&temp_path, path).is_err() {
-        if path.exists() {
-            std::fs::remove_file(path)?;
+    // If it fails (e.g. cross-device), fall back to copy + remove
+    match std::fs::rename(&temp_path, path) {
+        Ok(()) => {}
+        Err(_) => {
+            // 跨设备移动时的 fallback：先复制再删除临时文件
+            std::fs::copy(&temp_path, path)?;
+            let _ = std::fs::remove_file(&temp_path);
         }
-        std::fs::rename(&temp_path, path)?;
     }
     Ok(())
 }
@@ -61,12 +63,14 @@ pub fn write_if_changed(content: &str, path: &Path) -> Result<WriteResult> {
     let temp_path = path.parent().unwrap_or(Path::new(".")).join(&temp_name);
     std::fs::write(&temp_path, content)?;
     // Try direct rename first (works on Windows 10 1607+ and Unix)
-    // If it fails (older Windows), fall back to remove + rename
-    if std::fs::rename(&temp_path, path).is_err() {
-        if path.exists() {
-            std::fs::remove_file(path)?;
+    // If it fails (e.g. cross-device), fall back to copy + remove
+    match std::fs::rename(&temp_path, path) {
+        Ok(()) => {}
+        Err(_) => {
+            // 跨设备移动时的 fallback：先复制再删除临时文件，避免崩溃时丢失目标文件
+            std::fs::copy(&temp_path, path)?;
+            let _ = std::fs::remove_file(&temp_path);
         }
-        std::fs::rename(&temp_path, path)?;
     }
     Ok(WriteResult::Written)
 }

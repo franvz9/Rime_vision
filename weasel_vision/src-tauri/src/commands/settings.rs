@@ -288,6 +288,46 @@ pub fn open_dir(path: String) -> Result<(), RimeError> {
         return Err(RimeError::InvalidPath("路径不是目录".into()));
     }
 
+    // 白名单检查：只允许打开 Rime 相关目录
+    let cfg = RimeConfig::detect();
+    let target_canonical = path_obj
+        .canonicalize()
+        .unwrap_or_else(|_| path_obj.to_path_buf());
+    let user_dir_canonical = cfg
+        .user_dir
+        .canonicalize()
+        .unwrap_or_else(|_| cfg.user_dir.clone());
+
+    let mut allowed = false;
+
+    // 1. Rime 用户目录及其子目录
+    if target_canonical.starts_with(&user_dir_canonical) {
+        allowed = true;
+    }
+
+    // 2. 同步目录（从 installation.yaml 读取）
+    if !allowed {
+        if let Ok(content) = std::fs::read_to_string(cfg.user_dir.join("installation.yaml")) {
+            if let Ok(installation) = serde_yaml::from_str::<serde_yaml::Value>(&content) {
+                if let Some(sync_dir) = installation.get("sync_dir").and_then(|v| v.as_str()) {
+                    let sync_path = std::path::Path::new(sync_dir);
+                    if let Ok(sync_canonical) = sync_path.canonicalize() {
+                        if target_canonical.starts_with(&sync_canonical) {
+                            allowed = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if !allowed {
+        return Err(RimeError::InvalidPath(format!(
+            "目录不在允许范围内: {}",
+            path
+        )));
+    }
+
     open::that(&path)?;
     Ok(())
 }

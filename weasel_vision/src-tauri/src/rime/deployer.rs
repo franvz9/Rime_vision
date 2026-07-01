@@ -102,6 +102,11 @@ pub fn deploy() -> Result<()> {
         anyhow::bail!("Deploy is only supported on macOS and Windows");
     }
 
+    // deploy 成功后，记录 build_dir 已更新（缓存不可变，供调用方参考）
+    let cfg = super::config::RimeConfig::detect();
+    let refreshed = super::config::RimeConfig::detect_build_dir(&cfg.user_dir);
+    eprintln!("deploy 完成，build_dir 已刷新: {:?}", refreshed);
+
     Ok(())
 }
 

@@ -109,6 +109,7 @@ async function restoreBackup() {
     await invoke('restore_backup', {
       backupId: selectedBackup.value.info.id,
       restoreFiles: restoreFiles.value,
+      confirm: true,
     })
     showRestoreDialog.value = false
   } catch (e) {

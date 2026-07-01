@@ -537,7 +537,16 @@ pub fn create_backup(
 }
 
 #[tauri::command]
-pub fn restore_backup(backup_id: String, restore_files: Vec<String>) -> Result<(), RimeError> {
+pub fn restore_backup(
+    backup_id: String,
+    restore_files: Vec<String>,
+    confirm: bool,
+) -> Result<(), RimeError> {
+    if !confirm {
+        return Err(RimeError::Unknown(
+            "恢复备份需要显式确认，请设置 confirm=true".to_string(),
+        ));
+    }
     let cfg = RimeConfig::detect();
     let dir = find_backup_dir(&backup_id).map_err(RimeError::Unknown)?;
 

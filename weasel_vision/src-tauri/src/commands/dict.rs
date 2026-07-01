@@ -222,7 +222,9 @@ pub fn load_user_dict_entries(
         _ => entries.sort_by_key(|a| std::cmp::Reverse(a.frequency)),
     }
 
-    let start = page * per_page;
+    // 限制每页大小，防止溢出
+    let per_page = per_page.min(1000);
+    let start = page.saturating_mul(per_page);
     let paged: Vec<DictEntry> = entries.into_iter().skip(start).take(per_page).collect();
 
     Ok(DictEntriesResult {
@@ -357,10 +359,26 @@ fn find_snapshot(dict_id: &str) -> Result<PathBuf, RimeError> {
             if let Some(sync_dir) = installation.get("sync_dir").and_then(|v| v.as_str()) {
                 let sync_base = std::path::PathBuf::from(sync_dir);
                 if sync_base.exists() {
+                    // canonicalize 解析符号链接，防止路径穿越
+                    let sync_canonical = match sync_base.canonicalize() {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("Warning: sync_dir canonicalize failed: {}", e);
+                            return Err(RimeError::Unknown(format!("同步目录路径无效: {}", e)));
+                        }
+                    };
+                    // 检查原始路径是否为符号链接
+                    if sync_base
+                        .symlink_metadata()
+                        .map(|m| m.file_type().is_symlink())
+                        .unwrap_or(false)
+                    {
+                        return Err(RimeError::Unknown("同步目录不允许是符号链接".to_string()));
+                    }
                     // Scan all device folders to find the most recent snapshot
                     let mut candidates: Vec<(PathBuf, std::time::SystemTime)> = Vec::new();
 
-                    if let Ok(entries) = std::fs::read_dir(&sync_base) {
+                    if let Ok(entries) = std::fs::read_dir(&sync_canonical) {
                         for entry in entries.flatten() {
                             if entry.path().is_dir() {
                                 let snapshot_path =
