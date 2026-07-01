@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'weasel_vision/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'weasel_vision/**'
+      - '.github/workflows/ci.yml'
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    defaults:
+      run:
+        working-directory: weasel_vision
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: weasel_vision/src-tauri
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: weasel_vision/package-lock.json
+
+      # 前端依赖（需在 Tauri 构建前安装）
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # Rust 检查
+      - name: Cargo check
+        working-directory: weasel_vision/src-tauri
+        run: cargo check
+
+      - name: Cargo clippy
+        working-directory: weasel_vision/src-tauri
+        run: cargo clippy -- -D warnings
+
+      - name: Cargo test
+        working-directory: weasel_vision/src-tauri
+        run: cargo test
+
+      # 前端检查 + 测试
+      - name: TypeScript check
+        run: npx vue-tsc --noEmit
+
+      - name: ESLint
+        run: npx eslint src/
+
+      - name: Frontend tests
+        run: npm test
+
+      # 构建验证（仅 main 分支）
+      - name: Cargo build (release)
+        if: github.ref == 'refs/heads/main'
+        working-directory: weasel_vision/src-tauri
+        run: cargo build --release

@@ -77,3 +77,40 @@ fn count_files_recursive(dir: &Path, count: &mut usize, depth: u32) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_empty_path() {
+        assert!(validate_safe_path("").is_err());
+    }
+
+    #[test]
+    fn test_path_traversal() {
+        assert!(validate_safe_path("../etc/passwd").is_err());
+        assert!(validate_safe_path("foo/../bar").is_err());
+    }
+
+    #[test]
+    fn test_control_characters() {
+        assert!(validate_safe_path("test\0file").is_err());
+        assert!(validate_safe_path("test\nfile").is_err());
+        assert!(validate_safe_path("test\rfile").is_err());
+        assert!(validate_safe_path("test\tfile").is_err());
+    }
+
+    #[test]
+    fn test_long_path() {
+        let long_path = "a".repeat(513);
+        assert!(validate_safe_path(&long_path).is_err());
+    }
+
+    #[test]
+    fn test_valid_paths() {
+        assert!(validate_safe_path("normal_file.yaml").is_ok());
+        assert!(validate_safe_path("subdir/file.txt").is_ok());
+        assert!(validate_safe_path("file-name_with.dots.yaml").is_ok());
+    }
+}

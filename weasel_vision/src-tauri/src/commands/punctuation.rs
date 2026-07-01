@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
+use ts_rs::TS;
 
 use crate::rime::config::{self, RimeConfig};
+use crate::rime::error::RimeError;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct PunctRule {
     pub key: String,
     #[serde(default)]
@@ -14,18 +16,16 @@ pub struct PunctRule {
     pub list: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, TS)]
 pub struct PunctuationData {
     pub half_shape: Vec<PunctRule>,
     pub full_shape: Vec<PunctRule>,
 }
 
 #[tauri::command]
-pub fn get_punctuation() -> Result<PunctuationData, String> {
+pub fn get_punctuation() -> Result<PunctuationData, RimeError> {
     let cfg = RimeConfig::detect();
-    let dict_value = cfg
-        .load_effective(&cfg.default_path(), &cfg.default_custom_path())
-        .map_err(|e| e.to_string())?;
+    let dict_value = cfg.load_effective(&cfg.default_path(), &cfg.default_custom_path())?;
     let dict = config::value_as_mapping(&dict_value);
 
     let punctuator = config::get_mapping(dict, "punctuator");
@@ -39,7 +39,7 @@ pub fn get_punctuation() -> Result<PunctuationData, String> {
 }
 
 #[tauri::command]
-pub fn save_punctuation(half: Vec<PunctRule>, full: Vec<PunctRule>) -> Result<(), String> {
+pub fn save_punctuation(half: Vec<PunctRule>, full: Vec<PunctRule>) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.default_custom_path(), |patch| {
         let punctuator = patch
@@ -56,8 +56,8 @@ pub fn save_punctuation(half: Vec<PunctRule>, full: Vec<PunctRule>) -> Result<()
             Value::Mapping(serialize_punct_rules(&full)),
         );
         Ok(())
-    })
-    .map_err(|e| e.to_string())
+    })?;
+    Ok(())
 }
 
 fn parse_punct_dict(dict: &serde_yaml::Mapping) -> Vec<PunctRule> {

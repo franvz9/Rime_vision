@@ -5,11 +5,8 @@ use serde::Serialize;
 /// Designed to be serialized and passed to the frontend so the UI can
 /// display appropriate error messages and recovery actions.
 ///
-/// TODO(v0.3.0): Migrate all Tauri commands from `Result<T, String>` to
-/// `Result<T, RimeError>` for structured error handling.
 #[derive(Debug, thiserror::Error, Serialize)]
 #[serde(tag = "code", content = "detail")]
-#[allow(dead_code)] // Reserved for v0.3.0 structured error migration
 pub enum RimeError {
     /// I/O error (file not found, permission denied, etc.)
     #[error("文件操作失败: {0}")]
@@ -69,5 +66,11 @@ impl From<serde_json::Error> for RimeError {
 impl From<anyhow::Error> for RimeError {
     fn from(e: anyhow::Error) -> Self {
         RimeError::Unknown(e.to_string())
+    }
+}
+
+impl<T> From<std::sync::PoisonError<T>> for RimeError {
+    fn from(e: std::sync::PoisonError<T>) -> Self {
+        RimeError::Unknown(format!("Lock poisoned: {}", e))
     }
 }

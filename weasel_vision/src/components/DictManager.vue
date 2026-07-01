@@ -1,43 +1,16 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { formatSize, errorMessage, emitBusEvent, BusEvents } from '../utils'
+import { isRimeError } from '../utils/rimeError'
 import { invoke } from '@tauri-apps/api/core'
 import { useToast } from '../composables/useToast'
 import WeaselModal from './WeaselModal.vue'
+import type { UserDictInfo } from '../../src-tauri/bindings/UserDictInfo'
+import type { DictEntry } from '../../src-tauri/bindings/DictEntry'
+import type { DictEntriesResult } from '../../src-tauri/bindings/DictEntriesResult'
+import type { SnapshotInfo } from '../../src-tauri/bindings/SnapshotInfo'
 
 const toast = useToast()
-
-interface UserDictInfo {
-  dict_id: string
-  display_name: string
-  schema_ids: string[]
-  entry_count: number
-  file_size: number
-  last_modified: string
-}
-
-interface DictEntry {
-  word: string
-  code: string
-  frequency: number
-  commit_count: number
-  last_used: string
-}
-
-interface DictEntriesResult {
-  entries: DictEntry[]
-  total: number
-  page: number
-  per_page: number
-  total_frequency: number
-}
-
-interface SnapshotInfo {
-  file_name: string
-  created_at: string
-  size: number
-  snapshot_type: string
-}
 
 const dicts = ref<UserDictInfo[]>([])
 const selectedDict = ref<UserDictInfo | null>(null)
@@ -150,9 +123,7 @@ async function generateSnapshot() {
     await loadEntries()
     await loadSnapshots()
   } catch (e: unknown) {
-    const errorMsg = String(e)
-
-    if (errorMsg.includes('SYNC_NOT_CONFIGURED')) {
+    if (isRimeError(e) && e.code === 'Config' && e.detail.includes('SYNC_NOT_CONFIGURED')) {
       showSyncNotConfigured.value = true
     } else {
       toast.error(`生成快照失败: ${errorMessage(e)}`)

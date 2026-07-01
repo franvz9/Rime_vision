@@ -1,37 +1,41 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::rime::config::RimeConfig;
+use crate::rime::error::RimeError;
 
 /// Maximum recursion depth for directory traversal to prevent stack overflow
 /// from symlink cycles or excessively deep directory trees.
 const MAX_DIR_DEPTH: u32 = 32;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct BackupInfo {
     pub id: String,
     pub created_at: String,
     pub backup_type: String,
     pub file_count: usize,
+    #[ts(type = "number")]
     pub total_size: i64,
     pub note: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct BackupDetail {
     pub info: BackupInfo,
     pub files: Vec<BackupFile>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct BackupFile {
     pub name: String,
+    #[ts(type = "number")]
     pub size: i64,
     pub modified: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct FileDiff {
     pub file_name: String,
     pub current: Option<String>,
@@ -330,7 +334,7 @@ fn timestamp_iso() -> String {
 }
 
 #[tauri::command]
-pub fn list_backups() -> Result<Vec<BackupInfo>, String> {
+pub fn list_backups() -> Result<Vec<BackupInfo>, RimeError> {
     let mut all_backups = Vec::new();
 
     for (backup_type, dir) in [
@@ -380,13 +384,13 @@ pub fn list_backups() -> Result<Vec<BackupInfo>, String> {
 }
 
 #[tauri::command]
-pub fn get_backup_detail(backup_id: String) -> Result<BackupDetail, String> {
-    let dir = find_backup_dir(&backup_id)?;
+pub fn get_backup_detail(backup_id: String) -> Result<BackupDetail, RimeError> {
+    let dir = find_backup_dir(&backup_id).map_err(RimeError::Unknown)?;
 
     let manifest_path = dir.join("manifest.json");
     let info = if manifest_path.exists() {
-        let content = std::fs::read_to_string(&manifest_path).map_err(|e| e.to_string())?;
-        serde_json::from_str::<BackupInfo>(&content).map_err(|e| e.to_string())?
+        let content = std::fs::read_to_string(&manifest_path)?;
+        serde_json::from_str::<BackupInfo>(&content)?
     } else {
         BackupInfo {
             id: backup_id.clone(),
@@ -406,11 +410,11 @@ pub fn get_backup_detail(backup_id: String) -> Result<BackupDetail, String> {
 }
 
 #[tauri::command]
-pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<BackupInfo, String> {
+pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<BackupInfo, RimeError> {
     let cfg = RimeConfig::detect();
     let ts = timestamp();
     let backup_dir = manual_backups_dir().join(&ts);
-    std::fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&backup_dir)?;
 
     let mut file_count = 0;
     
@@ -449,7 +453,8 @@ pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<Ba
                 let dst_path = backup_dir.join(&name);
                 if src_path.is_dir() {
                     // Copy entire directory recursively
-                    file_count += copy_dir_recursive(&src_path, &dst_path)?;
+                    file_count += copy_dir_recursive(&src_path, &dst_path)
+                        .map_err(RimeError::Unknown)?;
                 } else {
                     // Copy single file with retry for locked files
                     match std::fs::copy(&src_path, &dst_path) {
@@ -460,7 +465,7 @@ pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<Ba
                                 eprintln!("Skipping locked file: {}", src_path.display());
                                 continue;
                             }
-                            return Err(e.to_string());
+                            return Err(RimeError::Io(e.to_string()));
                         }
                     }
                 }
@@ -469,18 +474,18 @@ pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<Ba
     } else {
         // For category-based backup: collect and copy files
         for category in &categories_to_use {
-            let files = get_files_by_category(category)?;
+            let files = get_files_by_category(category).map_err(RimeError::Unknown)?;
             for src_path in files {
                 let rel_path = src_path.strip_prefix(&cfg.user_dir)
-                    .map_err(|_| format!("Failed to get relative path for {:?}", src_path))?;
+                    .map_err(|_| RimeError::Unknown(format!("Failed to get relative path for {:?}", src_path)))?;
                 
                 if let Some(parent) = rel_path.parent() {
                     let dst_parent = backup_dir.join(parent);
-                    std::fs::create_dir_all(&dst_parent).map_err(|e| e.to_string())?;
+                    std::fs::create_dir_all(&dst_parent)?;
                 }
                 
                 let dst = backup_dir.join(rel_path);
-                std::fs::copy(&src_path, &dst).map_err(|e| e.to_string())?;
+                std::fs::copy(&src_path, &dst)?;
                 file_count += 1;
             }
         }
@@ -498,22 +503,21 @@ pub fn create_backup(categories: Vec<String>, note: Option<String>) -> Result<Ba
         note,
     };
 
-    let manifest = serde_json::to_string_pretty(&info).map_err(|e| e.to_string())?;
-    std::fs::write(backup_dir.join("manifest.json"), manifest)
-        .map_err(|e| e.to_string())?;
+    let manifest = serde_json::to_string_pretty(&info)?;
+    std::fs::write(backup_dir.join("manifest.json"), manifest)?;
 
     Ok(info)
 }
 
 #[tauri::command]
-pub fn restore_backup(backup_id: String, restore_files: Vec<String>) -> Result<(), String> {
+pub fn restore_backup(backup_id: String, restore_files: Vec<String>) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
-    let dir = find_backup_dir(&backup_id)?;
+    let dir = find_backup_dir(&backup_id).map_err(RimeError::Unknown)?;
 
     if restore_files.is_empty() {
-        restore_full(&cfg, &dir)
+        restore_full(&cfg, &dir).map_err(RimeError::Unknown)
     } else {
-        restore_partial(&cfg, &dir, restore_files)
+        restore_partial(&cfg, &dir, restore_files).map_err(RimeError::Unknown)
     }
 }
 
@@ -686,21 +690,21 @@ fn restore_partial(cfg: &RimeConfig, backup_dir: &Path, files: Vec<String>) -> R
 }
 
 #[tauri::command]
-pub fn compare_backup(backup_id: String, file_name: String) -> Result<FileDiff, String> {
-    validate_file_name(&file_name)?;
+pub fn compare_backup(backup_id: String, file_name: String) -> Result<FileDiff, RimeError> {
+    validate_file_name(&file_name).map_err(RimeError::Unknown)?;
     let cfg = RimeConfig::detect();
-    let dir = find_backup_dir(&backup_id)?;
+    let dir = find_backup_dir(&backup_id).map_err(RimeError::Unknown)?;
 
     let backup_path = dir.join(&file_name);
     let backup_content = if backup_path.exists() {
-        std::fs::read_to_string(&backup_path).map_err(|e| e.to_string())?
+        std::fs::read_to_string(&backup_path)?
     } else {
-        return Err(format!("File {} not found in backup", file_name));
+        return Err(RimeError::NotFound(format!("File {} not found in backup", file_name)));
     };
 
     let current_path = cfg.user_dir.join(&file_name);
     let current_content = if current_path.exists() {
-        Some(std::fs::read_to_string(&current_path).map_err(|e| e.to_string())?)
+        Some(std::fs::read_to_string(&current_path)?)
     } else {
         None
     };
@@ -713,9 +717,9 @@ pub fn compare_backup(backup_id: String, file_name: String) -> Result<FileDiff, 
 }
 
 #[tauri::command]
-pub fn delete_backup(backup_id: String) -> Result<(), String> {
-    let dir = find_backup_dir(&backup_id)?;
-    std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+pub fn delete_backup(backup_id: String) -> Result<(), RimeError> {
+    let dir = find_backup_dir(&backup_id).map_err(RimeError::Unknown)?;
+    std::fs::remove_dir_all(&dir)?;
     Ok(())
 }
 
@@ -805,11 +809,11 @@ fn collect_backup_files_recursive_inner(base_dir: &Path, current_dir: &Path, fil
     }
 }
 
-pub fn create_deploy_backup(include_models: bool) -> Result<BackupInfo, String> {
+pub fn create_deploy_backup(include_models: bool) -> Result<BackupInfo, RimeError> {
     let cfg = RimeConfig::detect();
     let ts = timestamp();
     let backup_dir = deploy_backups_dir().join(&ts);
-    std::fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&backup_dir)?;
 
     let mut file_count = 0;
 
@@ -831,9 +835,10 @@ pub fn create_deploy_backup(include_models: bool) -> Result<BackupInfo, String> 
 
             let dst_path = backup_dir.join(&name);
             if src_path.is_dir() {
-                file_count += copy_dir_recursive_exclude(&src_path, &dst_path, include_models)?;
+                file_count += copy_dir_recursive_exclude(&src_path, &dst_path, include_models)
+                    .map_err(RimeError::Unknown)?;
             } else {
-                std::fs::copy(&src_path, &dst_path).map_err(|e| e.to_string())?;
+                std::fs::copy(&src_path, &dst_path)?;
                 file_count += 1;
             }
         }
@@ -856,9 +861,8 @@ pub fn create_deploy_backup(include_models: bool) -> Result<BackupInfo, String> 
         note: Some(backup_note.to_string()),
     };
 
-    let manifest = serde_json::to_string_pretty(&info).map_err(|e| e.to_string())?;
-    std::fs::write(backup_dir.join("manifest.json"), manifest)
-        .map_err(|e| e.to_string())?;
+    let manifest = serde_json::to_string_pretty(&info)?;
+    std::fs::write(backup_dir.join("manifest.json"), manifest)?;
 
     // Roll out old deploy backups if exceeding limit (max 10)
     cleanup_old_deploy_backups(10);

@@ -2,13 +2,15 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
+use ts_rs::TS;
 
 use crate::rime::color_scheme::RimeColorScheme;
 use crate::rime::config::{self, RimeConfig};
+use crate::rime::error::RimeError;
 use crate::rime::patch;
 use crate::rime::style::RimeStyle;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, TS)]
 pub struct StyleData {
     pub style: RimeStyle,
     pub light_schemes: HashMap<String, RimeColorScheme>,
@@ -18,7 +20,7 @@ pub struct StyleData {
 }
 
 #[tauri::command]
-pub fn get_style_data() -> Result<StyleData, String> {
+pub fn get_style_data() -> Result<StyleData, RimeError> {
     let cfg = RimeConfig::detect();
 
     // Gracefully handle missing or malformed base/custom files
@@ -84,7 +86,7 @@ pub fn get_style_data() -> Result<StyleData, String> {
 }
 
 #[tauri::command]
-pub fn save_style(new_style: RimeStyle) -> Result<(), String> {
+pub fn save_style(new_style: RimeStyle) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
         let style_section = patch
@@ -128,12 +130,12 @@ pub fn save_style(new_style: RimeStyle) -> Result<(), String> {
         }
 
         Ok(())
-    })
-    .map_err(|e| e.to_string())
+    })?;
+    Ok(())
 }
 
 #[tauri::command]
-pub fn save_selected_schemes(light: String, dark: String) -> Result<(), String> {
+pub fn save_selected_schemes(light: String, dark: String) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
         let style_section = patch
@@ -152,8 +154,8 @@ pub fn save_selected_schemes(light: String, dark: String) -> Result<(), String> 
         );
 
         Ok(())
-    })
-    .map_err(|e| e.to_string())
+    })?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -161,13 +163,13 @@ pub fn save_color_scheme(
     name: String,
     scheme: RimeColorScheme,
     original_name: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), RimeError> {
     // Validate scheme name to prevent YAML injection
     if name.is_empty() || name.len() > 64 {
-        return Err("配色方案名称长度无效".to_string());
+        return Err(RimeError::Config("配色方案名称长度无效".into()));
     }
     if !name.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == ' ') {
-        return Err("配色方案名称包含无效字符".to_string());
+        return Err(RimeError::Config("配色方案名称包含无效字符".into()));
     }
 
     let cfg = RimeConfig::detect();
@@ -188,12 +190,12 @@ pub fn save_color_scheme(
         }
 
         Ok(())
-    })
-    .map_err(|e| e.to_string())
+    })?;
+    Ok(())
 }
 
 #[tauri::command]
-pub fn delete_color_scheme(name: String) -> Result<(), String> {
+pub fn delete_color_scheme(name: String) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
         if let Some(schemes) = patch.get_mut(Value::String("preset_color_schemes".into())) {
@@ -228,32 +230,30 @@ pub fn delete_color_scheme(name: String) -> Result<(), String> {
         }
 
         Ok(())
-    })
-    .map_err(|e| e.to_string())
+    })?;
+    Ok(())
 }
 
 #[tauri::command]
-pub fn import_color_scheme(file_path: String) -> Result<(), String> {
+pub fn import_color_scheme(file_path: String) -> Result<(), RimeError> {
     // Validate file path
     super::dict::validate_import_path(&file_path)?;
     let path = std::path::Path::new(&file_path);
     if !path.exists() {
-        return Err(format!("File not found: {}", file_path));
+        return Err(RimeError::NotFound(format!("File not found: {}", file_path)));
     }
     if !path.is_file() {
-        return Err("Path is not a file".to_string());
+        return Err(RimeError::InvalidPath("Path is not a file".into()));
     }
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     if ext != "yaml" && ext != "yml" {
-        return Err("Invalid file extension: only .yaml and .yml are supported".to_string());
+        return Err(RimeError::Config("Invalid file extension: only .yaml and .yml are supported".into()));
     }
     // Read the YAML file
-    let content = std::fs::read_to_string(&file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content = std::fs::read_to_string(&file_path)?;
     
     // Parse YAML
-    let yaml_value: Value = serde_yaml::from_str(&content)
-        .map_err(|e| format!("Invalid YAML format: {}", e))?;
+    let yaml_value: Value = serde_yaml::from_str(&content)?;
     
     // Check for preset_color_schemes
     if let Some(schemes) = yaml_value.get(Value::String("preset_color_schemes".into())) {
@@ -272,11 +272,11 @@ pub fn import_color_scheme(file_path: String) -> Result<(), String> {
                 }
                 
                 Ok(())
-            }).map_err(|e| e.to_string())?;
+            })?;
             
             return Ok(());
         }
     }
     
-    Err("No color schemes found in file".to_string())
+    Err(RimeError::NotFound("No color schemes found in file".into()))
 }

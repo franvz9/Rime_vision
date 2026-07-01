@@ -5,20 +5,12 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import DeployNotice from './DeployNotice.vue'
 import { useToast } from '../composables/useToast'
 import { errorMessage, emitBusEvent, BusEvents } from '../utils'
+import type { SchemaListData } from '../../src-tauri/bindings/SchemaListData'
+import type { RimeSchema } from '../../src-tauri/bindings/RimeSchema'
 
 const toast = useToast()
 
-interface Schema {
-  schema: string
-  enabled: boolean
-}
-
-interface SchemaListResponse {
-  schemas: Schema[]
-  current_schema: string
-}
-
-const schemas = ref<Schema[]>([])
+const schemas = ref<RimeSchema[]>([])
 const currentSchema = ref<string>('')
 const pendingDeleteSchemas = ref<Set<string>>(new Set())
 
@@ -26,7 +18,7 @@ let schemaMounted = true
 
 onMounted(async () => {
   try {
-    const data: SchemaListResponse = await invoke('get_schemas')
+    const data: SchemaListData = await invoke('get_schemas')
     if (!schemaMounted) return
     schemas.value = data.schemas
     currentSchema.value = data.current_schema || ''
@@ -40,7 +32,7 @@ onUnmounted(() => {
   schemaMounted = false
 })
 
-function toggleSchema(schema: Schema) {
+function toggleSchema(schema: RimeSchema) {
   schema.enabled = !schema.enabled
 }
 
@@ -63,7 +55,7 @@ async function importSchema() {
   if (selected && typeof selected === 'string') {
     try {
       await invoke('import_schema', { filePath: selected })
-      const data: SchemaListResponse = await invoke('get_schemas')
+      const data: SchemaListData = await invoke('get_schemas')
       schemas.value = data.schemas
       currentSchema.value = data.current_schema || ''
       toast.success('输入方案导入成功')

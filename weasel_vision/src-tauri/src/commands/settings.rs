@@ -2,11 +2,14 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::sync::Mutex;
 use std::time::Instant;
+use ts_rs::TS;
 
 use crate::rime::config::{self, RimeConfig};
+use crate::rime::error::RimeError;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct GeneralSettings {
+    #[ts(type = "number")]
     pub page_size: i64,
     pub enable_encoder: bool,
     pub enable_sentence: bool,
@@ -43,11 +46,9 @@ impl Default for GeneralSettings {
 }
 
 #[tauri::command]
-pub fn get_general_settings() -> Result<GeneralSettings, String> {
+pub fn get_general_settings() -> Result<GeneralSettings, RimeError> {
     let cfg = RimeConfig::detect();
-    let dict_value = cfg
-        .load_effective(&cfg.default_path(), &cfg.default_custom_path())
-        .map_err(|e| e.to_string())?;
+    let dict_value = cfg.load_effective(&cfg.default_path(), &cfg.default_custom_path())?;
     let dict = config::value_as_mapping(&dict_value);
 
     let mut settings = GeneralSettings::default();
@@ -102,7 +103,7 @@ pub fn get_general_settings() -> Result<GeneralSettings, String> {
 }
 
 #[tauri::command]
-pub fn save_general_settings(settings: GeneralSettings) -> Result<(), String> {
+pub fn save_general_settings(settings: GeneralSettings) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.default_custom_path(), |patch| {
         let menu = patch
@@ -193,17 +194,17 @@ pub fn save_general_settings(settings: GeneralSettings) -> Result<(), String> {
         );
 
         Ok(())
-    })
-    .map_err(|e| e.to_string())
+    })?;
+    Ok(())
 }
 
 #[tauri::command]
-pub fn get_rime_user_dir() -> Result<String, String> {
+pub fn get_rime_user_dir() -> Result<String, RimeError> {
     let cfg = RimeConfig::detect();
     Ok(cfg.user_dir.to_string_lossy().to_string())
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
 pub struct ConfigFileInfo {
     pub name: String,
     pub path: String,
@@ -212,7 +213,7 @@ pub struct ConfigFileInfo {
 }
 
 #[tauri::command]
-pub fn get_config_files() -> Result<Vec<ConfigFileInfo>, String> {
+pub fn get_config_files() -> Result<Vec<ConfigFileInfo>, RimeError> {
     let cfg = RimeConfig::detect();
     let files = vec![
         ConfigFileInfo {
@@ -244,23 +245,23 @@ pub fn get_config_files() -> Result<Vec<ConfigFileInfo>, String> {
 }
 
 #[tauri::command]
-pub fn sync_build_dir() -> Result<(), String> {
-    crate::rime::deployer::sync().map(|_| ()).map_err(|e| e.to_string())
+pub fn sync_build_dir() -> Result<(), RimeError> {
+    crate::rime::deployer::sync().map(|_| ()).map_err(RimeError::from)
 }
 
 #[tauri::command]
-pub fn open_dir(path: String) -> Result<(), String> {
+pub fn open_dir(path: String) -> Result<(), RimeError> {
     // Validate path to prevent command injection and path traversal
     if path.is_empty() {
-        return Err("路径不能为空".to_string());
+        return Err(RimeError::InvalidPath("路径不能为空".into()));
     }
     // Reject paths starting with '-' (could be interpreted as command flags)
     if path.starts_with('-') {
-        return Err("无效的路径格式".to_string());
+        return Err(RimeError::InvalidPath("无效的路径格式".into()));
     }
     // Block path traversal and shell metacharacters
     if path.contains("..") {
-        return Err("路径包含无效字符".to_string());
+        return Err(RimeError::InvalidPath("路径包含无效字符".into()));
     }
     // Validate path contains only safe characters (no shell metacharacters)
     // Note: parentheses are valid in macOS paths, so they are allowed
@@ -269,30 +270,30 @@ pub fn open_dir(path: String) -> Result<(), String> {
         || path.contains('$') || path.contains('`')
         || path.contains('<') || path.contains('>')
     {
-        return Err("路径包含无效字符".to_string());
+        return Err(RimeError::InvalidPath("路径包含无效字符".into()));
     }
     
     let path_obj = std::path::Path::new(&path);
     if !path_obj.exists() {
-        return Err(format!("目录不存在: {}", path));
+        return Err(RimeError::NotFound(format!("目录不存在: {}", path)));
     }
     if !path_obj.is_dir() {
-        return Err("路径不是目录".to_string());
+        return Err(RimeError::InvalidPath("路径不是目录".into()));
     }
 
-    open::that(&path).map_err(|e| format!("Failed to open directory: {}", e))?;
+    open::that(&path)?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn open_rime_dir() -> Result<(), String> {
+pub fn open_rime_dir() -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     let dir = cfg.user_dir.to_string_lossy().to_string();
     open_dir(dir)
 }
 
 #[tauri::command]
-pub fn reset_config() -> Result<(), String> {
+pub fn reset_config() -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     let style_custom = cfg.style_custom_path();
     let default_custom = cfg.default_custom_path();
@@ -305,10 +306,10 @@ pub fn reset_config() -> Result<(), String> {
     }
 
     if style_custom.exists() {
-        std::fs::remove_file(&style_custom).map_err(|e| e.to_string())?;
+        std::fs::remove_file(&style_custom)?;
     }
     if default_custom.exists() {
-        std::fs::remove_file(&default_custom).map_err(|e| e.to_string())?;
+        std::fs::remove_file(&default_custom)?;
     }
 
     // Trigger deploy so Rime picks up the changes
@@ -331,13 +332,16 @@ static LAST_DEPLOY: Mutex<Option<Instant>> = Mutex::new(None);
 const DEPLOY_THROTTLE_SECS: u64 = 2;
 
 #[tauri::command]
-pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), String> {
+pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeError> {
     // Rate limiting: prevent rapid repeated deploys
     {
-        let mut last = LAST_DEPLOY.lock().map_err(|e| e.to_string())?;
+        let mut last = LAST_DEPLOY.lock()?;
         if let Some(t) = *last {
             if t.elapsed().as_secs() < DEPLOY_THROTTLE_SECS {
-                return Err(format!("操作过于频繁，请 {} 秒后再试", DEPLOY_THROTTLE_SECS));
+                return Err(RimeError::RateLimited(format!(
+                    "操作过于频繁，请 {} 秒后再试",
+                    DEPLOY_THROTTLE_SECS
+                )));
             }
         }
         *last = Some(Instant::now());
@@ -392,10 +396,11 @@ pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), String>
         }
     }
 
-    crate::rime::deployer::deploy().map_err(|e| e.to_string())
+    crate::rime::deployer::deploy()?;
+    Ok(())
 }
 
-fn remove_schema_from_list(cfg: &RimeConfig, schema_filename: &str) -> Result<(), String> {
+fn remove_schema_from_list(cfg: &RimeConfig, schema_filename: &str) -> Result<(), RimeError> {
     // Extract schema_id from filename (e.g., "my_schema.schema.yaml" -> "my_schema")
     let schema_id = schema_filename
         .strip_suffix(".schema.yaml")
@@ -419,5 +424,6 @@ fn remove_schema_from_list(cfg: &RimeConfig, schema_filename: &str) -> Result<()
             }
         }
         Ok(())
-    }).map_err(|e| e.to_string())
+    })?;
+    Ok(())
 }

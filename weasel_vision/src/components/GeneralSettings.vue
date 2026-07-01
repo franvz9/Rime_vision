@@ -4,24 +4,9 @@ import { invoke } from '@tauri-apps/api/core'
 import DeployNotice from './DeployNotice.vue'
 import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
+import type { GeneralSettings } from '../../src-tauri/bindings/GeneralSettings'
 
 const toast = useToast()
-
-interface GeneralSettings {
-  page_size: number
-  enable_encoder: boolean
-  enable_sentence: boolean
-  enable_user_dict: boolean
-  encode_commit_history: boolean
-  switcher_caption: string
-  switcher_hotkeys: string
-  switcher_fold_options: boolean
-  switcher_abbreviate_options: boolean
-  caps_lock_action: string
-  shift_left_action: string
-  shift_right_action: string
-  good_old_caps_lock: boolean
-}
 
 const settings = ref<GeneralSettings>({
   page_size: 6,

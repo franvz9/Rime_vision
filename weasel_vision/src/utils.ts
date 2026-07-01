@@ -2,6 +2,8 @@
  * Shared utility functions for WeaselVision
  */
 
+import { getErrorMessage } from './utils/rimeError'
+
 /** Format byte size to human-readable string */
 export function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -91,12 +93,11 @@ export function hexToRimeHex(hex: string, a: number = 255): string {
 
 /**
  * Human-readable error message from an unknown error value.
+ * Supports the structured RimeError format { code, detail } as well as
+ * plain strings and Error objects for backward compatibility.
  */
 export function errorMessage(e: unknown): string {
-  if (e === null || e === undefined) return '未知错误'
-  if (typeof e === 'string') return e
-  if (e instanceof Error) return e.message
-  return String(e)
+  return getErrorMessage(e)
 }
 
 // ── Event Bus ───────────────────────────────────────────────────────────

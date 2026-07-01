@@ -5,36 +5,12 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
 import WeaselModal from './WeaselModal.vue'
+import type { SyncSettings } from '../../src-tauri/bindings/SyncSettings'
+import type { SyncStatus } from '../../src-tauri/bindings/SyncStatus'
+import type { SyncedDevice } from '../../src-tauri/bindings/SyncedDevice'
+import type { SyncResult } from '../../src-tauri/bindings/SyncResult'
 
 const toast = useToast()
-
-interface SyncSettings {
-  sync_dir: string | null
-  installation_id: string
-  sync_user_dict: boolean
-  sync_config: boolean
-}
-
-interface SyncStatus {
-  configured: boolean
-  last_sync_time: string | null
-  sync_dir_exists: boolean
-  current_id: string
-}
-
-interface SyncedDevice {
-  id: string
-  last_sync: string
-  synced_dicts: string[]
-  synced_configs: string[]
-}
-
-interface SyncResult {
-  success: boolean
-  uploaded: string[]
-  downloaded: string[]
-  errors: string[]
-}
 
 const settings = ref<SyncSettings>({
   sync_dir: null,

@@ -11,7 +11,10 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/",
-    "format:check": "prettier --check src/"
+    "format:check": "prettier --check src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "types:gen": "cd src-tauri && cargo test"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -33,6 +36,7 @@
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.62.1",
     "vite": "^8.0.16",
+    "vitest": "^4.1.9",
     "vue-tsc": "^3.3.5"
   }
 }

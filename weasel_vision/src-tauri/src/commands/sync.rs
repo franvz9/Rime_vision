@@ -4,12 +4,14 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
+use ts_rs::TS;
 
 use crate::rime::config::{self, RimeConfig};
+use crate::rime::error::RimeError;
 
 type Mapping = serde_yaml::Mapping;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct SyncSettings {
     pub sync_dir: Option<String>,
     pub installation_id: String,
@@ -17,7 +19,7 @@ pub struct SyncSettings {
     pub sync_config: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct SyncStatus {
     pub configured: bool,
     pub last_sync_time: Option<String>,
@@ -25,7 +27,7 @@ pub struct SyncStatus {
     pub current_id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct SyncedDevice {
     pub id: String,
     pub last_sync: String,
@@ -33,7 +35,7 @@ pub struct SyncedDevice {
     pub synced_configs: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct SyncResult {
     pub success: bool,
     pub uploaded: Vec<String>,
@@ -46,29 +48,28 @@ fn installation_yaml_path() -> PathBuf {
     cfg.user_dir.join("installation.yaml")
 }
 
-fn load_installation_yaml() -> Result<Mapping, String> {
+fn load_installation_yaml() -> Result<Mapping, RimeError> {
     let path = installation_yaml_path();
     if !path.exists() {
         return Ok(Mapping::new());
     }
-    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let value: Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
+    let content = std::fs::read_to_string(&path)?;
+    let value: Value = serde_yaml::from_str(&content)?;
     Ok(value
         .as_mapping()
         .cloned()
         .unwrap_or_default())
 }
 
-fn save_installation_yaml(dict: &Mapping) -> Result<(), String> {
+fn save_installation_yaml(dict: &Mapping) -> Result<(), RimeError> {
     let path = installation_yaml_path();
-    let content = serde_yaml::to_string(dict).map_err(|e| e.to_string())?;
-    crate::rime::backup::write_if_changed(&content, &path)
-        .map_err(|e| e.to_string())?;
+    let content = serde_yaml::to_string(dict)?;
+    crate::rime::backup::write_if_changed(&content, &path)?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn get_sync_settings() -> Result<SyncSettings, String> {
+pub fn get_sync_settings() -> Result<SyncSettings, RimeError> {
     let dict = load_installation_yaml()?;
     let sync_dir = config::get_string(&dict, "sync_dir");
     let installation_id = config::get_string(&dict, "installation_id").unwrap_or_else(uuid_simple);
@@ -82,7 +83,7 @@ pub fn get_sync_settings() -> Result<SyncSettings, String> {
 }
 
 #[tauri::command]
-pub fn save_sync_settings(settings: SyncSettings) -> Result<(), String> {
+pub fn save_sync_settings(settings: SyncSettings) -> Result<(), RimeError> {
     validate_installation_id(&settings.installation_id)?;
     let mut dict = load_installation_yaml()?;
 
@@ -104,7 +105,7 @@ pub fn save_sync_settings(settings: SyncSettings) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_sync_status() -> Result<SyncStatus, String> {
+pub fn get_sync_status() -> Result<SyncStatus, RimeError> {
     let settings = get_sync_settings()?;
     let sync_dir_exists = settings
         .sync_dir
@@ -130,7 +131,7 @@ pub fn get_sync_status() -> Result<SyncStatus, String> {
 }
 
 #[tauri::command]
-pub fn list_synced_devices() -> Result<Vec<SyncedDevice>, String> {
+pub fn list_synced_devices() -> Result<Vec<SyncedDevice>, RimeError> {
     let settings = get_sync_settings()?;
     let mut devices = Vec::new();
 
@@ -195,13 +196,16 @@ static LAST_SYNC: Mutex<Option<Instant>> = Mutex::new(None);
 const SYNC_THROTTLE_SECS: u64 = 3;
 
 #[tauri::command]
-pub async fn execute_sync() -> Result<SyncResult, String> {
+pub async fn execute_sync() -> Result<SyncResult, RimeError> {
     // Rate limiting: prevent rapid repeated syncs
     {
-        let mut last = LAST_SYNC.lock().map_err(|e| e.to_string())?;
+        let mut last = LAST_SYNC.lock()?;
         if let Some(t) = *last {
             if t.elapsed().as_secs() < SYNC_THROTTLE_SECS {
-                return Err(format!("操作过于频繁，请 {} 秒后再试", SYNC_THROTTLE_SECS));
+                return Err(RimeError::RateLimited(format!(
+                    "操作过于频繁，请 {} 秒后再试",
+                    SYNC_THROTTLE_SECS
+                )));
             }
         }
         *last = Some(Instant::now());
@@ -211,11 +215,11 @@ pub async fn execute_sync() -> Result<SyncResult, String> {
     
     // Check if sync directory is configured
     if settings.sync_dir.is_none() {
-        return Err("请先在「同步设置」中配置同步目录".to_string());
+        return Err(RimeError::Config("请先在「同步设置」中配置同步目录".into()));
     }
     
     // Trigger Rime native sync by sending kill -HUP to Squirrel
-    let process_found = crate::rime::deployer::sync().map_err(|e| format!("触发同步失败: {}", e))?;
+    let process_found = crate::rime::deployer::sync()?;
 
     if !process_found {
         return Ok(SyncResult {
@@ -258,12 +262,12 @@ fn uuid_simple() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
-fn validate_installation_id(id: &str) -> Result<(), String> {
+fn validate_installation_id(id: &str) -> Result<(), RimeError> {
     if id.is_empty() || id.len() > 64 {
-        return Err("Invalid installation ID".to_string());
+        return Err(RimeError::Config("Invalid installation ID".into()));
     }
     if id.chars().any(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_') {
-        return Err("Installation ID contains invalid characters".to_string());
+        return Err(RimeError::Config("Installation ID contains invalid characters".into()));
     }
     Ok(())
 }

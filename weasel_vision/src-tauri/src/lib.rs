@@ -63,3 +63,58 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod export_tests {
+    use ts_rs::TS;
+
+    #[test]
+    fn export_all_bindings() {
+        // commands::backup
+        crate::commands::backup::BackupInfo::export().unwrap();
+        crate::commands::backup::BackupDetail::export().unwrap();
+        crate::commands::backup::BackupFile::export().unwrap();
+        crate::commands::backup::FileDiff::export().unwrap();
+
+        // commands::dict
+        crate::commands::dict::UserDictInfo::export().unwrap();
+        crate::commands::dict::DictEntry::export().unwrap();
+        crate::commands::dict::DictEntriesResult::export().unwrap();
+        crate::commands::dict::SnapshotInfo::export().unwrap();
+        crate::commands::dict::NewDictEntry::export().unwrap();
+
+        // commands::sync
+        crate::commands::sync::SyncSettings::export().unwrap();
+        crate::commands::sync::SyncStatus::export().unwrap();
+        crate::commands::sync::SyncedDevice::export().unwrap();
+        crate::commands::sync::SyncResult::export().unwrap();
+
+        // commands::keybinding
+        crate::commands::keybinding::KeyBinding::export().unwrap();
+
+        // commands::punctuation
+        crate::commands::punctuation::PunctRule::export().unwrap();
+        crate::commands::punctuation::PunctuationData::export().unwrap();
+
+        // commands::schema
+        crate::commands::schema::SchemaListData::export().unwrap();
+
+        // commands::settings
+        crate::commands::settings::GeneralSettings::export().unwrap();
+        crate::commands::settings::ConfigFileInfo::export().unwrap();
+
+        // commands::grammar
+        crate::commands::grammar::GrammarData::export().unwrap();
+
+        // commands::style
+        crate::commands::style::StyleData::export().unwrap();
+
+        // rime modules
+        crate::rime::color::RimeColor::export().unwrap();
+        crate::rime::color_scheme::RimeColorScheme::export().unwrap();
+        crate::rime::style::RimeStyle::export().unwrap();
+        crate::rime::schema::RimeSchema::export().unwrap();
+        crate::rime::grammar::GrammarModel::export().unwrap();
+        crate::rime::grammar::SchemaGrammarConfig::export().unwrap();
+    }
+}

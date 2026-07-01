@@ -1,18 +1,20 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
+use ts_rs::TS;
 
 use crate::rime::config::{self, RimeConfig};
+use crate::rime::error::RimeError;
 use crate::rime::grammar::{GrammarModel, SchemaGrammarConfig};
 use crate::rime::patch;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, TS)]
 pub struct GrammarData {
     pub models: Vec<GrammarModel>,
     pub mount_configs: std::collections::HashMap<String, SchemaGrammarConfig>,
 }
 
 #[tauri::command]
-pub fn get_grammar_data(schema_ids: Vec<String>) -> Result<GrammarData, String> {
+pub fn get_grammar_data(schema_ids: Vec<String>) -> Result<GrammarData, RimeError> {
     let cfg = RimeConfig::detect();
     let mut models = Vec::new();
     let mut mount_configs = std::collections::HashMap::new();
@@ -100,10 +102,10 @@ pub fn mount_grammar(
     model_filename: String,
     schema_id: String,
     config: SchemaGrammarConfig,
-) -> Result<(), String> {
+) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     let custom_url = cfg.schema_custom_path(&schema_id)
-        .ok_or_else(|| format!("Invalid schema_id: {}", schema_id))?;
+        .ok_or_else(|| RimeError::Config(format!("Invalid schema_id: {}", schema_id)))?;
 
     cfg.save_patch(&custom_url, |patch| {
         patch.insert(
@@ -147,15 +149,15 @@ pub fn mount_grammar(
             Value::Number(config.max_homographs.into()),
         );
         Ok(())
-    })
-    .map_err(|e| e.to_string())
+    })?;
+    Ok(())
 }
 
 #[tauri::command]
-pub fn unmount_grammar(schema_id: String) -> Result<(), String> {
+pub fn unmount_grammar(schema_id: String) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     let custom_url = cfg.schema_custom_path(&schema_id)
-        .ok_or_else(|| format!("Invalid schema_id: {}", schema_id))?;
+        .ok_or_else(|| RimeError::Config(format!("Invalid schema_id: {}", schema_id)))?;
 
     cfg.save_patch(&custom_url, |patch| {
         // Remove all grammar/* keys
@@ -198,39 +200,38 @@ pub fn unmount_grammar(schema_id: String) -> Result<(), String> {
         }
 
         Ok(())
-    })
-    .map_err(|e| e.to_string())
+    })?;
+    Ok(())
 }
 
 #[tauri::command]
-pub fn import_grammar(file_path: String) -> Result<(), String> {
+pub fn import_grammar(file_path: String) -> Result<(), RimeError> {
     // Security validation: prevent path traversal attacks
     super::dict::validate_import_path(&file_path)?;
 
     let path = std::path::Path::new(&file_path);
     if !path.exists() {
-        return Err(format!("File not found: {}", file_path));
+        return Err(RimeError::NotFound(format!("File not found: {}", file_path)));
     }
     if !path.is_file() {
-        return Err("Path is not a file".to_string());
+        return Err(RimeError::InvalidPath("Path is not a file".into()));
     }
 
     let cfg = RimeConfig::detect();
     
     // Read the source file as binary (gram files can be binary)
-    let content = std::fs::read(&file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content = std::fs::read(&file_path)?;
     
     // Get filename without extension
     let path = std::path::Path::new(&file_path);
     let filename = path.file_stem()
         .and_then(|s| s.to_str())
-        .ok_or("Invalid filename")?
+        .ok_or_else(|| RimeError::InvalidPath("Invalid filename".into()))?
         .to_string();
     
     // Basic validation: check if file is not empty and has reasonable size
     if content.is_empty() {
-        return Err("Grammar file is empty".to_string());
+        return Err(RimeError::Config("Grammar file is empty".into()));
     }
     
     // For text-based gram files, do additional validation
@@ -238,15 +239,14 @@ pub fn import_grammar(file_path: String) -> Result<(), String> {
     if let Ok(content_str) = std::str::from_utf8(&content) {
         // If it's valid UTF-8, check for expected markers
         if !content_str.contains("# Rime grammar") && !content_str.contains("language:") {
-            return Err("Grammar file does not appear to be a valid Rime grammar file. Expected '# Rime grammar' or 'language:' header.".to_string());
+            return Err(RimeError::Config("Grammar file does not appear to be a valid Rime grammar file. Expected '# Rime grammar' or 'language:' header.".into()));
         }
     }
     // If conversion fails, it's likely a binary file, which is acceptable
     
     // Copy to user directory using binary write
     let dest_path = cfg.user_dir.join(format!("{}.gram", filename));
-    std::fs::write(&dest_path, content)
-        .map_err(|e| format!("Failed to copy file: {}", e))?;
+    std::fs::write(&dest_path, content)?;
     
     Ok(())
 }

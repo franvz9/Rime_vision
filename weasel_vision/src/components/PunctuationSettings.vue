@@ -5,20 +5,10 @@ import DeployNotice from './DeployNotice.vue'
 import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
 import WeaselModal from './WeaselModal.vue'
+import type { PunctRule } from '../../src-tauri/bindings/PunctRule'
+import type { PunctuationData } from '../../src-tauri/bindings/PunctuationData'
 
 const toast = useToast()
-
-interface PunctRule {
-  key: string
-  commit: string
-  pair: string[]
-  list: string[]
-}
-
-interface PunctuationData {
-  half_shape: PunctRule[]
-  full_shape: PunctRule[]
-}
 
 const data = ref<PunctuationData | null>(null)
 const activeTab = ref<'half' | 'full'>('half')

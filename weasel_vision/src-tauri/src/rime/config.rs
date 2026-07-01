@@ -265,3 +265,144 @@ pub fn get_sequence<'a>(dict: &'a Mapping, key: &str) -> &'a Vec<Value> {
         .and_then(|v| v.as_sequence())
         .unwrap_or(empty)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_config() -> (tempfile::TempDir, RimeConfig) {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = RimeConfig {
+            user_dir: tmp.path().to_path_buf(),
+            build_dir: None,
+            style_file: "squirrel.yaml".into(),
+            style_custom: "squirrel.custom.yaml".into(),
+            default_yaml: "default.yaml".into(),
+            default_custom: "default.custom.yaml".into(),
+        };
+        (tmp, cfg)
+    }
+
+    #[test]
+    fn test_save_patch_and_load_roundtrip() {
+        let (_tmp, cfg) = temp_config();
+        let custom_path = cfg.default_custom_path();
+
+        // Save a patch
+        cfg.save_patch(&custom_path, |patch| {
+            patch.insert(
+                Value::String("menu/page_size".into()),
+                Value::Number(8.into()),
+            );
+            patch.insert(
+                Value::String("translator/enable_encoder".into()),
+                Value::Bool(false),
+            );
+            Ok(())
+        })
+        .unwrap();
+
+        // Load it back
+        let loaded = cfg.load_yaml(&custom_path).unwrap();
+        let patch = loaded
+            .get(Value::String("patch".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+
+        // Patch stores slash-separated keys literally (expanded_patch expands them on read)
+        assert_eq!(
+            patch
+                .get(Value::String("menu/page_size".into()))
+                .and_then(|v| v.as_i64()),
+            Some(8)
+        );
+        assert_eq!(
+            patch
+                .get(Value::String("translator/enable_encoder".into()))
+                .and_then(|v| v.as_bool()),
+            Some(false)
+        );
+
+        // Verify load_effective expands them correctly
+        // Write a base config so load_effective has something to merge
+        let base_yaml = "menu:\n  page_size: 5\n";
+        std::fs::write(cfg.default_path(), base_yaml).unwrap();
+        let effective = cfg
+            .load_effective(&cfg.default_path(), &custom_path)
+            .unwrap();
+        let dict = effective.as_mapping().unwrap();
+        let menu = dict
+            .get(Value::String("menu".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        assert_eq!(
+            menu.get(Value::String("page_size".into()))
+                .and_then(|v| v.as_i64()),
+            Some(8)
+        );
+    }
+
+    #[test]
+    fn test_load_effective_merges_base_and_custom() {
+        let (_tmp, cfg) = temp_config();
+
+        // Write base config
+        let base_yaml = "menu:\n  page_size: 5\ntranslator:\n  enable_encoder: true\n";
+        std::fs::write(cfg.default_path(), base_yaml).unwrap();
+
+        // Write custom config that overrides page_size
+        let custom_yaml = "patch:\n  menu/page_size: 10\n";
+        std::fs::write(cfg.default_custom_path(), custom_yaml).unwrap();
+
+        let effective = cfg
+            .load_effective(&cfg.default_path(), &cfg.default_custom_path())
+            .unwrap();
+        let dict = effective.as_mapping().unwrap();
+
+        let menu = dict
+            .get(Value::String("menu".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        assert_eq!(
+            menu.get(Value::String("page_size".into()))
+                .and_then(|v| v.as_i64()),
+            Some(10)
+        );
+
+        // Translator should still be present from base
+        let translator = dict
+            .get(Value::String("translator".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        assert_eq!(
+            translator
+                .get(Value::String("enable_encoder".into()))
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn test_load_yaml_missing_file() {
+        let (_tmp, cfg) = temp_config();
+        let result = cfg.load_yaml(&cfg.user_dir.join("nonexistent.yaml")).unwrap();
+        assert!(result.as_mapping().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_parse_yaml_normalizes_keys() {
+        let yaml = "foo: bar\nbaz: 42\n";
+        let value = parse_yaml(yaml).unwrap();
+        let dict = value.as_mapping().unwrap();
+        assert_eq!(
+            dict.get(Value::String("foo".into()))
+                .and_then(|v| v.as_str()),
+            Some("bar")
+        );
+        assert_eq!(
+            dict.get(Value::String("baz".into()))
+                .and_then(|v| v.as_i64()),
+            Some(42)
+        );
+    }
+}

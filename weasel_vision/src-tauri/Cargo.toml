@@ -29,6 +29,10 @@ uuid = { version = "1", features = ["v4"] }
 parking_lot = "0.12"
 open = "5"
 thiserror = "2"
+ts-rs = "10"
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 codegen-units = 1

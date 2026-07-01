@@ -4,16 +4,9 @@ import { invoke } from '@tauri-apps/api/core'
 import DeployNotice from './DeployNotice.vue'
 import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
+import type { KeyBinding } from '../../src-tauri/bindings/KeyBinding'
 
 const toast = useToast()
-
-interface KeyBinding {
-  when: string
-  accept: string
-  send: string
-  toggle: string
-  select: string
-}
 
 // 预定义的选项列表（后端参数 -> 显示文本）
 const whenOptions = [

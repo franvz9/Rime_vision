@@ -6,35 +6,11 @@ import DeployNotice from './DeployNotice.vue'
 import { useToast } from '../composables/useToast'
 import { errorMessage, emitBusEvent, BusEvents } from '../utils'
 import WeaselModal from './WeaselModal.vue'
+import type { GrammarModel } from '../../src-tauri/bindings/GrammarModel'
+import type { SchemaGrammarConfig } from '../../src-tauri/bindings/SchemaGrammarConfig'
+import type { GrammarData } from '../../src-tauri/bindings/GrammarData'
 
 const toast = useToast()
-
-interface GrammarModel {
-  filename: string
-  file_path: string
-  file_size: number
-  display_name: string
-  formatted_size: string
-}
-
-interface SchemaGrammarConfig {
-  schema_id: string
-  mounted_model: string | null
-  collocation_max_length: number
-  collocation_min_length: number
-  collocation_penalty: number
-  non_collocation_penalty: number
-  weak_collocation_penalty: number
-  rear_penalty: number
-  contextual_suggestions: boolean
-  max_homophones: number
-  max_homographs: number
-}
-
-interface GrammarData {
-  models: GrammarModel[]
-  mount_configs: Record<string, SchemaGrammarConfig>
-}
 
 const data = ref<GrammarData | null>(null)
 const selectedModel = ref<GrammarModel | null>(null)
@@ -104,7 +80,7 @@ function selectModel(model: GrammarModel) {
 
 function mountedCount(model: GrammarModel): number {
   if (!data.value) return 0
-  return Object.values(data.value.mount_configs).filter((c) => c.mounted_model === model.filename)
+  return Object.values(data.value.mount_configs).filter((c) => c?.mounted_model === model.filename)
     .length
 }
 

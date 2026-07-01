@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
+use ts_rs::TS;
 
 use crate::rime::config::{self, RimeConfig};
+use crate::rime::error::RimeError;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct KeyBinding {
     pub when: String,
     pub accept: String,
@@ -16,11 +18,9 @@ pub struct KeyBinding {
 }
 
 #[tauri::command]
-pub fn get_keybindings() -> Result<Vec<KeyBinding>, String> {
+pub fn get_keybindings() -> Result<Vec<KeyBinding>, RimeError> {
     let cfg = RimeConfig::detect();
-    let dict_value = cfg
-        .load_effective(&cfg.default_path(), &cfg.default_custom_path())
-        .map_err(|e| e.to_string())?;
+    let dict_value = cfg.load_effective(&cfg.default_path(), &cfg.default_custom_path())?;
     let dict = config::value_as_mapping(&dict_value);
 
     let mut bindings = Vec::new();
@@ -68,7 +68,7 @@ pub fn get_keybindings() -> Result<Vec<KeyBinding>, String> {
 }
 
 #[tauri::command]
-pub fn save_keybindings(bindings: Vec<KeyBinding>) -> Result<(), String> {
+pub fn save_keybindings(bindings: Vec<KeyBinding>) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.default_custom_path(), |patch| {
         let bindings_seq: Vec<Value> = bindings
@@ -116,6 +116,6 @@ pub fn save_keybindings(bindings: Vec<KeyBinding>) -> Result<(), String> {
         );
 
         Ok(())
-    })
-    .map_err(|e| e.to_string())
+    })?;
+    Ok(())
 }

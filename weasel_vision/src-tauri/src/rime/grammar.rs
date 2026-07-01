@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct GrammarModel {
     pub filename: String,
     pub file_path: String,
+    #[ts(type = "number")]
     pub file_size: i64,
     pub display_name: String,
     pub formatted_size: String,
@@ -39,18 +41,26 @@ fn format_bytes(bytes: i64) -> String {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct SchemaGrammarConfig {
     pub schema_id: String,
     pub mounted_model: Option<String>,
+    #[ts(type = "number")]
     pub collocation_max_length: i64,
+    #[ts(type = "number")]
     pub collocation_min_length: i64,
+    #[ts(type = "number")]
     pub collocation_penalty: i64,
+    #[ts(type = "number")]
     pub non_collocation_penalty: i64,
+    #[ts(type = "number")]
     pub weak_collocation_penalty: i64,
+    #[ts(type = "number")]
     pub rear_penalty: i64,
     pub contextual_suggestions: bool,
+    #[ts(type = "number")]
     pub max_homophones: i64,
+    #[ts(type = "number")]
     pub max_homographs: i64,
 }
 
@@ -78,5 +88,20 @@ impl SchemaGrammarConfig {
             schema_id: schema_id.to_string(),
             ..Default::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_bytes() {
+        assert_eq!(format_bytes(0), "0 B");
+        assert_eq!(format_bytes(512), "512 B");
+        assert_eq!(format_bytes(1024), "1.0 KB");
+        assert_eq!(format_bytes(1536), "1.5 KB");
+        assert_eq!(format_bytes(1048576), "1.0 MB");
+        assert_eq!(format_bytes(1073741824), "1.0 GB");
     }
 }

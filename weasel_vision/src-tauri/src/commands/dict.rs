@@ -1,50 +1,57 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
-use crate::rime::{backup::write_atomic, config::RimeConfig};
+use crate::rime::{backup::write_atomic, config::RimeConfig, error::RimeError};
 
 /// Sync polling constants (used by create_snapshot)
 const SYNC_POLL_INTERVAL_MS: u64 = 100;
 const SYNC_POLL_MAX_ATTEMPTS: u32 = 100;
 
 /// Validate a file path for import operations (prevents path traversal)
-pub fn validate_import_path(path: &str) -> Result<(), String> {
-    crate::rime::utils::validate_safe_path(path)
+pub fn validate_import_path(path: &str) -> Result<(), RimeError> {
+    crate::rime::utils::validate_safe_path(path).map_err(RimeError::InvalidPath)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct UserDictInfo {
     pub dict_id: String,
     pub display_name: String,
     pub schema_ids: Vec<String>,
+    #[ts(type = "number")]
     pub entry_count: i64,
+    #[ts(type = "number")]
     pub file_size: i64,
     pub last_modified: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct DictEntry {
     pub word: String,
     pub code: String,
+    #[ts(type = "number")]
     pub frequency: i64,
+    #[ts(type = "number")]
     pub commit_count: i64,
     pub last_used: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct DictEntriesResult {
     pub entries: Vec<DictEntry>,
     pub total: usize,
     pub page: usize,
     pub per_page: usize,
+    #[ts(type = "number")]
     pub total_frequency: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct SnapshotInfo {
     pub file_name: String,
     pub created_at: String,
+    #[ts(type = "number")]
     pub size: i64,
     pub snapshot_type: String,
 }
@@ -134,7 +141,7 @@ fn parse_snapshot_line(line: &str) -> Option<DictEntry> {
 }
 
 #[tauri::command]
-pub fn list_user_dictionaries() -> Result<Vec<UserDictInfo>, String> {
+pub fn list_user_dictionaries() -> Result<Vec<UserDictInfo>, RimeError> {
     let cfg = RimeConfig::detect();
     let mut result = Vec::new();
 
@@ -174,7 +181,7 @@ pub fn load_user_dict_entries(
     per_page: usize,
     sort_by: String,
     search: Option<String>,
-) -> Result<DictEntriesResult, String> {
+) -> Result<DictEntriesResult, RimeError> {
     validate_dict_id(&dict_id)?;
     let snapshot = match find_snapshot(&dict_id) {
         Ok(s) => s,
@@ -189,7 +196,7 @@ pub fn load_user_dict_entries(
             });
         }
     };
-    let content = std::fs::read_to_string(&snapshot).map_err(|e| e.to_string())?;
+    let content = std::fs::read_to_string(&snapshot)?;
 
     let mut entries: Vec<DictEntry> = content
         .lines()
@@ -229,7 +236,7 @@ pub fn load_user_dict_entries(
 }
 
 #[tauri::command]
-pub fn list_snapshots(dict_id: String) -> Result<Vec<SnapshotInfo>, String> {
+pub fn list_snapshots(dict_id: String) -> Result<Vec<SnapshotInfo>, RimeError> {
     validate_dict_id(&dict_id)?;
     let cfg = RimeConfig::detect();
     let mut snapshots = Vec::new();
@@ -330,7 +337,7 @@ pub fn list_snapshots(dict_id: String) -> Result<Vec<SnapshotInfo>, String> {
 
 /// Find the most recent snapshot for a dict.
 /// Collects all matching files and returns the one with the latest modification time.
-fn find_snapshot(dict_id: &str) -> Result<PathBuf, String> {
+fn find_snapshot(dict_id: &str) -> Result<PathBuf, RimeError> {
     let cfg = RimeConfig::detect();
     
     // Priority 1: Check sync directory (Rime native sync output)
@@ -425,7 +432,7 @@ fn find_snapshot(dict_id: &str) -> Result<PathBuf, String> {
         }
     }
 
-    Err(format!("No snapshot found for dict '{}'", dict_id))
+    Err(RimeError::NotFound(format!("No snapshot found for dict '{}'", dict_id)))
 }
 
 fn find_schemas_for_dict(cfg: &RimeConfig, dict_id: &str) -> Vec<String> {
@@ -451,12 +458,12 @@ fn find_schemas_for_dict(cfg: &RimeConfig, dict_id: &str) -> Vec<String> {
     schemas
 }
 
-fn validate_dict_id(id: &str) -> Result<(), String> {
+fn validate_dict_id(id: &str) -> Result<(), RimeError> {
     if id.is_empty() || id.len() > 64 {
-        return Err("Invalid dictionary ID".to_string());
+        return Err(RimeError::Config("Invalid dictionary ID".into()));
     }
     if id.chars().any(|c| !c.is_ascii_alphanumeric() && c != '_' && c != '-') {
-        return Err("Dictionary ID contains invalid characters".to_string());
+        return Err(RimeError::Config("Dictionary ID contains invalid characters".into()));
     }
     Ok(())
 }
@@ -520,10 +527,10 @@ fn dir_metadata_modified(dir: &Path) -> String {
 /// - Testing and development purposes
 /// - Cases where user understands changes may not persist
 #[tauri::command]
-pub fn delete_entries(dict_id: String, entries_to_delete: Vec<DictEntryKey>) -> Result<usize, String> {
+pub fn delete_entries(dict_id: String, entries_to_delete: Vec<DictEntryKey>) -> Result<usize, RimeError> {
     validate_dict_id(&dict_id)?;
     let snapshot = find_snapshot(&dict_id)?;
-    let content = std::fs::read_to_string(&snapshot).map_err(|e| e.to_string())?;
+    let content = std::fs::read_to_string(&snapshot)?;
 
     let delete_set: std::collections::HashSet<(String, String)> = entries_to_delete
         .iter()
@@ -548,7 +555,7 @@ pub fn delete_entries(dict_id: String, entries_to_delete: Vec<DictEntryKey>) -> 
         .map(|s| s.to_string())
         .collect();
 
-    write_atomic(&snapshot, &(new_lines.join("\n") + "\n")).map_err(|e| e.to_string())?;
+    write_atomic(&snapshot, &(new_lines.join("\n") + "\n"))?;
     Ok(deleted)
 }
 
@@ -563,10 +570,10 @@ pub fn update_entry_frequency(
     word: String,
     code: String,
     new_freq: i64,
-) -> Result<(), String> {
+) -> Result<(), RimeError> {
     validate_dict_id(&dict_id)?;
     let snapshot = find_snapshot(&dict_id)?;
-    let content = std::fs::read_to_string(&snapshot).map_err(|e| e.to_string())?;
+    let content = std::fs::read_to_string(&snapshot)?;
 
     let new_lines: Vec<String> = content
         .lines()
@@ -614,7 +621,7 @@ pub fn update_entry_frequency(
         })
         .collect();
 
-    write_atomic(&snapshot, &(new_lines.join("\n") + "\n")).map_err(|e| e.to_string())?;
+    write_atomic(&snapshot, &(new_lines.join("\n") + "\n"))?;
     Ok(())
 }
 
@@ -625,10 +632,10 @@ pub struct DictEntryKey {
 }
 
 #[tauri::command]
-pub fn batch_delete_low_frequency(dict_id: String, threshold: i64) -> Result<usize, String> {
+pub fn batch_delete_low_frequency(dict_id: String, threshold: i64) -> Result<usize, RimeError> {
     validate_dict_id(&dict_id)?;
     let snapshot = find_snapshot(&dict_id)?;
-    let content = std::fs::read_to_string(&snapshot).map_err(|e| e.to_string())?;
+    let content = std::fs::read_to_string(&snapshot)?;
 
     let mut deleted = 0;
     let new_lines: Vec<String> = content
@@ -648,41 +655,41 @@ pub fn batch_delete_low_frequency(dict_id: String, threshold: i64) -> Result<usi
         .map(|s| s.to_string())
         .collect();
 
-    write_atomic(&snapshot, &(new_lines.join("\n") + "\n")).map_err(|e| e.to_string())?;
+    write_atomic(&snapshot, &(new_lines.join("\n") + "\n"))?;
     Ok(deleted)
 }
 
 #[tauri::command]
-pub fn export_user_dict(dict_id: String, output_path: String) -> Result<usize, String> {
+pub fn export_user_dict(dict_id: String, output_path: String) -> Result<usize, RimeError> {
     validate_dict_id(&dict_id)?;
     let output = std::path::PathBuf::from(&output_path);
     // Basic security checks
     if output_path.is_empty() {
-        return Err("Output path is empty".to_string());
+        return Err(RimeError::InvalidPath("Output path is empty".into()));
     }
     if output_path.contains("..") {
-        return Err("Output path contains path traversal".to_string());
+        return Err(RimeError::InvalidPath("Output path contains path traversal".into()));
     }
     // Block system-critical directories
     let path_str = output_path.replace('\\', "/");
     #[cfg(target_os = "macos")]
     if path_str.starts_with("/System") || path_str.starts_with("/usr") || path_str.starts_with("/private") {
-        return Err("不允许写入系统关键目录".to_string());
+        return Err(RimeError::Permission("不允许写入系统关键目录".into()));
     }
     #[cfg(target_os = "windows")]
     if path_str.starts_with("C:/Windows") || path_str.starts_with("C:/Program Files") {
-        return Err("不允许写入系统关键目录".to_string());
+        return Err(RimeError::Permission("不允许写入系统关键目录".into()));
     }
     // Validate file extension (.yaml or .txt)
     let ext = output.extension().and_then(|e| e.to_str()).unwrap_or("");
     if ext != "yaml" && ext != "txt" {
-        return Err("文件扩展名必须为 .yaml 或 .txt".to_string());
+        return Err(RimeError::Config("文件扩展名必须为 .yaml 或 .txt".into()));
     }
     if output.exists() && !output.is_file() {
-        return Err("Output path is not a file".to_string());
+        return Err(RimeError::InvalidPath("Output path is not a file".into()));
     }
     let snapshot = find_snapshot(&dict_id)?;
-    let content = std::fs::read_to_string(&snapshot).map_err(|e| e.to_string())?;
+    let content = std::fs::read_to_string(&snapshot)?;
 
     let mut count = 0;
     let mut lines = Vec::new();
@@ -697,7 +704,7 @@ pub fn export_user_dict(dict_id: String, output_path: String) -> Result<usize, S
         }
     }
 
-    write_atomic(&output, &(lines.join("\n") + "\n")).map_err(|e| e.to_string())?;
+    write_atomic(&output, &(lines.join("\n") + "\n"))?;
     Ok(count)
 }
 
@@ -706,13 +713,13 @@ pub fn export_user_dict(dict_id: String, output_path: String) -> Result<usize, S
 /// This renames the old directory, creates a new empty one, then deletes the old one.
 /// This is safer than remove_dir_all + create_dir_all which can lose data if creation fails.
 #[tauri::command]
-pub fn clear_user_dict(dict_id: String) -> Result<(), String> {
+pub fn clear_user_dict(dict_id: String) -> Result<(), RimeError> {
     validate_dict_id(&dict_id)?;
     let cfg = RimeConfig::detect();
     let userdb_dir = cfg.user_dir.join(format!("{}.userdb", dict_id));
 
     if !userdb_dir.exists() {
-        return Err(format!("Dictionary '{}' not found", dict_id));
+        return Err(RimeError::NotFound(format!("Dictionary '{}' not found", dict_id)));
     }
 
     // Rename old directory to temp name, create new empty one
@@ -720,15 +727,14 @@ pub fn clear_user_dict(dict_id: String) -> Result<(), String> {
     // Remove any leftover temp directory from previous failed attempts
     let _ = std::fs::remove_dir_all(&temp_dir);
 
-    std::fs::rename(&userdb_dir, &temp_dir)
-        .map_err(|e| format!("Failed to backup old dictionary: {}", e))?;
+    std::fs::rename(&userdb_dir, &temp_dir)?;
 
     // Create new empty directory
     std::fs::create_dir_all(&userdb_dir)
         .map_err(|e| {
             // Try to restore from backup if creation fails
             let _ = std::fs::rename(&temp_dir, &userdb_dir);
-            format!("Failed to create new directory: {}", e)
+            RimeError::Io(format!("Failed to create new directory: {}", e))
         })?;
 
     // Cleanup old directory (best effort)
@@ -750,10 +756,11 @@ pub fn clear_user_dict(dict_id: String) -> Result<(), String> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct NewDictEntry {
     pub word: String,
     pub code: String,
+    #[ts(type = "number")]
     pub frequency: i64,
 }
 
@@ -761,11 +768,10 @@ pub struct NewDictEntry {
 pub fn add_dict_entry(
     dict_id: String,
     entry: NewDictEntry,
-) -> Result<(), String> {
+) -> Result<(), RimeError> {
     validate_dict_id(&dict_id)?;
     let snapshot = find_snapshot(&dict_id)?;
-    let content = std::fs::read_to_string(&snapshot)
-        .map_err(|e| format!("Failed to read snapshot: {}", e))?;
+    let content = std::fs::read_to_string(&snapshot)?;
 
     // Check if entry already exists
     for line in content.lines() {
@@ -774,7 +780,7 @@ pub fn add_dict_entry(
         }
         if let Some(existing) = parse_snapshot_line(line) {
             if existing.word == entry.word && existing.code == entry.code {
-                return Err(format!("Entry '{}' with code '{}' already exists", entry.word, entry.code));
+                return Err(RimeError::Config(format!("Entry '{}' with code '{}' already exists", entry.word, entry.code)));
             }
         }
     }
@@ -787,19 +793,19 @@ pub fn add_dict_entry(
         content.trim_end().to_string() + "\n" + &new_line + "\n"
     };
 
-    write_atomic(&snapshot, &new_content).map_err(|e| e.to_string())?;
+    write_atomic(&snapshot, &new_content)?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn create_snapshot(dict_id: String) -> Result<String, String> {
+pub async fn create_snapshot(dict_id: String) -> Result<String, RimeError> {
     validate_dict_id(&dict_id)?;
     let cfg = RimeConfig::detect();
     
     // Check if userdb directory exists
     let userdb_dir = cfg.user_dir.join(format!("{}.userdb", dict_id));
     if !userdb_dir.exists() {
-        return Err(format!("Dictionary '{}' not found", dict_id));
+        return Err(RimeError::NotFound(format!("Dictionary '{}' not found", dict_id)));
     }
     
     // Check if snapshot already exists (maybe from previous sync)
@@ -830,13 +836,13 @@ pub async fn create_snapshot(dict_id: String) -> Result<String, String> {
     };
     
     if !sync_configured {
-        return Err("SYNC_NOT_CONFIGURED".to_string());
+        return Err(RimeError::Config("SYNC_NOT_CONFIGURED".into()));
     }
     
     // Sync directory is configured — trigger Rime sync
     // On macOS this sends kill -HUP to Squirrel, which triggers async sync.
     // We need to wait a bit for Squirrel to generate the snapshot.
-    crate::rime::deployer::sync().map_err(|e| format!("触发同步失败: {}", e))?;
+    crate::rime::deployer::sync()?;
     
     // Wait for Squirrel to process the sync and generate snapshot files
     // Poll for up to 10 seconds
@@ -847,32 +853,32 @@ pub async fn create_snapshot(dict_id: String) -> Result<String, String> {
         }
     }
     
-    Err("同步已完成，但未找到快照文件。请确保 Rime 输入法正在运行，然后重试。".to_string())
+    Err(RimeError::Unknown("同步已完成，但未找到快照文件。请确保 Rime 输入法正在运行，然后重试。".into()))
 }
 
 #[tauri::command]
-pub fn delete_snapshot(dict_id: String, file_name: String) -> Result<(), String> {
+pub fn delete_snapshot(dict_id: String, file_name: String) -> Result<(), RimeError> {
     validate_dict_id(&dict_id)?;
     
     // Validate file_name to prevent path traversal
     if file_name.contains("..") || file_name.starts_with('/') || file_name.starts_with('\\') {
-        return Err("Invalid snapshot file name".to_string());
+        return Err(RimeError::InvalidPath("Invalid snapshot file name".into()));
     }
     
     // Use the same resolution logic as apply_modified_snapshot
     let snapshot_path = resolve_snapshot_path(&dict_id, &file_name)?;
     
-    std::fs::remove_file(&snapshot_path).map_err(|e| e.to_string())?;
+    std::fs::remove_file(&snapshot_path)?;
     Ok(())
 }
 
 /// Resolve a snapshot file name to its actual path on disk.
 /// Uses the same priority order as find_snapshot:
 /// 1. sync directory, 2. user_dictionaries/, 3. .userdb/
-fn resolve_snapshot_path(dict_id: &str, file_name: &str) -> Result<PathBuf, String> {
+fn resolve_snapshot_path(dict_id: &str, file_name: &str) -> Result<PathBuf, RimeError> {
     // Validate file_name to prevent path traversal (defense in depth)
     if file_name.contains("..") || file_name.contains('/') || file_name.contains('\\') {
-        return Err("Invalid file name: path traversal not allowed".to_string());
+        return Err(RimeError::InvalidPath("Invalid file name: path traversal not allowed".into()));
     }
 
     let cfg = RimeConfig::detect();
@@ -915,35 +921,35 @@ fn resolve_snapshot_path(dict_id: &str, file_name: &str) -> Result<PathBuf, Stri
         }
     }
 
-    Err(format!("Snapshot '{}' not found", file_name))
+    Err(RimeError::NotFound(format!("Snapshot '{}' not found", file_name)))
 }
 
 /// Apply modified snapshot back to Rime user dictionary
 /// This copies the .txt file to user_dictionaries/ and triggers deploy
 #[tauri::command]
-pub fn apply_modified_snapshot(dict_id: String, file_name: String) -> Result<(), String> {
+pub fn apply_modified_snapshot(dict_id: String, file_name: String) -> Result<(), RimeError> {
     validate_dict_id(&dict_id)?;
 
     // Validate file_name to prevent path traversal
     if file_name.contains("..") || file_name.contains('/') || file_name.contains('\\') {
-        return Err("Invalid file name: path traversal not allowed".to_string());
+        return Err(RimeError::InvalidPath("Invalid file name: path traversal not allowed".into()));
     }
 
     let cfg = RimeConfig::detect();
     
     // Create user_dictionaries directory (copy target)
     let user_dicts_dir = cfg.user_dir.join("user_dictionaries");
-    std::fs::create_dir_all(&user_dicts_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&user_dicts_dir)?;
     
     // Resolve the actual snapshot path using same priority as find_snapshot
     let snapshot_path = resolve_snapshot_path(&dict_id, &file_name)?;
     
     // Copy snapshot to user_dictionaries/<dict_id>.userdb.txt
     let target_path = user_dicts_dir.join(format!("{}.userdb.txt", dict_id));
-    std::fs::copy(&snapshot_path, &target_path).map_err(|e| e.to_string())?;
+    std::fs::copy(&snapshot_path, &target_path)?;
     
     // Trigger Rime deploy to reload the dictionary
-    crate::rime::deployer::deploy().map_err(|e| format!("Deploy failed: {}", e))?;
+    crate::rime::deployer::deploy()?;
     
     Ok(())
 }

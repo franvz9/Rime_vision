@@ -4,15 +4,9 @@ import { invoke } from '@tauri-apps/api/core'
 import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
 import WeaselModal from './WeaselModal.vue'
+import type { ConfigFileInfo } from '../../src-tauri/bindings/ConfigFileInfo'
 
 const toast = useToast()
-
-interface ConfigFileInfo {
-  name: string
-  path: string
-  exists: boolean
-  is_main: boolean
-}
 
 const userDir = ref('')
 const configFiles = ref<ConfigFileInfo[]>([])

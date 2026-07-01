@@ -5,35 +5,10 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import DeployNotice from './DeployNotice.vue'
 import WeaselModal from './WeaselModal.vue'
 import { useToast } from '../composables/useToast'
-import {
-  hexToRgb,
-  rgbToHex,
-  hexToRimeHex,
-  errorMessage,
-  emitBusEvent,
-  BusEvents,
-  type RgbColor,
-} from '../utils'
-
-interface ColorScheme {
-  name: string
-  author: string
-  color_space: string
-  back_color: RgbColor | null
-  border_color: RgbColor | null
-  text_color: RgbColor | null
-  hilited_text_color: RgbColor | null
-  hilited_back_color: RgbColor | null
-  hilited_candidate_back_color: RgbColor | null
-  candidate_text_color: RgbColor | null
-  hilited_candidate_text_color: RgbColor | null
-  candidate_label_color: RgbColor | null
-  hilited_candidate_label_color: RgbColor | null
-  comment_text_color: RgbColor | null
-  hilited_comment_text_color: RgbColor | null
-  preedit_back_color: RgbColor | null
-  candidate_back_color: RgbColor | null
-}
+import { hexToRgb, rgbToHex, hexToRimeHex, errorMessage, emitBusEvent, BusEvents } from '../utils'
+import type { StyleData } from '../../src-tauri/bindings/StyleData'
+import type { RimeColorScheme } from '../../src-tauri/bindings/RimeColorScheme'
+import type { RimeColor } from '../../src-tauri/bindings/RimeColor'
 
 interface StyleSettings {
   font_face?: string
@@ -63,19 +38,11 @@ interface StyleSettings {
   [key: string]: unknown
 }
 
-interface StyleData {
-  style: StyleSettings
-  light_schemes: Record<string, ColorScheme>
-  dark_schemes: Record<string, ColorScheme>
-  selected_light: string
-  selected_dark: string
-}
-
 const toast = useToast()
 const styleData = ref<StyleData | null>(null)
 const activeTab = ref<'light' | 'dark' | 'style'>('light')
 const selectedScheme = ref<string>('')
-const editingScheme = ref<ColorScheme | null>(null)
+const editingScheme = ref<RimeColorScheme | null>(null)
 const showEditor = ref(false)
 const localStyle = ref<StyleSettings | null>(null)
 
@@ -299,9 +266,9 @@ async function importColorScheme() {
   }
 }
 
-function parseColor(v: unknown): RgbColor | null {
+function parseColor(v: unknown): RimeColor | null {
   if (!v) return null
-  if (typeof v === 'object' && v !== null && 'r' in v) return v as RgbColor
+  if (typeof v === 'object' && v !== null && 'r' in v) return v as RimeColor
   if (typeof v === 'string') return hexToRgb(v)
   return null
 }
@@ -327,7 +294,7 @@ function getHexDisplay(v: unknown): string {
   return `0x${c.b.toString(16).padStart(2, '0')}${c.g.toString(16).padStart(2, '0')}${c.r.toString(16).padStart(2, '0')}`
 }
 
-function setColorHex(scheme: ColorScheme, key: string, hex: string) {
+function setColorHex(scheme: RimeColorScheme, key: string, hex: string) {
   const rgb = hexToRgb(hexToRimeHex(hex))
   if (rgb) {
     ;(scheme as unknown as Record<string, unknown>)[key] = rgb
@@ -386,7 +353,7 @@ async function saveStyle() {
         ]"
         @click="selectScheme(name as string)"
       >
-        <div class="scheme-color" :style="{ background: colorToRgba(scheme.back_color) }"></div>
+        <div class="scheme-color" :style="{ background: colorToRgba(scheme?.back_color) }"></div>
         <div class="scheme-info">
           <div class="scheme-name-row">
             <span class="scheme-name">{{ name }}</span>
@@ -404,7 +371,7 @@ async function saveStyle() {
               >待删除</span
             >
           </div>
-          <div v-if="scheme.author" class="scheme-author">{{ scheme.author }}</div>
+          <div v-if="scheme?.author" class="scheme-author">{{ scheme?.author }}</div>
         </div>
         <button
           v-if="pendingDeleteSchemes.has(name as string)"
@@ -643,13 +610,13 @@ async function saveStyle() {
       <div v-if="selectedScheme && schemes[selectedScheme]" class="candidate-window">
         <div
           class="candidate-bg"
-          :style="{ background: colorToRgba(schemes[selectedScheme].back_color) }"
+          :style="{ background: colorToRgba(schemes[selectedScheme]?.back_color) }"
         >
           <div
             class="candidate-item"
             :style="{
-              background: colorToRgba(schemes[selectedScheme].hilited_candidate_back_color),
-              color: colorToRgba(schemes[selectedScheme].hilited_candidate_text_color),
+              background: colorToRgba(schemes[selectedScheme]?.hilited_candidate_back_color),
+              color: colorToRgba(schemes[selectedScheme]?.hilited_candidate_text_color),
             }"
           >
             <span class="label">1.</span>
@@ -657,11 +624,11 @@ async function saveStyle() {
           </div>
           <div
             class="candidate-item"
-            :style="{ color: colorToRgba(schemes[selectedScheme].candidate_text_color) }"
+            :style="{ color: colorToRgba(schemes[selectedScheme]?.candidate_text_color) }"
           >
             <span
               class="label"
-              :style="{ color: colorToRgba(schemes[selectedScheme].candidate_label_color) }"
+              :style="{ color: colorToRgba(schemes[selectedScheme]?.label_color) }"
               >2.</span
             >
             <span class="text">示例</span>
@@ -696,7 +663,7 @@ async function saveStyle() {
             candidate_text_color: '候选文字',
             hilited_candidate_back_color: '高亮背景',
             hilited_candidate_text_color: '高亮文字',
-            candidate_label_color: '编号色',
+            label_color: '编号色',
             comment_text_color: '注释色',
           }"
           :key="key"
@@ -706,10 +673,10 @@ async function saveStyle() {
           <div class="color-input">
             <input
               type="color"
-              :value="getColorHex(editingScheme![key as keyof ColorScheme])"
+              :value="getColorHex(editingScheme![key as keyof RimeColorScheme])"
               @input="setColorHex(editingScheme!, key, ($event.target as HTMLInputElement).value)"
             />
-            <span>{{ getHexDisplay(editingScheme![key as keyof ColorScheme]) }}</span>
+            <span>{{ getHexDisplay(editingScheme![key as keyof RimeColorScheme]) }}</span>
           </div>
         </div>
       </div>

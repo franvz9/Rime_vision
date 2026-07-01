@@ -4,34 +4,11 @@ import { invoke } from '@tauri-apps/api/core'
 import { formatSize, errorMessage } from '../utils'
 import { useToast } from '../composables/useToast'
 import WeaselModal from './WeaselModal.vue'
+import type { BackupInfo } from '../../src-tauri/bindings/BackupInfo'
+import type { BackupDetail } from '../../src-tauri/bindings/BackupDetail'
+import type { FileDiff } from '../../src-tauri/bindings/FileDiff'
 
 const toast = useToast()
-
-interface BackupInfo {
-  id: string
-  created_at: string
-  backup_type: string
-  file_count: number
-  total_size: number
-  note: string | null
-}
-
-interface BackupFile {
-  name: string
-  size: number
-  modified: string
-}
-
-interface BackupDetail {
-  info: BackupInfo
-  files: BackupFile[]
-}
-
-interface FileDiff {
-  file_name: string
-  current: string | null
-  backup: string
-}
 
 const backups = ref<BackupInfo[]>([])
 const selectedBackup = ref<BackupDetail | null>(null)

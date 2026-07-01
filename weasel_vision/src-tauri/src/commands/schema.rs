@@ -1,17 +1,19 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
+use ts_rs::TS;
 
 use crate::rime::config::{self, RimeConfig};
+use crate::rime::error::RimeError;
 use crate::rime::schema::RimeSchema;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, TS)]
 pub struct SchemaListData {
     pub schemas: Vec<RimeSchema>,
     pub current_schema: String,
 }
 
 #[tauri::command]
-pub fn get_schemas() -> Result<SchemaListData, String> {
+pub fn get_schemas() -> Result<SchemaListData, RimeError> {
     let cfg = RimeConfig::detect();
     
     // Get current schema from user.yaml (var/previously_selected_schema)
@@ -30,9 +32,7 @@ pub fn get_schemas() -> Result<SchemaListData, String> {
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
     
-    let dict_value = cfg
-        .load_effective(&cfg.default_path(), &cfg.default_custom_path())
-        .map_err(|e| e.to_string())?;
+    let dict_value = cfg.load_effective(&cfg.default_path(), &cfg.default_custom_path())?;
     let dict = config::value_as_mapping(&dict_value);
 
     let mut schemas = Vec::new();
@@ -59,7 +59,7 @@ pub fn get_schemas() -> Result<SchemaListData, String> {
 }
 
 #[tauri::command]
-pub fn save_schemas(schemas: Vec<RimeSchema>) -> Result<(), String> {
+pub fn save_schemas(schemas: Vec<RimeSchema>) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.default_custom_path(), |patch| {
         let schema_list: Vec<Value> = schemas
@@ -81,42 +81,40 @@ pub fn save_schemas(schemas: Vec<RimeSchema>) -> Result<(), String> {
         );
 
         Ok(())
-    })
-    .map_err(|e| e.to_string())
+    })?;
+    Ok(())
 }
 
 #[tauri::command]
-pub fn import_schema(file_path: String) -> Result<(), String> {
+pub fn import_schema(file_path: String) -> Result<(), RimeError> {
     // Validate file path
     super::dict::validate_import_path(&file_path)?;
     let path = std::path::Path::new(&file_path);
     if !path.exists() {
-        return Err(format!("File not found: {}", file_path));
+        return Err(RimeError::NotFound(format!("File not found: {}", file_path)));
     }
     if !path.is_file() {
-        return Err("Path is not a file".to_string());
+        return Err(RimeError::InvalidPath("Path is not a file".into()));
     }
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     if ext != "yaml" && ext != "yml" {
-        return Err("Invalid file extension: only .yaml and .yml are supported".to_string());
+        return Err(RimeError::Config("Invalid file extension: only .yaml and .yml are supported".into()));
     }
     
-    let content = std::fs::read_to_string(&file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content = std::fs::read_to_string(&file_path)?;
     
     // Parse YAML
-    let yaml_value: Value = serde_yaml::from_str(&content)
-        .map_err(|e| format!("Invalid YAML format: {}", e))?;
+    let yaml_value: Value = serde_yaml::from_str(&content)?;
     
     // Check for schema_id
     if let Some(schema_id) = yaml_value.get(Value::String("schema_id".into())) {
         if let Some(id) = schema_id.as_str() {
             // Validate schema_id to prevent path traversal and injection
             if id.contains("..") || id.contains('/') || id.contains('\\') || id.contains('\0') {
-                return Err("Invalid schema_id: contains invalid characters".to_string());
+                return Err(RimeError::InvalidPath("Invalid schema_id: contains invalid characters".into()));
             }
             if id.is_empty() || id.len() > 64 {
-                return Err("Invalid schema_id: length must be 1-64 characters".to_string());
+                return Err(RimeError::Config("Invalid schema_id: length must be 1-64 characters".into()));
             }
             // Add to schema_list in default.custom.yaml
             let cfg = RimeConfig::detect();
@@ -148,19 +146,18 @@ pub fn import_schema(file_path: String) -> Result<(), String> {
                 }
                 
                 Ok(())
-            }).map_err(|e| e.to_string())?;
+            })?;
             
             // Copy the schema file to user directory so Rime can use it
             let dest_file = cfg.user_dir.join(format!("{}.schema.yaml", id));
             // Don't overwrite if already exists
             if !dest_file.exists() {
-                std::fs::copy(path, &dest_file)
-                    .map_err(|e| format!("Failed to copy schema file: {}", e))?;
+                std::fs::copy(path, &dest_file)?;
             }
             
             return Ok(());
         }
     }
     
-    Err("No schema_id found in file".to_string())
+    Err(RimeError::NotFound("No schema_id found in file".into()))
 }
