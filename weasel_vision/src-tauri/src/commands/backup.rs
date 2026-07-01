@@ -524,6 +524,9 @@ pub fn restore_backup(backup_id: String, restore_files: Vec<String>) -> Result<(
 /// Full restore: copy entire backup directory back to user directory.
 /// Strategy: stage backup files, then atomically swap with current files.
 fn restore_full(cfg: &RimeConfig, backup_dir: &Path) -> Result<(), String> {
+    // Cleanup any leftover .restore_bak_* and .bak artifacts from previous crashed restores
+    cleanup_restore_artifacts(&cfg.user_dir);
+
     // Create auto-backup of current state
     let auto_backup_dir = auto_backups_dir().join(format!("pre_restore_{}", timestamp()));
     std::fs::create_dir_all(&auto_backup_dir).map_err(|e| e.to_string())?;
@@ -620,7 +623,34 @@ fn restore_full(cfg: &RimeConfig, backup_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Remove leftover `.restore_bak_*` and `.bak` files/directories from previous
+/// crashed restore operations in the user directory.
+fn cleanup_restore_artifacts(user_dir: &Path) {
+    if let Ok(entries) = std::fs::read_dir(user_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.contains(".restore_bak_") || name.ends_with(".bak") {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Err(e) = std::fs::remove_dir_all(&path) {
+                        eprintln!("Warning: failed to clean up artifact dir {:?}: {}", path, e);
+                    } else {
+                        eprintln!("Cleaned up restore artifact dir: {}", name);
+                    }
+                } else if path.is_file() {
+                    if let Err(e) = std::fs::remove_file(&path) {
+                        eprintln!("Warning: failed to clean up artifact file {:?}: {}", path, e);
+                    } else {
+                        eprintln!("Cleaned up restore artifact file: {}", name);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Partial restore: file-by-file approach with staged copies.
+/// Uses atomic rename where possible, falling back to copy on cross-filesystem moves.
 fn restore_partial(cfg: &RimeConfig, backup_dir: &Path, files: Vec<String>) -> Result<(), String> {
     let restore_id = uuid::Uuid::new_v4().to_string();
     let temp_dir = cfg.user_dir.join(format!(".restore_temp_{}", restore_id));
@@ -656,6 +686,7 @@ fn restore_partial(cfg: &RimeConfig, backup_dir: &Path, files: Vec<String>) -> R
             let _ = std::fs::create_dir_all(parent);
         }
 
+        // Auto-backup current file before overwriting
         if dst.exists() {
             let safe_name = file_name.replace(['/', '\\'], "_");
             let backup_path =
@@ -672,8 +703,54 @@ fn restore_partial(cfg: &RimeConfig, backup_dir: &Path, files: Vec<String>) -> R
             }
         }
 
-        if let Err(e) = std::fs::copy(staged_path, &dst) {
-            restore_errors.push(format!("Restore {}: {}", file_name, e));
+        // Atomic restore: rename dst to .bak, rename staged to dst, remove .bak
+        // Falls back to copy if rename fails (e.g. cross-filesystem).
+        let bak_suffix = format!(".restore_bak_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
+        let bak_path = if dst.exists() {
+            let bak = dst.with_extension(format!(
+                "{}.{}",
+                dst.extension()
+                    .map(|e| e.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                bak_suffix
+            ));
+            Some(bak)
+        } else {
+            None
+        };
+
+        // Step 1: rename existing dst to .bak (if exists)
+        if let Some(ref bak) = bak_path {
+            if let Err(e) = std::fs::rename(&dst, bak) {
+                // Fallback: direct copy
+                if let Err(e2) = std::fs::copy(staged_path, &dst) {
+                    restore_errors.push(format!("Restore {}: rename failed ({}), copy failed ({})", file_name, e, e2));
+                }
+                continue;
+            }
+        }
+
+        // Step 2: rename staged to dst
+        match std::fs::rename(staged_path, &dst) {
+            Ok(()) => {
+                // Step 3: remove .bak on success
+                if let Some(ref bak) = bak_path {
+                    let _ = std::fs::remove_file(bak);
+                }
+            }
+            Err(rename_err) => {
+                // Rename failed (likely cross-filesystem): restore .bak, fallback to copy
+                if let Some(ref bak) = bak_path {
+                    let _ = std::fs::rename(bak, &dst);
+                }
+                // Fallback: copy staged to dst
+                if let Err(e) = std::fs::copy(staged_path, &dst) {
+                    restore_errors.push(format!(
+                        "Restore {}: rename failed ({}), copy fallback failed ({})",
+                        file_name, rename_err, e
+                    ));
+                }
+            }
         }
     }
 

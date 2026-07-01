@@ -26,7 +26,7 @@ export interface RgbColor {
  */
 export function hexToRgb(hex: string): RgbColor | null {
   if (!hex) return null
-  const cleaned = hex.replace(' ', '')
+  const cleaned = hex.replace(/\s/g, '')
 
   // Rime 0xAABBGGRR format (8 digits)
   const match8 = cleaned.match(

@@ -842,14 +842,28 @@ pub async fn create_snapshot(dict_id: String) -> Result<String, RimeError> {
     // Sync directory is configured — trigger Rime sync
     // On macOS this sends kill -HUP to Squirrel, which triggers async sync.
     // We need to wait a bit for Squirrel to generate the snapshot.
-    crate::rime::deployer::sync()?;
+    // Wrap synchronous I/O in spawn_blocking to avoid blocking the async runtime.
+    let sync_result = tokio::task::spawn_blocking(move || {
+        crate::rime::deployer::sync()
+    }).await;
+    match sync_result {
+        Ok(Ok(_)) => {},
+        Ok(Err(e)) => return Err(RimeError::Unknown(format!("Sync failed: {}", e))),
+        Err(e) => return Err(RimeError::Unknown(format!("Task join error: {}", e))),
+    }
     
     // Wait for Squirrel to process the sync and generate snapshot files
     // Poll for up to 10 seconds
     for _ in 0..SYNC_POLL_MAX_ATTEMPTS {
         tokio::time::sleep(std::time::Duration::from_millis(SYNC_POLL_INTERVAL_MS)).await;
-        if let Ok(snapshot_path) = find_snapshot(&dict_id) {
-            return Ok(snapshot_path.to_string_lossy().to_string());
+        let dict_id_for_find = dict_id.clone();
+        let find_result = tokio::task::spawn_blocking(move || {
+            find_snapshot(&dict_id_for_find)
+        }).await;
+        match find_result {
+            Ok(Ok(snapshot_path)) => return Ok(snapshot_path.to_string_lossy().to_string()),
+            Ok(Err(_)) => {}, // not found yet, continue polling
+            Err(e) => return Err(RimeError::Unknown(format!("Task join error: {}", e))),
         }
     }
     

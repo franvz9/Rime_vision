@@ -145,27 +145,21 @@ mod tests {
 
     #[test]
     fn test_write_if_changed_new_file() {
-        let dir = std::env::temp_dir().join("weasel_vision_test");
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("test_new.yaml");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test_new.yaml");
 
         let result = write_if_changed("hello", &path).unwrap();
         assert_eq!(result, WriteResult::Written);
         assert_eq!(fs::read_to_string(&path).unwrap(), "hello");
-
-        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn test_write_if_changed_unchanged() {
-        let dir = std::env::temp_dir().join("weasel_vision_test2");
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("test_unchanged.yaml");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test_unchanged.yaml");
 
         fs::write(&path, "hello").unwrap();
         let result = write_if_changed("hello", &path).unwrap();
         assert_eq!(result, WriteResult::Unchanged);
-
-        fs::remove_dir_all(&dir).unwrap();
     }
 }

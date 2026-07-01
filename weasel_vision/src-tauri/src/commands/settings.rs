@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
-use std::sync::Mutex;
+use parking_lot::Mutex;
 use std::time::Instant;
 use ts_rs::TS;
 
@@ -335,7 +335,7 @@ const DEPLOY_THROTTLE_SECS: u64 = 2;
 pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeError> {
     // Rate limiting: prevent rapid repeated deploys
     {
-        let mut last = LAST_DEPLOY.lock()?;
+        let mut last = LAST_DEPLOY.lock();
         if let Some(t) = *last {
             if t.elapsed().as_secs() < DEPLOY_THROTTLE_SECS {
                 return Err(RimeError::RateLimited(format!(
@@ -359,8 +359,15 @@ pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeErr
     if let Some(deletes) = pending_deletes {
         let cfg = RimeConfig::detect();
         for delete in &deletes {
-            // Validate identifier to prevent path traversal
-            if delete.identifier.contains("..") || delete.identifier.contains('/') || delete.identifier.contains('\\') {
+            // Validate identifier to prevent path traversal (aligned with validate_safe_path)
+            // Defense in depth: explicitly check control chars + call validate_safe_path
+            if delete.identifier.contains('/') || delete.identifier.contains('\\')
+                || delete.identifier.contains('\0')
+                || delete.identifier.contains('\n')
+                || delete.identifier.contains('\r')
+                || delete.identifier.contains('\t')
+                || crate::rime::utils::validate_safe_path(&delete.identifier).is_err()
+            {
                 eprintln!("Warning: skipping delete with invalid identifier: {}", delete.identifier);
                 continue;
             }

@@ -61,19 +61,14 @@ pub fn deploy() -> Result<()> {
         // Use pkill for atomic process matching and signaling (avoids TOCTOU race condition)
         // -x matches exact process name, -HUP sends reload signal
         // Exit code 0 = signal sent, 1 = no matching process (both are acceptable)
-        match std::process::Command::new("pkill")
+        let output = std::process::Command::new("pkill")
             .args(["-HUP", "-x", "Squirrel"])
             .output()
-        {
-            Ok(output) => {
-                if !output.status.success() && output.status.code() != Some(1) {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    eprintln!("WeaselVision: pkill returned unexpected error: {}", stderr);
-                }
-            }
-            Err(e) => {
-                eprintln!("WeaselVision: failed to execute pkill: {}", e);
-            }
+            .map_err(|e| anyhow::anyhow!("Failed to execute pkill: {}", e))?;
+
+        if !output.status.success() && output.status.code() != Some(1) {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("pkill returned unexpected error (exit code {:?}): {}", output.status.code(), stderr);
         }
     }
 
@@ -120,19 +115,18 @@ pub fn sync() -> Result<bool> {
     #[cfg(target_os = "macos")]
     {
         // Check if Squirrel is running before sending signal
-        let is_running = std::process::Command::new("pkill")
+        let output = std::process::Command::new("pkill")
             .args(["-0", "-x", "Squirrel"])
             .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
+            .map_err(|e| anyhow::anyhow!("Failed to execute pkill: {}", e))?;
 
-        if is_running {
+        if output.status.success() {
             deploy()?;
-            Ok(true)
-        } else {
-            eprintln!("WeaselVision: Squirrel process not found, sync signal not sent");
-            Ok(false)
+            return Ok(true);
         }
+
+        eprintln!("WeaselVision: Squirrel process not found, sync signal not sent");
+        Ok(false)
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]

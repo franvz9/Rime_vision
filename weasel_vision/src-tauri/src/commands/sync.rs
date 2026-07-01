@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::Mutex;
+use parking_lot::Mutex;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -199,7 +199,7 @@ const SYNC_THROTTLE_SECS: u64 = 3;
 pub async fn execute_sync() -> Result<SyncResult, RimeError> {
     // Rate limiting: prevent rapid repeated syncs
     {
-        let mut last = LAST_SYNC.lock()?;
+        let mut last = LAST_SYNC.lock();
         if let Some(t) = *last {
             if t.elapsed().as_secs() < SYNC_THROTTLE_SECS {
                 return Err(RimeError::RateLimited(format!(

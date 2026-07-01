@@ -1,7 +1,24 @@
 use std::path::Path;
 
-/// Unified path validation: rejects empty, excessively long, path-traversal (`..`),
-/// null bytes, and control characters. Used by both backup and dict modules.
+/// Validates that a path string is safe for use within a trusted base directory.
+///
+/// This function checks the overall path string for dangerous patterns but does
+/// **not** reject `/` characters, because subdirectory structures are intentionally
+/// supported (e.g. `subdir/file.yaml`, `lua/aux_code/filter.lua`).
+///
+/// # Rejected patterns
+/// - Empty paths
+/// - Paths longer than 512 bytes
+/// - Paths containing `..` (directory traversal)
+/// - Paths containing null bytes or control characters (`\0`, `\n`, `\r`, `\t`)
+///
+/// # Allowed patterns
+/// - `/` separators (supports subdirectory paths like `build/info.yaml`)
+/// - Dots in file names (e.g. `custom.yaml`, `rime_mint.custom.yaml`)
+///
+/// # Note
+/// If you need to validate a single file name (without `/`), perform an
+/// additional check to ensure the input does not contain `/`.
 pub fn validate_safe_path(path: &str) -> Result<(), String> {
     if path.is_empty() {
         return Err("路径为空".to_string());

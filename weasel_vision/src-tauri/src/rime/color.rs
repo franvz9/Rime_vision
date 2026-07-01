@@ -57,7 +57,7 @@ impl RimeColor {
     }
 
     /// Convert RGBA color to CSS rgba() string format
-    /// TODO(v0.3.0): Use this for CSS color output in theme export
+    /// Reserved for future theme rendering use (CSS color output in theme export)
     #[allow(dead_code)]
     pub fn to_css(self) -> String {
         if self.a < 255 {
@@ -74,7 +74,7 @@ impl RimeColor {
     }
 
     /// Pure white color (255, 255, 255, 255)
-    /// TODO(v0.3.0): Use for default initializers and fallback values
+    /// Reserved for future theme rendering use (default initializers and fallback values)
     #[allow(dead_code)]
     pub const WHITE: Self = Self {
         r: 255,
@@ -83,7 +83,7 @@ impl RimeColor {
         a: 255,
     };
     /// Pure black color (0, 0, 0, 255)
-    /// TODO(v0.3.0): Use for default initializers and fallback values
+    /// Reserved for future theme rendering use (default initializers and fallback values)
     #[allow(dead_code)]
     pub const BLACK: Self = Self {
         r: 0,
@@ -92,7 +92,7 @@ impl RimeColor {
         a: 255,
     };
     /// Fully transparent color (0, 0, 0, 0)
-    /// TODO(v0.3.0): Use for default initializers and fallback values
+    /// Reserved for future theme rendering use (default initializers and fallback values)
     #[allow(dead_code)]
     pub const CLEAR: Self = Self {
         r: 0,
