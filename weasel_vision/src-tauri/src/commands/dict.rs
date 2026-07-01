@@ -2,23 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::rime::config::RimeConfig;
-
-/// Atomically write content to a file (write to temp then rename)
-fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
-    // Use UUID to prevent concurrent writes from conflicting on same temp file
-    let temp_path = path.with_file_name(format!("{}.tmp", uuid::Uuid::new_v4()));
-    std::fs::write(&temp_path, content).map_err(|e| format!("Failed to write temp file: {}", e))?;
-    // Try direct rename first (works on Windows 10 1607+ and Unix)
-    // If it fails (older Windows), fall back to remove + rename
-    if std::fs::rename(&temp_path, path).is_err() {
-        if path.exists() {
-            std::fs::remove_file(path).map_err(|e| format!("Failed to remove existing file: {}", e))?;
-        }
-        std::fs::rename(&temp_path, path).map_err(|e| format!("Failed to rename temp file: {}", e))?;
-    }
-    Ok(())
-}
+use crate::rime::{backup::write_atomic, config::RimeConfig};
 
 /// Validate a file path for import operations (prevents path traversal)
 pub fn validate_import_path(path: &str) -> Result<(), String> {
@@ -558,7 +542,7 @@ pub fn delete_entries(dict_id: String, entries_to_delete: Vec<DictEntryKey>) -> 
         .map(|s| s.to_string())
         .collect();
 
-    atomic_write(&snapshot, &(new_lines.join("\n") + "\n"))?;
+    write_atomic(&snapshot, &(new_lines.join("\n") + "\n")).map_err(|e| e.to_string())?;
     Ok(deleted)
 }
 
@@ -624,7 +608,7 @@ pub fn update_entry_frequency(
         })
         .collect();
 
-    atomic_write(&snapshot, &(new_lines.join("\n") + "\n"))?;
+    write_atomic(&snapshot, &(new_lines.join("\n") + "\n")).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -658,7 +642,7 @@ pub fn batch_delete_low_frequency(dict_id: String, threshold: i64) -> Result<usi
         .map(|s| s.to_string())
         .collect();
 
-    atomic_write(&snapshot, &(new_lines.join("\n") + "\n"))?;
+    write_atomic(&snapshot, &(new_lines.join("\n") + "\n")).map_err(|e| e.to_string())?;
     Ok(deleted)
 }
 
@@ -709,7 +693,7 @@ pub fn export_user_dict(dict_id: String, output_path: String) -> Result<usize, S
         }
     }
 
-    atomic_write(&output, &(lines.join("\n") + "\n"))?;
+    write_atomic(&output, &(lines.join("\n") + "\n")).map_err(|e| e.to_string())?;
     Ok(count)
 }
 
@@ -799,7 +783,7 @@ pub fn add_dict_entry(
         content.trim_end().to_string() + "\n" + &new_line + "\n"
     };
 
-    atomic_write(&snapshot, &new_content)?;
+    write_atomic(&snapshot, &new_content).map_err(|e| e.to_string())?;
     Ok(())
 }
 

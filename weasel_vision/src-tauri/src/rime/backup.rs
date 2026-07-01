@@ -12,6 +12,30 @@ pub enum WriteResult {
 /// Global lock to prevent concurrent writes to the same file
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
+/// Write content to a file atomically (temp + rename) with global lock.
+/// Use this when you know the content has changed and don't need the read-compare step.
+pub fn write_atomic(path: &Path, content: &str) -> Result<()> {
+    let _guard = WRITE_LOCK.lock();
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Atomic write: write to temp file then rename
+    let temp_name = format!(".{}.tmp", uuid::Uuid::new_v4());
+    let temp_path = path.parent().unwrap_or(Path::new(".")).join(&temp_name);
+    std::fs::write(&temp_path, content)?;
+    // Try direct rename first (works on Windows 10 1607+ and Unix)
+    // If it fails (older Windows), fall back to remove + rename
+    if std::fs::rename(&temp_path, path).is_err() {
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
+        std::fs::rename(&temp_path, path)?;
+    }
+    Ok(())
+}
+
 pub fn write_if_changed(content: &str, path: &Path) -> Result<WriteResult> {
     let _guard = WRITE_LOCK.lock();
 
@@ -27,7 +51,8 @@ pub fn write_if_changed(content: &str, path: &Path) -> Result<WriteResult> {
     }
 
     // Atomic write: write to temp file then rename
-    let temp_path = path.with_file_name(format!("{}.tmp", uuid::Uuid::new_v4()));
+    let temp_name = format!(".{}.tmp", uuid::Uuid::new_v4());
+    let temp_path = path.parent().unwrap_or(Path::new(".")).join(&temp_name);
     std::fs::write(&temp_path, content)?;
     // Try direct rename first (works on Windows 10 1607+ and Unix)
     // If it fails (older Windows), fall back to remove + rename

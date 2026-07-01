@@ -248,7 +248,7 @@ pub fn sync() -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_dir(path: String) -> Result<(), String> {
-    // Validate path to prevent command injection
+    // Validate path to prevent command injection and path traversal
     if path.is_empty() {
         return Err("路径不能为空".to_string());
     }
@@ -256,7 +256,11 @@ pub fn open_dir(path: String) -> Result<(), String> {
     if path.starts_with('-') {
         return Err("无效的路径格式".to_string());
     }
-    // Validate path contains only safe characters (shell metacharacters that could cause injection)
+    // Block path traversal and shell metacharacters
+    if path.contains("..") {
+        return Err("路径包含无效字符".to_string());
+    }
+    // Validate path contains only safe characters (no shell metacharacters)
     // Note: parentheses are valid in macOS paths, so they are allowed
     if path.contains('\0') || path.contains('\n') || path.contains('\r') || path.contains('\t')
         || path.contains(';') || path.contains('|') || path.contains('&')

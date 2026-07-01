@@ -213,8 +213,13 @@ fn collect_user_dir(user_dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Str
     Ok(())
 }
 
-/// Recursively copy a directory
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<usize, String> {
+/// Unified recursive directory copy with an optional per-file filter.
+/// `skip_file` receives the file/dir name and returns true to skip it.
+fn copy_dir_filtered(
+    src: &Path,
+    dst: &Path,
+    skip_file: &dyn Fn(&str) -> bool,
+) -> Result<usize, String> {
     std::fs::create_dir_all(dst).map_err(|e| format!("Failed to create dir {:?}: {}", dst, e))?;
     let mut count = 0;
 
@@ -223,9 +228,14 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<usize, String> {
             let src_path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
 
-            // Validate file name to prevent path traversal in subdirectories
+            // Validate file name to prevent path traversal
             if let Err(e) = validate_file_name(&name) {
-                eprintln!("Skipping invalid entry in subdirectory: {} - {}", name, e);
+                eprintln!("Skipping invalid entry: {} - {}", name, e);
+                continue;
+            }
+
+            // Apply caller-supplied filter
+            if skip_file(&name) {
                 continue;
             }
 
@@ -235,13 +245,13 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<usize, String> {
             #[cfg(target_os = "windows")]
             {
                 if name.ends_with(".log") || name == "LOCK" || name.starts_with("MANIFEST-") || name == "CURRENT" {
-                    eprintln!("Skipping locked file in subdirectory: {}", name);
+                    eprintln!("Skipping locked file: {}", name);
                     continue;
                 }
             }
 
             if src_path.is_dir() {
-                count += copy_dir_recursive(&src_path, &dst_path)?;
+                count += copy_dir_filtered(&src_path, &dst_path, skip_file)?;
             } else {
                 match std::fs::copy(&src_path, &dst_path) {
                     Ok(_) => count += 1,
@@ -261,57 +271,14 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<usize, String> {
     Ok(count)
 }
 
+/// Recursively copy a directory (copy everything)
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<usize, String> {
+    copy_dir_filtered(src, dst, &|_| false)
+}
+
 /// Copy directory recursively, optionally excluding .gram model files
 fn copy_dir_recursive_exclude(src: &Path, dst: &Path, include_models: bool) -> Result<usize, String> {
-    std::fs::create_dir_all(dst).map_err(|e| format!("Failed to create dir {:?}: {}", dst, e))?;
-    let mut count = 0;
-
-    if let Ok(entries) = std::fs::read_dir(src) {
-        for entry in entries.flatten() {
-            let src_path = entry.path();
-            let name = entry.file_name().to_string_lossy().to_string();
-
-            // Validate file name to prevent path traversal
-            if let Err(e) = validate_file_name(&name) {
-                eprintln!("Skipping invalid entry: {} - {}", name, e);
-                continue;
-            }
-
-            let dst_path = dst.join(&name);
-
-            // Skip .gram model files when not needed
-            if !include_models && name.ends_with(".gram") {
-                continue;
-            }
-
-            // Skip locked LevelDB files on Windows (os error 32)
-            #[cfg(target_os = "windows")]
-            {
-                if name.ends_with(".log") || name == "LOCK" || name.starts_with("MANIFEST-") || name == "CURRENT" {
-                    eprintln!("Skipping locked file: {}", name);
-                    continue;
-                }
-            }
-
-            if src_path.is_dir() {
-                count += copy_dir_recursive_exclude(&src_path, &dst_path, include_models)?;
-            } else {
-                match std::fs::copy(&src_path, &dst_path) {
-                    Ok(_) => count += 1,
-                    Err(e) => {
-                        // Skip locked files on Windows
-                        #[cfg(target_os = "windows")]
-                        if e.raw_os_error() == Some(32) {
-                            eprintln!("Skipping locked file: {:?}", src_path);
-                            continue;
-                        }
-                        return Err(format!("Failed to copy {:?} to {:?}: {}", src_path, dst_path, e));
-                    }
-                }
-            }
-        }
-    }
-    Ok(count)
+    copy_dir_filtered(src, dst, &|name: &str| !include_models && name.ends_with(".gram"))
 }
 
 fn timestamp() -> String {
@@ -737,8 +704,8 @@ fn validate_file_name(name: &str) -> Result<(), String> {
     if name.is_empty() || name.len() > 512 {
         return Err("Invalid file name".to_string());
     }
-    // Block path traversal, null bytes, and absolute paths
-    if name.contains("..") || name.contains('\0') || name.starts_with('/') || name.starts_with('\\') {
+    // Block path traversal, null bytes, absolute paths, and single dot
+    if name.contains("..") || name.contains('\0') || name.starts_with('/') || name.starts_with('\\') || name == "." {
         return Err("File name contains invalid characters".to_string());
     }
     Ok(())
