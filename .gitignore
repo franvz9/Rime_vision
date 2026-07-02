@@ -28,6 +28,8 @@ env/
 dist/
 build/
 *.egg-info/
+*.dmg
+*.zip
 
 # Swift build artifacts
 RimeVision/.build/
@@ -36,10 +38,18 @@ RimeVision/*.o
 RimeVision/*.swiftdeps
 RimeVision/*.swiftdeps~
 RimeVision/.DS_Store
+archive/
 
 # Local Rime configs (not to be pushed)
 squirrel/
 rime_setting/
+
+# Docs / Design (not pushed)
+docs/
+weasel_vision/DESIGN.md
+weasel_vision/docs/
+weasel_vision/weasel/
+weasel_vision/app/
 
 # Tests (not pushed)
 **/__tests__/
