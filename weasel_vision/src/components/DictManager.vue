@@ -34,6 +34,7 @@ const showSyncNotConfigured = ref(false)
 // Request IDs to prevent stale responses from overwriting newer data
 let loadEntriesRequestId = 0
 let loadSnapshotsRequestId = 0
+let deployRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
 let dmMounted = true
 
@@ -43,6 +44,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   dmMounted = false
+  if (deployRefreshTimer) clearTimeout(deployRefreshTimer)
 })
 
 async function loadDicts() {
@@ -153,7 +155,11 @@ async function confirmApplySnapshot() {
       fileName: snapshots.value[0].file_name,
     })
     toast.success('修改已应用！Rime 正在重新部署...')
-    setTimeout(async () => {
+    // Clear any existing refresh timer before setting a new one
+    if (deployRefreshTimer) clearTimeout(deployRefreshTimer)
+    deployRefreshTimer = setTimeout(async () => {
+      deployRefreshTimer = null
+      if (!dmMounted) return
       await loadEntries()
       await loadSnapshots()
     }, 2000)
@@ -372,7 +378,7 @@ async function addNewEntry() {
           </div>
 
           <!-- Entries tab -->
-          <div v-if="activeTab === 'entries'">
+          <div v-if="activeTab === 'entries'" class="entries-panel">
             <!-- Show generate snapshot button when no snapshot exists -->
             <div v-if="snapshots.length === 0" class="snapshot-hint">
               <p>📭 此词典尚未生成文本快照</p>
@@ -405,7 +411,10 @@ async function addNewEntry() {
             <template v-else>
               <div class="snapshot-warning">
                 <span>⚠️</span>
-                <span>以下操作仅修改快照文件（.userdb.txt），需切换到「快照」标签页并点击「应用修改」后才会对 Rime 输入法生效。Rime 同步后可能被覆盖。</span>
+                <span
+                  >以下操作仅修改快照文件（.userdb.txt），需切换到「快照」标签页并点击「应用修改」后才会对
+                  Rime 输入法生效。Rime 同步后可能被覆盖。</span
+                >
               </div>
               <div class="toolbar">
                 <input
@@ -748,13 +757,18 @@ async function addNewEntry() {
 
 .dict-detail {
   flex: 1;
+  min-height: 0;
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .detail-header {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -764,6 +778,21 @@ async function addNewEntry() {
 .detail-header h3 {
   font-size: 15px;
   margin: 0;
+}
+
+.entries-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.snapshot-warning,
+.toolbar,
+.pagination,
+.batch-actions {
+  flex: 0 0 auto;
 }
 
 .tabs {
@@ -815,12 +844,17 @@ async function addNewEntry() {
 }
 
 .entries-table {
+  flex: 1 1 auto;
+  min-height: 0;
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .table-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   padding: 8px 12px;
   background: var(--color-bg-tertiary);
@@ -970,11 +1004,13 @@ async function addNewEntry() {
 }
 
 .batch-actions {
+  flex: 0 0 auto;
   display: flex;
   gap: 8px;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
 }
 
 .wv-btn.danger {

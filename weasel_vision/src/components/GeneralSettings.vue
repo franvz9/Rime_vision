@@ -64,8 +64,9 @@ let saveToastTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
   try {
-    settings.value = await invoke('get_general_settings')
+    const data = await invoke<GeneralSettings>('get_general_settings')
     if (!mounted) return
+    settings.value = data
   } catch (e) {
     if (!mounted) return
     toast.error(`加载通用设置失败: ${errorMessage(e)}`)
@@ -107,88 +108,90 @@ async function save() {
 
 <template>
   <div class="general-settings">
-    <DeployNotice />
+    <div class="settings-scroll">
+      <DeployNotice />
 
-    <div class="section">
-      <h3>候选词</h3>
-      <div class="form-row">
-        <label>每页候选词数:</label>
-        <input v-model.number="settings.page_size" type="number" min="3" max="10" />
-      </div>
-    </div>
-
-    <div class="section">
-      <h3>翻译器</h3>
-      <label class="checkbox">
-        <input v-model="settings.enable_encoder" type="checkbox" />
-        启用自动造词 (enable_encoder)
-      </label>
-      <label class="checkbox">
-        <input v-model="settings.enable_sentence" type="checkbox" />
-        启用自动句子输入 (enable_sentence)
-      </label>
-      <label class="checkbox">
-        <input v-model="settings.enable_user_dict" type="checkbox" />
-        启用用户词典 (enable_user_dict)
-      </label>
-      <label class="checkbox">
-        <input v-model="settings.encode_commit_history" type="checkbox" />
-        自动编码上屏词语 (encode_commit_history)
-      </label>
-    </div>
-
-    <div class="section">
-      <h3>方案切换器 (switcher)</h3>
-      <div class="form-row">
-        <label>切换标题:</label>
-        <input v-model="settings.switcher_caption" />
-      </div>
-      <div class="form-row">
-        <label>快捷键:</label>
-        <div class="hotkey-display">
-          <input v-model="settings.switcher_hotkeys" class="hotkey-input" />
-          <span class="hotkey-hint">{{ formatKeyDisplay(settings.switcher_hotkeys) }}</span>
+      <div class="section">
+        <h3>候选词</h3>
+        <div class="form-row">
+          <label>每页候选词数:</label>
+          <input v-model.number="settings.page_size" type="number" min="3" max="10" />
         </div>
       </div>
-      <label class="checkbox">
-        <input v-model="settings.switcher_fold_options" type="checkbox" />
-        折叠选项 (fold_options)
-      </label>
-      <label class="checkbox">
-        <input v-model="settings.switcher_abbreviate_options" type="checkbox" />
-        缩写选项 (abbreviate_options)
-      </label>
-    </div>
 
-    <div class="section">
-      <h3>中英文切换 (ascii_composer)</h3>
-      <label class="checkbox">
-        <input v-model="settings.good_old_caps_lock" type="checkbox" />
-        经典 Caps Lock 模式
-      </label>
-      <div class="form-row">
-        <label>Caps Lock:</label>
-        <select v-model="settings.caps_lock_action">
-          <option v-for="opt in capsLockOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
+      <div class="section">
+        <h3>翻译器</h3>
+        <label class="checkbox">
+          <input v-model="settings.enable_encoder" type="checkbox" />
+          启用自动造词 (enable_encoder)
+        </label>
+        <label class="checkbox">
+          <input v-model="settings.enable_sentence" type="checkbox" />
+          启用自动句子输入 (enable_sentence)
+        </label>
+        <label class="checkbox">
+          <input v-model="settings.enable_user_dict" type="checkbox" />
+          启用用户词典 (enable_user_dict)
+        </label>
+        <label class="checkbox">
+          <input v-model="settings.encode_commit_history" type="checkbox" />
+          自动编码上屏词语 (encode_commit_history)
+        </label>
       </div>
-      <div class="form-row">
-        <label>左 Shift:</label>
-        <select v-model="settings.shift_left_action">
-          <option v-for="opt in shiftOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
+
+      <div class="section">
+        <h3>方案切换器 (switcher)</h3>
+        <div class="form-row">
+          <label>切换标题:</label>
+          <input v-model="settings.switcher_caption" />
+        </div>
+        <div class="form-row">
+          <label>快捷键:</label>
+          <div class="hotkey-display">
+            <input v-model="settings.switcher_hotkeys" class="hotkey-input" />
+            <span class="hotkey-hint">{{ formatKeyDisplay(settings.switcher_hotkeys) }}</span>
+          </div>
+        </div>
+        <label class="checkbox">
+          <input v-model="settings.switcher_fold_options" type="checkbox" />
+          折叠选项 (fold_options)
+        </label>
+        <label class="checkbox">
+          <input v-model="settings.switcher_abbreviate_options" type="checkbox" />
+          缩写选项 (abbreviate_options)
+        </label>
       </div>
-      <div class="form-row">
-        <label>右 Shift:</label>
-        <select v-model="settings.shift_right_action">
-          <option v-for="opt in shiftOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
+
+      <div class="section">
+        <h3>中英文切换 (ascii_composer)</h3>
+        <label class="checkbox">
+          <input v-model="settings.good_old_caps_lock" type="checkbox" />
+          经典 Caps Lock 模式
+        </label>
+        <div class="form-row">
+          <label>Caps Lock:</label>
+          <select v-model="settings.caps_lock_action">
+            <option v-for="opt in capsLockOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>左 Shift:</label>
+          <select v-model="settings.shift_left_action">
+            <option v-for="opt in shiftOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>右 Shift:</label>
+          <select v-model="settings.shift_right_action">
+            <option v-for="opt in shiftOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -201,7 +204,22 @@ async function save() {
 
 <style scoped>
 .general-settings {
-  max-width: 500px;
+  height: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.settings-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.settings-scroll > * {
+  max-width: 720px;
 }
 
 .section {
@@ -274,10 +292,14 @@ async function save() {
 }
 
 .actions {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 16px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-primary);
 }
 
 .wv-btn {

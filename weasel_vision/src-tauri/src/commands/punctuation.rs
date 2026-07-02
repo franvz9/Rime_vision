@@ -86,6 +86,14 @@ fn parse_punct_dict(dict: &serde_yaml::Mapping) -> Vec<PunctRule> {
                             .collect();
                     }
                 }
+                if let Some(list) = mapping.get(Value::String("list".into())) {
+                    if let Some(seq) = list.as_sequence() {
+                        rule.list = seq
+                            .iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect();
+                    }
+                }
             } else if let Some(seq) = value.as_sequence() {
                 rule.list = seq
                     .iter()
@@ -107,26 +115,39 @@ fn serialize_punct_rules(rules: &[PunctRule]) -> serde_yaml::Mapping {
     let mut dict = serde_yaml::Mapping::new();
 
     for rule in rules {
+        let mut inner = serde_yaml::Mapping::new();
+        let mut has_content = false;
+
         if !rule.commit.is_empty() {
-            let mut inner = serde_yaml::Mapping::new();
             inner.insert(
                 Value::String("commit".into()),
                 Value::String(rule.commit.clone()),
             );
-            dict.insert(Value::String(rule.key.clone()), Value::Mapping(inner));
-        } else if !rule.pair.is_empty() {
+            has_content = true;
+        }
+        if !rule.pair.is_empty() {
             let pair_values: Vec<Value> =
                 rule.pair.iter().map(|s| Value::String(s.clone())).collect();
-            let mut inner = serde_yaml::Mapping::new();
             inner.insert(Value::String("pair".into()), Value::Sequence(pair_values));
-            dict.insert(Value::String(rule.key.clone()), Value::Mapping(inner));
-        } else if !rule.list.is_empty() {
+            has_content = true;
+        }
+        if !rule.list.is_empty() {
             let list_values: Vec<Value> =
                 rule.list.iter().map(|s| Value::String(s.clone())).collect();
-            dict.insert(
-                Value::String(rule.key.clone()),
-                Value::Sequence(list_values),
-            );
+            inner.insert(Value::String("list".into()), Value::Sequence(list_values));
+            has_content = true;
+        }
+
+        if has_content {
+            // If only commit exists and no pair/list, write as plain string
+            if inner.len() == 1 && inner.contains_key(&Value::String("commit".into())) {
+                dict.insert(
+                    Value::String(rule.key.clone()),
+                    Value::String(rule.commit.clone()),
+                );
+            } else {
+                dict.insert(Value::String(rule.key.clone()), Value::Mapping(inner));
+            }
         }
     }
 

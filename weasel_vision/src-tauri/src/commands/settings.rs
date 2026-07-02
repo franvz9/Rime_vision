@@ -379,8 +379,7 @@ static LAST_DEPLOY: Mutex<Option<Instant>> = Mutex::new(None);
 const DEPLOY_THROTTLE_SECS: u64 = 2;
 
 #[tauri::command]
-pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeError> {
-    eprintln!("WeaselVision: deploy called with {} pending deletes", pending_deletes.as_ref().map(|d| d.len()).unwrap_or(0));
+pub async fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeError> {
     // Rate limiting: prevent rapid repeated deploys
     {
         let mut last = LAST_DEPLOY.lock();
@@ -394,6 +393,14 @@ pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeErr
         }
         *last = Some(Instant::now());
     }
+
+    // Offload blocking I/O and subprocess to a dedicated thread
+    tokio::task::spawn_blocking(move || deploy_blocking(pending_deletes))
+        .await
+        .map_err(|e| RimeError::Unknown(format!("deploy task join error: {}", e)))?
+}
+
+fn deploy_blocking(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeError> {
     // Determine if any model deletion is planned
     let has_model_delete = pending_deletes
         .as_ref()
@@ -472,9 +479,7 @@ pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeErr
         }
     }
 
-    eprintln!("WeaselVision: Calling deployer::deploy()...");
     crate::rime::deployer::deploy()?;
-    eprintln!("WeaselVision: Deploy completed successfully");
     Ok(())
 }
 

@@ -347,6 +347,4 @@ async function save() {
   background: var(--color-bg-input);
   color: var(--color-text-primary);
 }
-
-
 </style>

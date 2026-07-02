@@ -118,7 +118,14 @@ async function openRimeDir() {
 
 <style scoped>
 .advanced-settings {
-  max-width: 500px;
+  height: 100%;
+  max-width: 100%;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.advanced-settings > * {
+  max-width: 720px;
 }
 
 .section {

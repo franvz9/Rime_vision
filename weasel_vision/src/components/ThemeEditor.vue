@@ -60,7 +60,8 @@ const pendingDeleteSchemes = ref<Set<string>>(new Set())
 
 const schemes = computed(() => {
   if (!styleData.value) return {}
-  const result = activeTab.value === 'light' ? styleData.value.light_schemes : styleData.value.dark_schemes
+  const result =
+    activeTab.value === 'light' ? styleData.value.light_schemes : styleData.value.dark_schemes
   return result
 })
 
@@ -93,15 +94,14 @@ let themeMounted = true
 
 onMounted(async () => {
   try {
-    const data = await invoke('get_style_data')
-    styleData.value = data
+    const data = await invoke<StyleData>('get_style_data')
     if (!themeMounted) return
+    styleData.value = data
     selectedScheme.value =
       activeTab.value === 'light' ? styleData.value!.selected_light : styleData.value!.selected_dark
     localStyle.value = { ...styleData.value!.style }
   } catch (e) {
     if (!themeMounted) return
-    console.error('[ThemeEditor] load failed:', e)
     toast.error(`加载主题数据失败: ${errorMessage(e)}`)
   } finally {
     if (themeMounted) loading.value = false
@@ -138,17 +138,16 @@ async function applyScheme(name: string) {
   } else {
     // Set as pending
     pendingScheme.value = name
-    console.log('[ThemeEditor] Setting pending scheme:', name, 'activeTab:', activeTab.value)
     // Immediately save the selection to backend
     try {
-      const lightScheme = activeTab.value === 'light' ? name : styleData.value?.selected_light || 'native'
-      const darkScheme = activeTab.value === 'dark' ? name : styleData.value?.selected_dark || 'native'
-      console.log('[ThemeEditor] Calling save_selected_schemes - light:', lightScheme, 'dark:', darkScheme)
+      const lightScheme =
+        activeTab.value === 'light' ? name : styleData.value?.selected_light || 'native'
+      const darkScheme =
+        activeTab.value === 'dark' ? name : styleData.value?.selected_dark || 'native'
       await invoke('save_selected_schemes', {
         light: lightScheme,
         dark: darkScheme,
       })
-      console.log('[ThemeEditor] save_selected_schemes completed')
       // Don't update styleData.selected_light/dark here - keep the current active scheme
       // showing as "使用中" until deploy completes. The pending scheme shows as "待生效".
       // styleData will be refreshed after deploy completes via handleDeployComplete.
@@ -334,399 +333,416 @@ async function saveStyle() {
     </div>
 
     <template v-else>
-
-    <div class="tabs">
-      <button :class="['tab', { active: activeTab === 'light' }]" @click="activeTab = 'light'">
-        亮色主题
-      </button>
-      <button :class="['tab', { active: activeTab === 'dark' }]" @click="activeTab = 'dark'">
-        暗色主题
-      </button>
-      <button :class="['tab', { active: activeTab === 'style' }]" @click="activeTab = 'style'">
-        样式
-      </button>
-    </div>
-
-    <div v-if="activeTab !== 'style'" class="scheme-list">
-      <div class="list-header">
-        <h3>{{ activeTab === 'light' ? '亮色主题' : '暗色主题' }}</h3>
-        <button class="wv-btn btn-sm" @click="importColorScheme">📥 导入主题</button>
+      <div class="tabs">
+        <button :class="['tab', { active: activeTab === 'light' }]" @click="activeTab = 'light'">
+          亮色主题
+        </button>
+        <button :class="['tab', { active: activeTab === 'dark' }]" @click="activeTab = 'dark'">
+          暗色主题
+        </button>
+        <button :class="['tab', { active: activeTab === 'style' }]" @click="activeTab = 'style'">
+          样式
+        </button>
       </div>
-      <!-- Pending notice -->
-      <div v-if="pendingScheme" class="pending-notice">
-        <span class="notice-text">已选择「{{ pendingScheme }}」，请点击顶部「重新部署」生效</span>
+
+      <div v-if="activeTab !== 'style'" class="scheme-list">
+        <div class="list-header">
+          <h3>{{ activeTab === 'light' ? '亮色主题' : '暗色主题' }}</h3>
+          <button class="wv-btn btn-sm" @click="importColorScheme">📥 导入主题</button>
+        </div>
+        <!-- Pending notice -->
+        <div v-if="pendingScheme" class="pending-notice">
+          <span class="notice-text">已选择「{{ pendingScheme }}」，请点击顶部「重新部署」生效</span>
+        </div>
+        <div
+          v-for="(scheme, name) in schemes"
+          :key="name"
+          :class="[
+            'scheme-item',
+            {
+              'is-active': currentActiveScheme === name && pendingScheme !== name,
+              'is-pending': pendingScheme === name,
+              'is-selected': selectedScheme === name,
+              'is-deleting': pendingDeleteSchemes.has(name as string),
+            },
+          ]"
+          @click="selectScheme(name as string)"
+        >
+          <div class="scheme-color" :style="{ background: colorToRgba(scheme?.back_color) }"></div>
+          <div class="scheme-info">
+            <div class="scheme-name-row">
+              <span class="scheme-name">{{ name }}</span>
+              <span
+                v-if="
+                  currentActiveScheme === name &&
+                  pendingScheme !== name &&
+                  !pendingDeleteSchemes.has(name as string)
+                "
+                class="badge badge-active"
+                >使用中</span
+              >
+              <span v-if="pendingScheme === name" class="badge badge-pending">待生效</span>
+              <span v-if="pendingDeleteSchemes.has(name as string)" class="badge badge-deleting"
+                >待删除</span
+              >
+            </div>
+            <div v-if="scheme?.author" class="scheme-author">{{ scheme?.author }}</div>
+          </div>
+          <button
+            v-if="pendingDeleteSchemes.has(name as string)"
+            class="action-btn btn-cancel-delete"
+            @click.stop="toggleDeleteScheme(name as string)"
+          >
+            取消删除
+          </button>
+          <button
+            v-else-if="pendingScheme === name"
+            class="action-btn btn-cancel"
+            @click.stop="applyScheme(name)"
+          >
+            取消应用
+          </button>
+          <button v-else class="action-btn btn-apply" @click.stop="applyScheme(name)">
+            应用主题
+          </button>
+          <button class="edit-btn" @click.stop="editScheme(name as string)">编辑</button>
+          <button class="edit-btn" @click.stop="copyScheme(name as string)">复制</button>
+          <button
+            class="edit-btn btn-delete"
+            :disabled="!canDeleteScheme(name as string)"
+            :title="
+              !canDeleteScheme(name as string)
+                ? currentActiveScheme === name
+                  ? '使用中不可删除'
+                  : '待生效不可删除'
+                : '删除'
+            "
+            @click.stop="toggleDeleteScheme(name as string)"
+          >
+            {{ pendingDeleteSchemes.has(name as string) ? '✖' : '🗑' }}
+          </button>
+        </div>
       </div>
-      <div
-        v-for="(scheme, name) in schemes"
-        :key="name"
-        :class="[
-          'scheme-item',
-          {
-            'is-active': currentActiveScheme === name && pendingScheme !== name,
-            'is-pending': pendingScheme === name,
-            'is-selected': selectedScheme === name,
-            'is-deleting': pendingDeleteSchemes.has(name as string),
-          },
-        ]"
-        @click="selectScheme(name as string)"
+
+      <!-- Style editing tab -->
+      <div v-if="activeTab === 'style' && localStyle" class="style-editor">
+        <div class="style-scroll">
+          <div class="style-section">
+            <h4>字体</h4>
+            <div class="style-grid">
+              <div class="style-field">
+                <label>主字体</label>
+                <input v-model="localStyle.font_face" placeholder="PingFang SC" />
+              </div>
+              <div class="style-field">
+                <label>字号</label>
+                <input
+                  v-model.number="localStyle.font_point"
+                  type="number"
+                  step="0.5"
+                  min="8"
+                  max="72"
+                />
+              </div>
+              <div class="style-field">
+                <label>序号字体</label>
+                <input v-model="localStyle.label_font_face" placeholder="Lucida Grande" />
+              </div>
+              <div class="style-field">
+                <label>序号字号</label>
+                <input
+                  v-model.number="localStyle.label_font_point"
+                  type="number"
+                  step="0.5"
+                  min="8"
+                  max="72"
+                />
+              </div>
+              <div class="style-field">
+                <label>注释字体</label>
+                <input v-model="localStyle.comment_font_face" />
+              </div>
+              <div class="style-field">
+                <label>注释字号</label>
+                <input
+                  v-model.number="localStyle.comment_font_point"
+                  type="number"
+                  step="0.5"
+                  min="8"
+                  max="72"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="style-section">
+            <h4>窗口样式</h4>
+            <div class="style-grid">
+              <div class="style-field">
+                <label>候选排列</label>
+                <select v-model="localStyle.candidate_list_layout">
+                  <option value="stacked">纵向</option>
+                  <option value="linear">横向</option>
+                </select>
+              </div>
+              <div class="style-field">
+                <label>文字方向</label>
+                <select v-model="localStyle.text_orientation">
+                  <option value="horizontal">横排</option>
+                  <option value="vertical">竖排</option>
+                </select>
+              </div>
+              <div class="style-field">
+                <label>候选格式</label>
+                <input
+                  v-model="localStyle.candidate_format"
+                  placeholder="[label]. [candidate] [comment]"
+                />
+              </div>
+              <div class="style-field">
+                <label>状态提示</label>
+                <select v-model="localStyle.status_message_type">
+                  <option value="mix">混合</option>
+                  <option value="long">完整</option>
+                  <option value="short">简短</option>
+                  <option value="never">不显示</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="style-section">
+            <h4>尺寸与间距</h4>
+            <div class="style-grid">
+              <div class="style-field">
+                <label>圆角半径</label>
+                <input
+                  v-model.number="localStyle.corner_radius"
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="50"
+                />
+              </div>
+              <div class="style-field">
+                <label>高亮圆角</label>
+                <input
+                  v-model.number="localStyle.hilited_corner_radius"
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="50"
+                />
+              </div>
+              <div class="style-field">
+                <label>行间距</label>
+                <input
+                  v-model.number="localStyle.line_spacing"
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="50"
+                />
+              </div>
+              <div class="style-field">
+                <label>间距</label>
+                <input
+                  v-model.number="localStyle.spacing"
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="50"
+                />
+              </div>
+              <div class="style-field">
+                <label>边框高度</label>
+                <input
+                  v-model.number="localStyle.border_height"
+                  type="number"
+                  step="1"
+                  min="-20"
+                  max="50"
+                />
+              </div>
+              <div class="style-field">
+                <label>边框宽度</label>
+                <input
+                  v-model.number="localStyle.border_width"
+                  type="number"
+                  step="1"
+                  min="-20"
+                  max="50"
+                />
+              </div>
+              <div class="style-field">
+                <label>阴影大小</label>
+                <input
+                  v-model.number="localStyle.shadow_size"
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="30"
+                />
+              </div>
+              <div class="style-field">
+                <label>透明度</label>
+                <input
+                  v-model.number="localStyle.alpha"
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  max="1"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="style-section">
+            <h4>行为选项</h4>
+            <div class="style-toggles">
+              <label class="toggle-field">
+                <input v-model="localStyle.inline_preedit" type="checkbox" />
+                <span>内嵌编辑</span>
+              </label>
+              <label class="toggle-field">
+                <input v-model="localStyle.inline_candidate" type="checkbox" />
+                <span>内嵌候选</span>
+              </label>
+              <label class="toggle-field">
+                <input v-model="localStyle.translucency" type="checkbox" />
+                <span>半透明</span>
+              </label>
+              <label class="toggle-field">
+                <input v-model="localStyle.mutual_exclusive" type="checkbox" />
+                <span>颜色互斥</span>
+              </label>
+              <label class="toggle-field">
+                <input v-model="localStyle.memorize_size" type="checkbox" />
+                <span>记忆宽度</span>
+              </label>
+              <label class="toggle-field">
+                <input v-model="localStyle.show_paging" type="checkbox" />
+                <span>显示翻页</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="style-footer">
+          <button class="wv-btn wv-btn-primary" @click="saveStyle">保存样式</button>
+        </div>
+      </div>
+
+      <!-- Simple preview -->
+      <div v-if="activeTab !== 'style'" class="preview">
+        <h3>预览</h3>
+        <div v-if="selectedScheme && schemes[selectedScheme]" class="candidate-window">
+          <div
+            class="candidate-bg"
+            :style="{ background: colorToRgba(schemes[selectedScheme]?.back_color) }"
+          >
+            <div
+              class="candidate-item"
+              :style="{
+                background: colorToRgba(schemes[selectedScheme]?.hilited_candidate_back_color),
+                color: colorToRgba(schemes[selectedScheme]?.hilited_candidate_text_color),
+              }"
+            >
+              <span class="label">1.</span>
+              <span class="text">候选词</span>
+            </div>
+            <div
+              class="candidate-item"
+              :style="{ color: colorToRgba(schemes[selectedScheme]?.candidate_text_color) }"
+            >
+              <span
+                class="label"
+                :style="{ color: colorToRgba(schemes[selectedScheme]?.label_color) }"
+                >2.</span
+              >
+              <span class="text">示例</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Edit / Copy modal -->
+      <WeaselModal
+        :show="showEditor && !!editingScheme"
+        :title="
+          editMode === 'copy'
+            ? `复制配色: ${originalSchemeName} → ${newSchemeName}`
+            : editingScheme
+              ? `编辑配色: ${editingScheme.name}`
+              : ''
+        "
+        @close="cancelEdit"
       >
-        <div class="scheme-color" :style="{ background: colorToRgba(scheme?.back_color) }"></div>
-        <div class="scheme-info">
-          <div class="scheme-name-row">
-            <span class="scheme-name">{{ name }}</span>
-            <span
-              v-if="
-                currentActiveScheme === name &&
-                pendingScheme !== name &&
-                !pendingDeleteSchemes.has(name as string)
-              "
-              class="badge badge-active"
-              >使用中</span
-            >
-            <span v-if="pendingScheme === name" class="badge badge-pending">待生效</span>
-            <span v-if="pendingDeleteSchemes.has(name as string)" class="badge badge-deleting"
-              >待删除</span
-            >
-          </div>
-          <div v-if="scheme?.author" class="scheme-author">{{ scheme?.author }}</div>
+        <div v-if="editMode === 'copy'" class="wv-form-group">
+          <label>新方案名称</label>
+          <input v-model="newSchemeName" placeholder="输入新方案名称" />
         </div>
-        <button
-          v-if="pendingDeleteSchemes.has(name as string)"
-          class="action-btn btn-cancel-delete"
-          @click.stop="toggleDeleteScheme(name as string)"
-        >
-          取消删除
-        </button>
-        <button
-          v-else-if="pendingScheme === name"
-          class="action-btn btn-cancel"
-          @click.stop="applyScheme(name)"
-        >
-          取消应用
-        </button>
-        <button v-else class="action-btn btn-apply" @click.stop="applyScheme(name)">
-          应用主题
-        </button>
-        <button class="edit-btn" @click.stop="editScheme(name as string)">编辑</button>
-        <button class="edit-btn" @click.stop="copyScheme(name as string)">复制</button>
-        <button
-          class="edit-btn btn-delete"
-          :disabled="!canDeleteScheme(name as string)"
-          :title="
-            !canDeleteScheme(name as string)
-              ? currentActiveScheme === name
-                ? '使用中不可删除'
-                : '待生效不可删除'
-              : '删除'
-          "
-          @click.stop="toggleDeleteScheme(name as string)"
-        >
-          {{ pendingDeleteSchemes.has(name as string) ? '✖' : '🗑' }}
-        </button>
-      </div>
-    </div>
-
-    <!-- Style editing tab -->
-    <div v-if="activeTab === 'style' && localStyle" class="style-editor">
-      <div class="style-section">
-        <h4>字体</h4>
-        <div class="style-grid">
-          <div class="style-field">
-            <label>主字体</label>
-            <input v-model="localStyle.font_face" placeholder="PingFang SC" />
-          </div>
-          <div class="style-field">
-            <label>字号</label>
-            <input
-              v-model.number="localStyle.font_point"
-              type="number"
-              step="0.5"
-              min="8"
-              max="72"
-            />
-          </div>
-          <div class="style-field">
-            <label>序号字体</label>
-            <input v-model="localStyle.label_font_face" placeholder="Lucida Grande" />
-          </div>
-          <div class="style-field">
-            <label>序号字号</label>
-            <input
-              v-model.number="localStyle.label_font_point"
-              type="number"
-              step="0.5"
-              min="8"
-              max="72"
-            />
-          </div>
-          <div class="style-field">
-            <label>注释字体</label>
-            <input v-model="localStyle.comment_font_face" />
-          </div>
-          <div class="style-field">
-            <label>注释字号</label>
-            <input
-              v-model.number="localStyle.comment_font_point"
-              type="number"
-              step="0.5"
-              min="8"
-              max="72"
-            />
-          </div>
+        <div v-if="editingScheme" class="wv-form-group">
+          <label>作者</label>
+          <input v-model="editingScheme.author" />
         </div>
-      </div>
-
-      <div class="style-section">
-        <h4>窗口样式</h4>
-        <div class="style-grid">
-          <div class="style-field">
-            <label>候选排列</label>
-            <select v-model="localStyle.candidate_list_layout">
-              <option value="stacked">纵向</option>
-              <option value="linear">横向</option>
-            </select>
-          </div>
-          <div class="style-field">
-            <label>文字方向</label>
-            <select v-model="localStyle.text_orientation">
-              <option value="horizontal">横排</option>
-              <option value="vertical">竖排</option>
-            </select>
-          </div>
-          <div class="style-field">
-            <label>候选格式</label>
-            <input
-              v-model="localStyle.candidate_format"
-              placeholder="[label]. [candidate] [comment]"
-            />
-          </div>
-          <div class="style-field">
-            <label>状态提示</label>
-            <select v-model="localStyle.status_message_type">
-              <option value="mix">混合</option>
-              <option value="long">完整</option>
-              <option value="short">简短</option>
-              <option value="never">不显示</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div class="style-section">
-        <h4>尺寸与间距</h4>
-        <div class="style-grid">
-          <div class="style-field">
-            <label>圆角半径</label>
-            <input
-              v-model.number="localStyle.corner_radius"
-              type="number"
-              step="1"
-              min="0"
-              max="50"
-            />
-          </div>
-          <div class="style-field">
-            <label>高亮圆角</label>
-            <input
-              v-model.number="localStyle.hilited_corner_radius"
-              type="number"
-              step="1"
-              min="0"
-              max="50"
-            />
-          </div>
-          <div class="style-field">
-            <label>行间距</label>
-            <input
-              v-model.number="localStyle.line_spacing"
-              type="number"
-              step="1"
-              min="0"
-              max="50"
-            />
-          </div>
-          <div class="style-field">
-            <label>间距</label>
-            <input v-model.number="localStyle.spacing" type="number" step="1" min="0" max="50" />
-          </div>
-          <div class="style-field">
-            <label>边框高度</label>
-            <input
-              v-model.number="localStyle.border_height"
-              type="number"
-              step="1"
-              min="-20"
-              max="50"
-            />
-          </div>
-          <div class="style-field">
-            <label>边框宽度</label>
-            <input
-              v-model.number="localStyle.border_width"
-              type="number"
-              step="1"
-              min="-20"
-              max="50"
-            />
-          </div>
-          <div class="style-field">
-            <label>阴影大小</label>
-            <input
-              v-model.number="localStyle.shadow_size"
-              type="number"
-              step="1"
-              min="0"
-              max="30"
-            />
-          </div>
-          <div class="style-field">
-            <label>透明度</label>
-            <input v-model.number="localStyle.alpha" type="number" step="0.05" min="0" max="1" />
-          </div>
-        </div>
-      </div>
-
-      <div class="style-section">
-        <h4>行为选项</h4>
-        <div class="style-toggles">
-          <label class="toggle-field">
-            <input v-model="localStyle.inline_preedit" type="checkbox" />
-            <span>内嵌编辑</span>
-          </label>
-          <label class="toggle-field">
-            <input v-model="localStyle.inline_candidate" type="checkbox" />
-            <span>内嵌候选</span>
-          </label>
-          <label class="toggle-field">
-            <input v-model="localStyle.translucency" type="checkbox" />
-            <span>半透明</span>
-          </label>
-          <label class="toggle-field">
-            <input v-model="localStyle.mutual_exclusive" type="checkbox" />
-            <span>颜色互斥</span>
-          </label>
-          <label class="toggle-field">
-            <input v-model="localStyle.memorize_size" type="checkbox" />
-            <span>记忆宽度</span>
-          </label>
-          <label class="toggle-field">
-            <input v-model="localStyle.show_paging" type="checkbox" />
-            <span>显示翻页</span>
-          </label>
-        </div>
-      </div>
-
-      <div class="style-actions">
-        <button class="wv-btn wv-btn-primary" @click="saveStyle">保存样式</button>
-      </div>
-    </div>
-
-    <!-- Simple preview -->
-    <div v-if="activeTab !== 'style'" class="preview">
-      <h3>预览</h3>
-      <div v-if="selectedScheme && schemes[selectedScheme]" class="candidate-window">
-        <div
-          class="candidate-bg"
-          :style="{ background: colorToRgba(schemes[selectedScheme]?.back_color) }"
-        >
+        <div v-if="editingScheme" class="color-grid">
           <div
-            class="candidate-item"
-            :style="{
-              background: colorToRgba(schemes[selectedScheme]?.hilited_candidate_back_color),
-              color: colorToRgba(schemes[selectedScheme]?.hilited_candidate_text_color),
+            v-for="(label, key) in {
+              back_color: '背景色',
+              text_color: '文字色',
+              candidate_text_color: '候选文字',
+              hilited_candidate_back_color: '高亮背景',
+              hilited_candidate_text_color: '高亮文字',
+              label_color: '编号色',
+              comment_text_color: '注释色',
             }"
+            :key="key"
+            class="color-field"
           >
-            <span class="label">1.</span>
-            <span class="text">候选词</span>
-          </div>
-          <div
-            class="candidate-item"
-            :style="{ color: colorToRgba(schemes[selectedScheme]?.candidate_text_color) }"
-          >
-            <span
-              class="label"
-              :style="{ color: colorToRgba(schemes[selectedScheme]?.label_color) }"
-              >2.</span
-            >
-            <span class="text">示例</span>
+            <label>{{ label }}</label>
+            <div class="color-input">
+              <input
+                type="color"
+                :value="getColorHex(editingScheme[key as keyof RimeColorScheme])"
+                @input="
+                  setColorHex(
+                    editingScheme,
+                    key as ColorSchemeKey,
+                    ($event.target as HTMLInputElement).value,
+                  )
+                "
+              />
+              <span>{{ getHexDisplay(editingScheme[key as keyof RimeColorScheme]) }}</span>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-
-    <!-- Edit / Copy modal -->
-    <WeaselModal
-      :show="showEditor && !!editingScheme"
-      :title="
-        editMode === 'copy'
-          ? `复制配色: ${originalSchemeName} → ${newSchemeName}`
-          : editingScheme ? `编辑配色: ${editingScheme.name}` : ''
-      "
-      @close="cancelEdit"
-    >
-      <div v-if="editMode === 'copy'" class="wv-form-group">
-        <label>新方案名称</label>
-        <input v-model="newSchemeName" placeholder="输入新方案名称" />
-      </div>
-      <div v-if="editingScheme" class="wv-form-group">
-        <label>作者</label>
-        <input v-model="editingScheme.author" />
-      </div>
-      <div v-if="editingScheme" class="color-grid">
-        <div
-          v-for="(label, key) in {
-            back_color: '背景色',
-            text_color: '文字色',
-            candidate_text_color: '候选文字',
-            hilited_candidate_back_color: '高亮背景',
-            hilited_candidate_text_color: '高亮文字',
-            label_color: '编号色',
-            comment_text_color: '注释色',
-          }"
-          :key="key"
-          class="color-field"
-        >
-          <label>{{ label }}</label>
-          <div class="color-input">
-            <input
-              type="color"
-              :value="getColorHex(editingScheme[key as keyof RimeColorScheme])"
-              @input="
-                setColorHex(
-                  editingScheme,
-                  key as ColorSchemeKey,
-                  ($event.target as HTMLInputElement).value,
-                )
-              "
-            />
-            <span>{{ getHexDisplay(editingScheme[key as keyof RimeColorScheme]) }}</span>
-          </div>
-        </div>
-      </div>
-      <template #actions>
-        <button class="wv-btn" @click="cancelEdit">取消</button>
-        <button v-if="editMode === 'edit'" class="wv-btn wv-btn-primary" @click="saveScheme">
-          保存
-        </button>
-        <button
-          v-if="editMode === 'copy'"
-          class="wv-btn wv-btn-primary"
-          :disabled="!newSchemeName.trim()"
-          @click="saveScheme"
-        >
-          保存为新主题
-        </button>
-      </template>
-    </WeaselModal>
+        <template #actions>
+          <button class="wv-btn" @click="cancelEdit">取消</button>
+          <button v-if="editMode === 'edit'" class="wv-btn wv-btn-primary" @click="saveScheme">
+            保存
+          </button>
+          <button
+            v-if="editMode === 'copy'"
+            class="wv-btn wv-btn-primary"
+            :disabled="!newSchemeName.trim()"
+            @click="saveScheme"
+          >
+            保存为新主题
+          </button>
+        </template>
+      </WeaselModal>
     </template>
   </div>
 </template>
 
 <style scoped>
 .theme-editor {
+  height: 100%;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
 }
 
 .theme-loading {
@@ -748,7 +764,9 @@ async function saveStyle() {
 }
 
 @keyframes theme-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .tabs {
@@ -967,9 +985,21 @@ async function saveStyle() {
 }
 
 .style-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.style-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  padding-right: 4px;
 }
 
 .color-grid {
@@ -1058,10 +1088,13 @@ async function saveStyle() {
   height: 16px;
 }
 
-.style-actions {
+.style-footer {
+  flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
-  padding-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-primary);
 }
 
 .pending-notice {

@@ -277,6 +277,9 @@ async function deploy() {
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
+
+  /* Layout */
+  --app-header-height: 56px;
 }
 
 /* ========== 暗色模式（跟随系统）========== */
@@ -374,7 +377,10 @@ body {
 }
 
 .sidebar-title {
-  padding: 16px;
+  height: var(--app-header-height);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
   font-size: 16px;
   font-weight: 600;
   border-bottom: 1px solid var(--color-border);
@@ -421,10 +427,11 @@ body {
 }
 
 .toolbar {
+  height: var(--app-header-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 24px;
+  padding: 0 24px;
   background: var(--color-bg-secondary);
   border-bottom: 1px solid var(--color-border);
 }
@@ -466,8 +473,13 @@ body {
 
 .content-body {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
   padding: 24px;
+}
+
+.content-body > * {
+  height: 100%;
 }
 
 /* ── Async component fallback styles ────────────────────────────────── */

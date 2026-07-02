@@ -9,9 +9,21 @@ use crate::rime::{backup::write_atomic, config::RimeConfig, error::RimeError};
 const SYNC_POLL_INTERVAL_MS: u64 = 100;
 const SYNC_POLL_MAX_ATTEMPTS: u32 = 100;
 
-/// Validate a file path for import operations (prevents path traversal)
+/// Validate a file path returned by the system file picker for import operations.
 pub fn validate_import_path(path: &str) -> Result<(), RimeError> {
-    crate::rime::utils::validate_safe_path(path).map_err(RimeError::InvalidPath)
+    if path.is_empty() {
+        return Err(RimeError::InvalidPath("Path cannot be empty".into()));
+    }
+    if path.len() > 4096 {
+        return Err(RimeError::InvalidPath("Path too long".into()));
+    }
+    if path.chars().any(|c| c.is_control()) {
+        return Err(RimeError::InvalidPath("Path contains invalid characters".into()));
+    }
+    if !Path::new(path).is_absolute() {
+        return Err(RimeError::InvalidPath("Import path must be absolute".into()));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -522,7 +534,7 @@ fn dict_display_name(dict_id: &str) -> String {
 fn count_snapshot_entries(dict_id: &str) -> usize {
     find_snapshot(dict_id)
         .ok()
-        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|path| crate::rime::utils::read_file_with_limit(&path).ok())
         .map(|content| {
             content
                 .lines()

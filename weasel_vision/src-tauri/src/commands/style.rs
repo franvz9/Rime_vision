@@ -175,14 +175,11 @@ pub fn get_style_data() -> Result<StyleData, RimeError> {
     let mut light_schemes = HashMap::new();
     let mut dark_schemes = HashMap::new();
 
-    eprintln!("WeaselVision: Found {} color schemes in preset_color_schemes", schemes_dict.len());
     for (key, value) in schemes_dict {
         if let Some(name) = key.as_str() {
             if let Some(scheme_dict) = value.as_mapping() {
                 let scheme = RimeColorScheme::from_dict(name.to_string(), scheme_dict);
-                let is_dark = scheme.is_dark();
-                eprintln!("WeaselVision: Scheme '{}' - is_dark={}, back_color={:?}", name, is_dark, scheme.back_color);
-                if is_dark {
+                if scheme.is_dark() {
                     dark_schemes.insert(name.to_string(), scheme);
                 } else {
                     light_schemes.insert(name.to_string(), scheme);
@@ -190,7 +187,6 @@ pub fn get_style_data() -> Result<StyleData, RimeError> {
             }
         }
     }
-    eprintln!("WeaselVision: Loaded {} light schemes and {} dark schemes", light_schemes.len(), dark_schemes.len());
 
     let selected_light = style.color_scheme_name.clone();
     let selected_dark = style.color_scheme_dark_name.clone();
@@ -206,9 +202,7 @@ pub fn get_style_data() -> Result<StyleData, RimeError> {
 
 #[tauri::command]
 pub fn save_style(new_style: RimeStyle) -> Result<(), RimeError> {
-    eprintln!("WeaselVision: save_style called for light={}, dark={}", new_style.color_scheme_name, new_style.color_scheme_dark_name);
     let cfg = RimeConfig::detect();
-    eprintln!("WeaselVision: style_custom_path={:?}", cfg.style_custom_path());
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
         let style_section = patch
             .entry(Value::String("style".into()))
@@ -331,13 +325,11 @@ pub fn save_style(new_style: RimeStyle) -> Result<(), RimeError> {
         Ok(())
     })?;
     fix_decimal_colors(&cfg.style_custom_path());
-    eprintln!("WeaselVision: save_style completed successfully");
     Ok(())
 }
 
 #[tauri::command]
 pub fn save_selected_schemes(light: String, dark: String) -> Result<(), RimeError> {
-    eprintln!("WeaselVision: save_selected_schemes called - light={}, dark={}", light, dark);
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
         let style_section = patch
@@ -355,7 +347,6 @@ pub fn save_selected_schemes(light: String, dark: String) -> Result<(), RimeErro
         Ok(())
     })?;
     fix_decimal_colors(&cfg.style_custom_path());
-    eprintln!("WeaselVision: save_selected_schemes completed successfully");
     Ok(())
 }
 

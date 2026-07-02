@@ -29,46 +29,20 @@ dist/
 build/
 *.egg-info/
 
-# Swift build artifacts (archived)
-archive/RimeVision/.build/
-archive/RimeVision/*.d
-archive/RimeVision/*.o
-archive/RimeVision/*.swiftdeps
-archive/RimeVision/*.swiftdeps~
-archive/RimeVision/.DS_Store
-archive/RimeVision/Tests/
+# Swift build artifacts
+RimeVision/.build/
+RimeVision/*.d
+RimeVision/*.o
+RimeVision/*.swiftdeps
+RimeVision/*.swiftdeps~
+RimeVision/.DS_Store
 
 # Local Rime configs (not to be pushed)
 squirrel/
 rime_setting/
 
-# WeaselVision build artifacts
-weasel_vision/node_modules/
-weasel_vision/dist/
-weasel_vision/src-tauri/target/
-weasel_vision/weasel/
-weasel_vision/DESIGN.md
-weasel_vision/.DS_Store
-weasel_vision/app/
-
-# Build outputs
-*.dmg
-*.exe
-*.app
-
 # Other agent-generated configs
 .codegraph/
+.github/
 .reasonix/
 reasonix.toml
-archive/RimeVision/docs/
-
-# Internal workspace files
-.workbuddy/
-
-# Code review docs (internal only)
-docs/code-review/
-docs/code-review*.md
-weasel_vision/docs/code-review*.md
-weasel_vision/docs/feature-plan*.md
-weasel_vision/docs/v0.3.0-improvement-plan.md
-weasel_vision/src/assets/donate-qrcode.jpg

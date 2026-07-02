@@ -6,6 +6,13 @@ import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
 import type { KeyBinding } from '../../src-tauri/bindings/KeyBinding'
 
+/** KeyBinding with a stable id for use as v-for key */
+interface BindingItem extends KeyBinding {
+  _id: number
+}
+
+let nextBindingId = 0
+
 const toast = useToast()
 
 // 预定义的选项列表（后端参数 -> 显示文本）
@@ -57,14 +64,15 @@ const selectOptions = [
   { value: '0', label: '0 (第十个候选词)' },
 ]
 
-const bindings = ref<KeyBinding[]>([])
+const bindings = ref<BindingItem[]>([])
 
 let keyMounted = true
 
 onMounted(async () => {
   try {
-    bindings.value = await invoke('get_keybindings')
+    const data = await invoke<KeyBinding[]>('get_keybindings')
     if (!keyMounted) return
+    bindings.value = data.map((b) => ({ ...b, _id: nextBindingId++ }))
   } catch (e) {
     if (!keyMounted) return
     toast.error(`加载快捷键失败: ${errorMessage(e)}`)
@@ -77,6 +85,7 @@ onUnmounted(() => {
 
 function addBinding() {
   bindings.value.push({
+    _id: nextBindingId++,
     when: 'composing',
     accept: '',
     send: '',
@@ -85,13 +94,15 @@ function addBinding() {
   })
 }
 
-function removeBinding(index: number) {
-  bindings.value.splice(index, 1)
+function removeBinding(id: number) {
+  bindings.value = bindings.value.filter((b) => b._id !== id)
 }
 
 async function save() {
   try {
-    await invoke('save_keybindings', { bindings: bindings.value })
+    // Strip _id before sending to backend
+    const payload: KeyBinding[] = bindings.value.map(({ _id, ...rest }) => rest)
+    await invoke('save_keybindings', { bindings: payload })
     toast.success('快捷键已保存')
   } catch (e) {
     toast.error(`保存快捷键失败: ${errorMessage(e)}`)
@@ -103,11 +114,59 @@ async function save() {
   <div class="keybinding-editor">
     <DeployNotice />
 
-    <div class="section">
-      <h3>快捷键绑定</h3>
-      <p class="hint">配置全局快捷键绑定规则，定义在特定条件下按某个键时执行的操作</p>
+    <div class="binding-main">
+      <div class="binding-editor-pane">
+        <h3>快捷键绑定</h3>
+        <p class="hint">配置全局快捷键绑定规则，定义在特定条件下按某个键时执行的操作</p>
 
-      <div class="info-box">
+        <div class="binding-list">
+          <div v-for="binding in bindings" :key="binding._id" class="binding-item">
+            <div class="binding-fields">
+              <div class="field">
+                <label>条件 (when)</label>
+                <select v-model="binding.when">
+                  <option v-for="opt in whenOptions" :key="opt.value" :value="opt.value">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+              <div class="field">
+                <label>按键 (accept)</label>
+                <input v-model="binding.accept" placeholder="如 Control+p" />
+              </div>
+              <div class="field">
+                <label>发送 (send)</label>
+                <select v-model="binding.send">
+                  <option v-for="opt in sendOptions" :key="opt.value" :value="opt.value">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+              <div class="field">
+                <label>切换 (toggle)</label>
+                <select v-model="binding.toggle">
+                  <option v-for="opt in toggleOptions" :key="opt.value" :value="opt.value">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+              <div class="field">
+                <label>选择 (select)</label>
+                <select v-model="binding.select">
+                  <option v-for="opt in selectOptions" :key="opt.value" :value="opt.value">
+                    {{ opt.label }}
+                  </option>
+                </select>
+              </div>
+            </div>
+            <button class="remove-btn" @click="removeBinding(binding._id)">×</button>
+          </div>
+        </div>
+
+        <button class="add-btn" @click="addBinding">+ 添加绑定</button>
+      </div>
+
+      <aside class="info-box">
         <strong>💡 使用说明：</strong>
         <ul>
           <li>
@@ -131,61 +190,14 @@ async function save() {
             <code>ascii_mode</code>（中英文切换）、<code>simplification</code>（简繁切换）等
           </li>
           <li>
-            <strong>选择 (select)</strong>：选择候选词的位置，如
-            <code>1</code>（第一个）、<code>2</code>（第二个）等
+            <strong>选择 (select)</strong>：选择候选词的位置，如 <code>1</code>、<code>2</code> 等
           </li>
         </ul>
         <p>
           <strong>示例：</strong><code>Control+n</code> → <code>Down</code> 表示在输入过程中按
           Ctrl+N 向下移动光标
         </p>
-      </div>
-
-      <div class="binding-list">
-        <div v-for="(binding, index) in bindings" :key="index" class="binding-item">
-          <div class="binding-fields">
-            <div class="field">
-              <label>条件 (when)</label>
-              <select v-model="binding.when">
-                <option v-for="opt in whenOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </option>
-              </select>
-            </div>
-            <div class="field">
-              <label>按键 (accept)</label>
-              <input v-model="binding.accept" placeholder="如 Control+p" />
-            </div>
-            <div class="field">
-              <label>发送 (send)</label>
-              <select v-model="binding.send">
-                <option v-for="opt in sendOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </option>
-              </select>
-            </div>
-            <div class="field">
-              <label>切换 (toggle)</label>
-              <select v-model="binding.toggle">
-                <option v-for="opt in toggleOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </option>
-              </select>
-            </div>
-            <div class="field">
-              <label>选择 (select)</label>
-              <select v-model="binding.select">
-                <option v-for="opt in selectOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </option>
-              </select>
-            </div>
-          </div>
-          <button class="remove-btn" @click="removeBinding(index)">×</button>
-        </div>
-      </div>
-
-      <button class="add-btn" @click="addBinding">+ 添加绑定</button>
+      </aside>
     </div>
 
     <div class="actions">
@@ -196,10 +208,28 @@ async function save() {
 
 <style scoped>
 .keybinding-editor {
-  max-width: 700px;
+  height: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.section h3 {
+.binding-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 700px) minmax(260px, 1fr);
+  gap: 16px;
+}
+
+.binding-editor-pane {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.binding-editor-pane h3 {
   font-size: 15px;
   margin-bottom: 4px;
 }
@@ -211,10 +241,10 @@ async function save() {
 }
 
 .info-box {
+  align-self: start;
   background: var(--color-accent-muted);
   border-left: 4px solid var(--color-accent);
   padding: 12px 16px;
-  margin-bottom: 16px;
   border-radius: 4px;
 }
 
@@ -247,12 +277,17 @@ async function save() {
 }
 
 .binding-list {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .binding-item {
+  flex: 0 0 auto;
   display: flex;
   align-items: flex-end;
   gap: 8px;
@@ -309,6 +344,7 @@ async function save() {
 }
 
 .add-btn {
+  flex: 0 0 auto;
   margin-top: 12px;
   padding: 8px 16px;
   border: 1px dashed var(--color-border-dark);
@@ -323,7 +359,11 @@ async function save() {
 }
 
 .actions {
+  flex: 0 0 auto;
   margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-primary);
 }
 
 .wv-btn {

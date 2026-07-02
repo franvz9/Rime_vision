@@ -868,11 +868,25 @@ pub fn delete_backup(backup_id: String) -> Result<(), RimeError> {
 
 fn find_backup_dir(backup_id: &str) -> Result<PathBuf, String> {
     validate_backup_id(backup_id)?;
-    for dir in [manual_backups_dir(), deploy_backups_dir()] {
-        let path = dir.join(backup_id);
-        if path.exists() {
-            return Ok(path);
+    for parent in [manual_backups_dir(), deploy_backups_dir()] {
+        let candidate = parent.join(backup_id);
+        if !candidate.exists() {
+            continue;
         }
+        // Resolve canonical paths and confirm the candidate is a direct child
+        // of the backup root. This blocks `..`, symlinks, or any input that
+        // escapes the parent directory.
+        let parent_canonical = parent
+            .canonicalize()
+            .map_err(|e| format!("Failed to resolve backup root: {}", e))?;
+        let candidate_canonical = match candidate.canonicalize() {
+            Ok(p) => p,
+            Err(e) => return Err(format!("Failed to resolve backup path: {}", e)),
+        };
+        if candidate_canonical.parent() != Some(parent_canonical.as_path()) {
+            return Err(format!("Backup '{}' not found", backup_id));
+        }
+        return Ok(candidate_canonical);
     }
     Err(format!("Backup '{}' not found", backup_id))
 }
@@ -880,6 +894,10 @@ fn find_backup_dir(backup_id: &str) -> Result<PathBuf, String> {
 fn validate_backup_id(id: &str) -> Result<(), String> {
     if id.is_empty() || id.len() > 64 {
         return Err("Invalid backup ID".to_string());
+    }
+    // Reject path-like segments even though `.` is allowed in timestamps.
+    if id == "." || id == ".." || id.contains('/') || id.contains('\\') {
+        return Err("Backup ID contains invalid characters".to_string());
     }
     if id
         .chars()

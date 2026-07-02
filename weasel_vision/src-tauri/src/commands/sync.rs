@@ -70,12 +70,14 @@ pub fn get_sync_settings() -> Result<SyncSettings, RimeError> {
     let dict = load_installation_yaml()?;
     let sync_dir = config::get_string(&dict, "sync_dir");
     let installation_id = config::get_string(&dict, "installation_id").unwrap_or_else(uuid_simple);
+    let sync_user_dict = config::get_bool(&dict, "sync_user_dict").unwrap_or(true);
+    let sync_config = config::get_bool(&dict, "sync_config").unwrap_or(true);
 
     Ok(SyncSettings {
         sync_dir,
         installation_id,
-        sync_user_dict: true,
-        sync_config: true,
+        sync_user_dict,
+        sync_config,
     })
 }
 
@@ -107,6 +109,14 @@ pub fn save_sync_settings(settings: SyncSettings) -> Result<(), RimeError> {
     dict.insert(
         Value::String("installation_id".into()),
         Value::String(settings.installation_id),
+    );
+    dict.insert(
+        Value::String("sync_user_dict".into()),
+        Value::Bool(settings.sync_user_dict),
+    );
+    dict.insert(
+        Value::String("sync_config".into()),
+        Value::Bool(settings.sync_config),
     );
 
     save_installation_yaml(&dict)

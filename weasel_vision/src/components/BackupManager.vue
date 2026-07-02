@@ -223,13 +223,15 @@ function typeName(type: string): string {
             </div>
           </div>
 
-          <h4>包含文件</h4>
-          <div class="file-list">
-            <div v-for="file in selectedBackup.files" :key="file.name" class="file-item">
-              <span class="file-icon">📄</span>
-              <span class="file-name">{{ file.name }}</span>
-              <span class="file-size">{{ formatSize(file.size) }}</span>
-              <button class="wv-icon-btn" @click="compareBackup(file.name)">对比</button>
+          <div class="detail-files-section">
+            <h4>包含文件</h4>
+            <div class="file-list">
+              <div v-for="file in selectedBackup.files" :key="file.name" class="file-item">
+                <span class="file-icon">📄</span>
+                <span class="file-name">{{ file.name }}</span>
+                <span class="file-size">{{ formatSize(file.size) }}</span>
+                <button class="wv-icon-btn" @click="compareBackup(file.name)">对比</button>
+              </div>
             </div>
           </div>
 
@@ -517,13 +519,17 @@ function typeName(type: string): string {
 
 .backup-detail {
   flex: 1;
+  min-height: 0;
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 .detail-header {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -557,11 +563,26 @@ function typeName(type: string): string {
   margin-bottom: 4px;
 }
 
+.detail-files-section {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-files-section h4 {
+  flex: 0 0 auto;
+  margin: 0 0 8px;
+}
+
 .file-list {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: 16px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .file-item {
@@ -589,7 +610,11 @@ function typeName(type: string): string {
 }
 
 .detail-actions {
-  margin-top: 16px;
+  flex: 0 0 auto;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
 }
 
 .wv-empty-state,
@@ -618,6 +643,9 @@ function typeName(type: string): string {
   flex-direction: column;
   gap: 8px;
   margin: 12px 0;
+  max-height: min(360px, 55vh);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .checkbox {
