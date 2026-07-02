@@ -41,6 +41,10 @@ RimeVision/.DS_Store
 squirrel/
 rime_setting/
 
+# Tests (not pushed)
+**/__tests__/
+**/src-tauri/tests/
+
 # Other agent-generated configs
 .codegraph/
 .github/
