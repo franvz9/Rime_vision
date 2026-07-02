@@ -127,19 +127,23 @@ const tabs = [
 ]
 
 async function deploy() {
+  console.log('[App] Deploy called, pending deletes:', pendingDeletes.value.length)
   isDeploying.value = true
   try {
     const deletes = pendingDeletes.value.map((d) => ({
       delete_type: d.delete_type,
       identifier: d.identifier,
     }))
+    console.log('[App] Calling invoke deploy...')
     await invoke('deploy', { pendingDeletes: deletes.length > 0 ? deletes : null })
+    console.log('[App] Deploy completed successfully')
     // Clear pending deletes after successful deploy
     pendingDeletes.value = []
     // Notify all components that deploy completed
     emitBusEvent(BusEvents.DEPLOY_COMPLETE, null)
     toast.success('部署成功')
   } catch (e) {
+    console.error('[App] Deploy failed:', e)
     toast.error(`部署失败: ${errorMessage(e)}`)
   } finally {
     isDeploying.value = false

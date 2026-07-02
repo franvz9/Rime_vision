@@ -883,7 +883,7 @@ fn validate_backup_id(id: &str) -> Result<(), String> {
     }
     if id
         .chars()
-        .any(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
+        .any(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_' && c != '.')
     {
         return Err("Backup ID contains invalid characters".to_string());
     }

@@ -405,7 +405,7 @@ async function addNewEntry() {
             <template v-else>
               <div class="snapshot-warning">
                 <span>⚠️</span>
-                <span>以下操作仅修改快照文件（.userdb.txt），Rime 同步后可能被覆盖</span>
+                <span>以下操作仅修改快照文件（.userdb.txt），需切换到「快照」标签页并点击「应用修改」后才会对 Rime 输入法生效。Rime 同步后可能被覆盖。</span>
               </div>
               <div class="toolbar">
                 <input

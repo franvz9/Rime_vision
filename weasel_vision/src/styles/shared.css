@@ -87,7 +87,7 @@
 
 .wv-btn-primary {
   background: var(--color-accent);
-  color: white;
+  color: var(--color-text-inverse);
   border: none;
 }
 
@@ -176,6 +176,23 @@
   font-size: 14px;
   background: var(--color-bg-input);
   color: var(--color-text-primary);
+}
+
+/* ── Radio Group (used inside teleported modals) ─────────────────── */
+
+.wv-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wv-radio-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 0;
 }
 
 /* ── Misc Utilities ───────────────────────────────────────────────── */

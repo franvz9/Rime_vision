@@ -305,6 +305,10 @@ function toggleDeleteSchema(schemaId: string) {
   color: var(--color-text-primary);
 }
 
+.actions .wv-btn-primary {
+  color: var(--color-text-inverse);
+}
+
 .schema-item.is-deleting {
   opacity: 0.5;
   background: var(--color-bg-tertiary);

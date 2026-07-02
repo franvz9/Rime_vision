@@ -232,7 +232,7 @@ pub async fn execute_sync() -> Result<SyncResult, RimeError> {
         return Err(RimeError::Config("请先在「同步设置」中配置同步目录".into()));
     }
 
-    // Trigger Rime native sync by sending kill -HUP to Squirrel
+    // Trigger Rime native sync via `Squirrel --sync` (DistributedNotificationCenter)
     let process_found = crate::rime::deployer::sync()?;
 
     if !process_found {

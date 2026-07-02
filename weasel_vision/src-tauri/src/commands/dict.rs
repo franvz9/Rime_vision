@@ -892,7 +892,7 @@ pub async fn create_snapshot(dict_id: String) -> Result<String, RimeError> {
     }
 
     // Sync directory is configured — trigger Rime sync
-    // On macOS this sends kill -HUP to Squirrel, which triggers async sync.
+    // On macOS this triggers Squirrel sync via `Squirrel --sync` (DistributedNotificationCenter).
     // We need to wait a bit for Squirrel to generate the snapshot.
     // Wrap synchronous I/O in spawn_blocking to avoid blocking the async runtime.
     let sync_result = tokio::task::spawn_blocking(crate::rime::deployer::sync).await;

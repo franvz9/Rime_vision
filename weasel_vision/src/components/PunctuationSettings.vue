@@ -157,16 +157,16 @@ async function save() {
       </div>
       <div class="wv-form-group">
         <label>类型:</label>
-        <div class="radio-group">
-          <label class="radio-item">
+        <div class="wv-radio-group">
+          <label class="wv-radio-item">
             <input v-model="editType" type="radio" value="commit" />
             <span>直接上屏</span>
           </label>
-          <label class="radio-item">
+          <label class="wv-radio-item">
             <input v-model="editType" type="radio" value="pair" />
             <span>配对输入</span>
           </label>
-          <label class="radio-item">
+          <label class="wv-radio-item">
             <input v-model="editType" type="radio" value="list" />
             <span>候选列表</span>
           </label>
@@ -348,18 +348,5 @@ async function save() {
   color: var(--color-text-primary);
 }
 
-.radio-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
 
-.radio-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  padding: 4px 0;
-}
 </style>

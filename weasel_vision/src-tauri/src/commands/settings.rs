@@ -380,6 +380,7 @@ const DEPLOY_THROTTLE_SECS: u64 = 2;
 
 #[tauri::command]
 pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeError> {
+    eprintln!("WeaselVision: deploy called with {} pending deletes", pending_deletes.as_ref().map(|d| d.len()).unwrap_or(0));
     // Rate limiting: prevent rapid repeated deploys
     {
         let mut last = LAST_DEPLOY.lock();
@@ -471,7 +472,9 @@ pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeErr
         }
     }
 
+    eprintln!("WeaselVision: Calling deployer::deploy()...");
     crate::rime::deployer::deploy()?;
+    eprintln!("WeaselVision: Deploy completed successfully");
     Ok(())
 }
 

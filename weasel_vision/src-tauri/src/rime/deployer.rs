@@ -64,22 +64,28 @@ fn find_weasel_deployer() -> Option<std::path::PathBuf> {
 pub fn deploy() -> Result<()> {
     #[cfg(target_os = "macos")]
     {
-        // Use pkill for atomic process matching and signaling (avoids TOCTOU race condition)
-        // -x matches exact process name, -HUP sends reload signal
-        // Exit code 0 = signal sent, 1 = no matching process (both are acceptable)
-        let output = std::process::Command::new("pkill")
-            .args(["-HUP", "-x", "Squirrel"])
+        // Squirrel does NOT handle SIGHUP — sending it will kill the process and
+        // may cause macOS to unregister it from the input source list.
+        // The correct way to trigger a redeploy is to run `Squirrel --reload`,
+        // which posts a SquirrelReloadNotification via DistributedNotificationCenter.
+        // The running Squirrel process receives the notification and calls deploy().
+        let squirrel_bin = "/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel";
+        eprintln!("WeaselVision: Triggering Squirrel reload via --reload command...");
+        let output = std::process::Command::new(squirrel_bin)
+            .arg("--reload")
             .output()
-            .map_err(|e| anyhow::anyhow!("Failed to execute pkill: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute Squirrel --reload: {}", e))?;
 
-        if !output.status.success() && output.status.code() != Some(1) {
+        if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!("WeaselVision: Squirrel --reload error - exit code {:?}, stderr: {}", output.status.code(), stderr);
             anyhow::bail!(
-                "pkill returned unexpected error (exit code {:?}): {}",
+                "Squirrel --reload failed (exit code {:?}): {}",
                 output.status.code(),
                 stderr
             );
         }
+        eprintln!("WeaselVision: Squirrel reload notification sent successfully");
     }
 
     #[cfg(target_os = "windows")]
@@ -129,19 +135,37 @@ pub fn sync() -> Result<bool> {
 
     #[cfg(target_os = "macos")]
     {
-        // Check if Squirrel is running before sending signal
-        let output = std::process::Command::new("pkill")
-            .args(["-0", "-x", "Squirrel"])
+        // Check if Squirrel is running using pgrep (read-only, no signal sent)
+        let check = std::process::Command::new("pgrep")
+            .args(["-x", "Squirrel"])
             .output()
-            .map_err(|e| anyhow::anyhow!("Failed to execute pkill: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute pgrep: {}", e))?;
 
-        if output.status.success() {
-            deploy()?;
-            return Ok(true);
+        if !check.status.success() {
+            eprintln!("WeaselVision: Squirrel process not found, sync signal not sent");
+            return Ok(false);
         }
 
-        eprintln!("WeaselVision: Squirrel process not found, sync signal not sent");
-        Ok(false)
+        // Squirrel does NOT handle SIGHUP — use `Squirrel --sync` instead,
+        // which posts a SquirrelSyncNotification via DistributedNotificationCenter.
+        let squirrel_bin = "/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel";
+        eprintln!("WeaselVision: Triggering Squirrel sync via --sync command...");
+        let output = std::process::Command::new(squirrel_bin)
+            .arg("--sync")
+            .output()
+            .map_err(|e| anyhow::anyhow!("Failed to execute Squirrel --sync: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!("WeaselVision: Squirrel --sync error - exit code {:?}, stderr: {}", output.status.code(), stderr);
+            anyhow::bail!(
+                "Squirrel --sync failed (exit code {:?}): {}",
+                output.status.code(),
+                stderr
+            );
+        }
+        eprintln!("WeaselVision: Squirrel sync notification sent successfully");
+        Ok(true)
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]

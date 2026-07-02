@@ -10,6 +10,117 @@ use crate::rime::error::RimeError;
 use crate::rime::patch;
 use crate::rime::style::RimeStyle;
 
+/// Known color field names used in Rime's preset_color_schemes.
+/// These must be written as 0x-prefixed hex strings because Squirrel's
+/// color parser (`SquirrelConfig.color(from:inSpace:)`) only accepts `0x` format.
+const COLOR_FIELD_NAMES: &[&str] = &[
+    "back_color",
+    "hilited_back_color",
+    "hilited_candidate_back_color",
+    "preedit_back_color",
+    "candidate_back_color",
+    "border_color",
+    "text_color",
+    "hilited_text_color",
+    "candidate_text_color",
+    "hilited_candidate_text_color",
+    "label_color",
+    "hilited_candidate_label_color",
+    "comment_text_color",
+    "hilited_comment_text_color",
+];
+
+/// After serde_yaml serialises the custom YAML, integer colour values that
+/// were originally written as `0xEEFFFFFF` in the base config get turned into
+/// decimal numbers (`4009754623`).  Squirrel's colour parser only recognises
+/// the `0x` hex-prefixed string format, so we post-process the file to convert
+/// those decimal values back to hex.
+fn fix_decimal_colors(file_path: &std::path::Path) {
+    let content = match std::fs::read_to_string(file_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Warning: fix_decimal_colors: failed to read {}: {}", file_path.display(), e);
+            return;
+        }
+    };
+
+    let mut changed = false;
+    let mut new_content = String::with_capacity(content.len());
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        let mut matched = false;
+
+        for field in COLOR_FIELD_NAMES {
+            let prefix = format!("{}: ", field);
+            if trimmed.starts_with(&prefix) {
+                let value_str = &trimmed[prefix.len()..];
+                // Only convert plain decimal integers (≥ 7 digits to avoid
+                // accidentally touching small legitimate decimal values like 0).
+                if value_str.len() >= 7 && value_str.chars().all(|c| c.is_ascii_digit()) {
+                    if let Ok(num) = value_str.parse::<u64>() {
+                        let hex = format!("0x{:X}", num);
+                        let indent = &line[..line.len() - trimmed.len()];
+                        new_content.push_str(&format!("{}{}: {}", indent, field, hex));
+                        new_content.push('\n');
+                        changed = true;
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if !matched {
+            new_content.push_str(line);
+            new_content.push('\n');
+        }
+    }
+
+    // Preserve trailing newline state
+    if !content.ends_with('\n') {
+        new_content.pop(); // remove the extra trailing newline
+    }
+
+    if changed {
+        if let Err(e) = std::fs::write(file_path, &new_content) {
+            eprintln!("Warning: fix_decimal_colors: failed to write {}: {}", file_path.display(), e);
+        } else {
+            eprintln!("WeaselVision: fix_decimal_colors – converted decimal colour values to hex in {}", file_path.display());
+        }
+    }
+}
+
+/// Ensure all base themes from squirrel.yaml are present in the patch's
+/// `preset_color_schemes`.  Rime's patch merge replaces the entire
+/// `preset_color_schemes` key, so without this step any theme that only
+/// exists in the base config would be lost.
+fn ensure_base_themes_in_patch(patch: &mut serde_yaml::Mapping, cfg: &RimeConfig) {
+    let base_value = cfg.load_yaml(&cfg.style_path()).unwrap_or_else(|e| {
+        eprintln!("Warning: failed to load base config for base themes: {}", e);
+        Value::Mapping(serde_yaml::Mapping::new())
+    });
+    let base_map = config::value_as_mapping(&base_value);
+    let base_schemes = config::get_mapping(base_map, "preset_color_schemes");
+    if base_schemes.is_empty() {
+        return;
+    }
+
+    let schemes = patch
+        .entry(Value::String("preset_color_schemes".into()))
+        .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()));
+
+    if let Some(schemes_map) = schemes.as_mapping_mut() {
+        for (key, value) in base_schemes.iter() {
+            // Only inject themes that are NOT already in the custom config
+            // (custom themes take priority over base themes)
+            if !schemes_map.contains_key(key) {
+                schemes_map.insert(key.clone(), value.clone());
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, TS)]
 pub struct StyleData {
     pub style: RimeStyle,
@@ -64,11 +175,14 @@ pub fn get_style_data() -> Result<StyleData, RimeError> {
     let mut light_schemes = HashMap::new();
     let mut dark_schemes = HashMap::new();
 
+    eprintln!("WeaselVision: Found {} color schemes in preset_color_schemes", schemes_dict.len());
     for (key, value) in schemes_dict {
         if let Some(name) = key.as_str() {
             if let Some(scheme_dict) = value.as_mapping() {
                 let scheme = RimeColorScheme::from_dict(name.to_string(), scheme_dict);
-                if scheme.is_dark() {
+                let is_dark = scheme.is_dark();
+                eprintln!("WeaselVision: Scheme '{}' - is_dark={}, back_color={:?}", name, is_dark, scheme.back_color);
+                if is_dark {
                     dark_schemes.insert(name.to_string(), scheme);
                 } else {
                     light_schemes.insert(name.to_string(), scheme);
@@ -76,6 +190,7 @@ pub fn get_style_data() -> Result<StyleData, RimeError> {
             }
         }
     }
+    eprintln!("WeaselVision: Loaded {} light schemes and {} dark schemes", light_schemes.len(), dark_schemes.len());
 
     let selected_light = style.color_scheme_name.clone();
     let selected_dark = style.color_scheme_dark_name.clone();
@@ -91,7 +206,9 @@ pub fn get_style_data() -> Result<StyleData, RimeError> {
 
 #[tauri::command]
 pub fn save_style(new_style: RimeStyle) -> Result<(), RimeError> {
+    eprintln!("WeaselVision: save_style called for light={}, dark={}", new_style.color_scheme_name, new_style.color_scheme_dark_name);
     let cfg = RimeConfig::detect();
+    eprintln!("WeaselVision: style_custom_path={:?}", cfg.style_custom_path());
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
         let style_section = patch
             .entry(Value::String("style".into()))
@@ -213,11 +330,14 @@ pub fn save_style(new_style: RimeStyle) -> Result<(), RimeError> {
 
         Ok(())
     })?;
+    fix_decimal_colors(&cfg.style_custom_path());
+    eprintln!("WeaselVision: save_style completed successfully");
     Ok(())
 }
 
 #[tauri::command]
 pub fn save_selected_schemes(light: String, dark: String) -> Result<(), RimeError> {
+    eprintln!("WeaselVision: save_selected_schemes called - light={}, dark={}", light, dark);
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
         let style_section = patch
@@ -234,6 +354,8 @@ pub fn save_selected_schemes(light: String, dark: String) -> Result<(), RimeErro
 
         Ok(())
     })?;
+    fix_decimal_colors(&cfg.style_custom_path());
+    eprintln!("WeaselVision: save_selected_schemes completed successfully");
     Ok(())
 }
 
@@ -256,6 +378,9 @@ pub fn save_color_scheme(
 
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
+        // Inject base themes first so they are not lost by Rime's key-level override
+        ensure_base_themes_in_patch(patch, &cfg);
+
         let schemes = patch
             .entry(Value::String("preset_color_schemes".into()))
             .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()));
@@ -273,6 +398,7 @@ pub fn save_color_scheme(
 
         Ok(())
     })?;
+    fix_decimal_colors(&cfg.style_custom_path());
     Ok(())
 }
 
@@ -280,6 +406,9 @@ pub fn save_color_scheme(
 pub fn delete_color_scheme(name: String) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
+        // Inject base themes first so they survive Rime's key-level override
+        ensure_base_themes_in_patch(patch, &cfg);
+
         if let Some(schemes) = patch.get_mut(Value::String("preset_color_schemes".into())) {
             if let Some(schemes_map) = schemes.as_mapping_mut() {
                 schemes_map.remove(Value::String(name.clone()));
@@ -315,6 +444,7 @@ pub fn delete_color_scheme(name: String) -> Result<(), RimeError> {
 
         Ok(())
     })?;
+    fix_decimal_colors(&cfg.style_custom_path());
     Ok(())
 }
 
@@ -357,6 +487,9 @@ pub fn import_color_scheme(file_path: String) -> Result<(), RimeError> {
             // Merge into custom config
             let cfg = RimeConfig::detect();
             cfg.save_patch(&cfg.style_custom_path(), |patch| {
+                // Inject base themes first
+                ensure_base_themes_in_patch(patch, &cfg);
+
                 let existing_schemes = patch
                     .entry(Value::String("preset_color_schemes".into()))
                     .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()));
@@ -369,6 +502,7 @@ pub fn import_color_scheme(file_path: String) -> Result<(), RimeError> {
 
                 Ok(())
             })?;
+            fix_decimal_colors(&cfg.style_custom_path());
 
             return Ok(());
         }
@@ -376,3 +510,4 @@ pub fn import_color_scheme(file_path: String) -> Result<(), RimeError> {
 
     Err(RimeError::NotFound("No color schemes found in file".into()))
 }
+

@@ -203,6 +203,7 @@ impl RimeConfig {
     where
         F: FnOnce(&mut Mapping) -> Result<()>,
     {
+        eprintln!("WeaselVision: save_patch called for {:?}", custom_path);
         let existing = self.load_yaml(custom_path)?;
         let mut patch_map = existing
             .get(Value::String("patch".into()))
@@ -216,7 +217,9 @@ impl RimeConfig {
         root.insert(Value::String("patch".into()), Value::Mapping(patch_map));
 
         let content = serde_yaml::to_string(&root)?;
+        eprintln!("WeaselVision: YAML serialized successfully, length={}", content.len());
         backup::write_if_changed(&content, custom_path)?;
+        eprintln!("WeaselVision: File written successfully");
         Ok(())
     }
 }

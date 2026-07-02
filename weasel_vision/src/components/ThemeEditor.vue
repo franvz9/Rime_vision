@@ -45,6 +45,7 @@ const selectedScheme = ref<string>('')
 const editingScheme = ref<RimeColorScheme | null>(null)
 const showEditor = ref(false)
 const localStyle = ref<StyleSettings | null>(null)
+const loading = ref(true)
 
 // Pending scheme (applied but not yet deployed)
 const pendingScheme = ref<string | null>(null)
@@ -59,7 +60,8 @@ const pendingDeleteSchemes = ref<Set<string>>(new Set())
 
 const schemes = computed(() => {
   if (!styleData.value) return {}
-  return activeTab.value === 'light' ? styleData.value.light_schemes : styleData.value.dark_schemes
+  const result = activeTab.value === 'light' ? styleData.value.light_schemes : styleData.value.dark_schemes
+  return result
 })
 
 const currentActiveScheme = computed(() => {
@@ -91,15 +93,18 @@ let themeMounted = true
 
 onMounted(async () => {
   try {
-    styleData.value = await invoke('get_style_data')
+    const data = await invoke('get_style_data')
+    styleData.value = data
     if (!themeMounted) return
     selectedScheme.value =
       activeTab.value === 'light' ? styleData.value!.selected_light : styleData.value!.selected_dark
     localStyle.value = { ...styleData.value!.style }
   } catch (e) {
     if (!themeMounted) return
+    console.error('[ThemeEditor] load failed:', e)
     toast.error(`加载主题数据失败: ${errorMessage(e)}`)
-    return
+  } finally {
+    if (themeMounted) loading.value = false
   }
   if (themeMounted) {
     window.addEventListener(BusEvents.DEPLOY_COMPLETE, handleDeployComplete)
@@ -133,20 +138,20 @@ async function applyScheme(name: string) {
   } else {
     // Set as pending
     pendingScheme.value = name
+    console.log('[ThemeEditor] Setting pending scheme:', name, 'activeTab:', activeTab.value)
     // Immediately save the selection to backend
     try {
+      const lightScheme = activeTab.value === 'light' ? name : styleData.value?.selected_light || 'native'
+      const darkScheme = activeTab.value === 'dark' ? name : styleData.value?.selected_dark || 'native'
+      console.log('[ThemeEditor] Calling save_selected_schemes - light:', lightScheme, 'dark:', darkScheme)
       await invoke('save_selected_schemes', {
-        light: activeTab.value === 'light' ? name : styleData.value?.selected_light || 'native',
-        dark: activeTab.value === 'dark' ? name : styleData.value?.selected_dark || 'native',
+        light: lightScheme,
+        dark: darkScheme,
       })
-      // Update local styleData to reflect the new selection
-      if (styleData.value) {
-        if (activeTab.value === 'light') {
-          styleData.value.selected_light = name
-        } else {
-          styleData.value.selected_dark = name
-        }
-      }
+      console.log('[ThemeEditor] save_selected_schemes completed')
+      // Don't update styleData.selected_light/dark here - keep the current active scheme
+      // showing as "使用中" until deploy completes. The pending scheme shows as "待生效".
+      // styleData will be refreshed after deploy completes via handleDeployComplete.
     } catch (e) {
       toast.error(`保存方案选择失败: ${errorMessage(e)}`)
     }
@@ -322,6 +327,13 @@ async function saveStyle() {
 <template>
   <div class="theme-editor">
     <DeployNotice />
+
+    <div v-if="loading" class="theme-loading">
+      <div class="async-spinner"></div>
+      <p>正在加载主题数据…</p>
+    </div>
+
+    <template v-else>
 
     <div class="tabs">
       <button :class="['tab', { active: activeTab === 'light' }]" @click="activeTab = 'light'">
@@ -648,7 +660,7 @@ async function saveStyle() {
       :title="
         editMode === 'copy'
           ? `复制配色: ${originalSchemeName} → ${newSchemeName}`
-          : `编辑配色: ${editingScheme!.name}`
+          : editingScheme ? `编辑配色: ${editingScheme.name}` : ''
       "
       @close="cancelEdit"
     >
@@ -656,11 +668,11 @@ async function saveStyle() {
         <label>新方案名称</label>
         <input v-model="newSchemeName" placeholder="输入新方案名称" />
       </div>
-      <div class="wv-form-group">
+      <div v-if="editingScheme" class="wv-form-group">
         <label>作者</label>
-        <input v-model="editingScheme!.author" />
+        <input v-model="editingScheme.author" />
       </div>
-      <div class="color-grid">
+      <div v-if="editingScheme" class="color-grid">
         <div
           v-for="(label, key) in {
             back_color: '背景色',
@@ -678,16 +690,16 @@ async function saveStyle() {
           <div class="color-input">
             <input
               type="color"
-              :value="getColorHex(editingScheme![key as keyof RimeColorScheme])"
+              :value="getColorHex(editingScheme[key as keyof RimeColorScheme])"
               @input="
                 setColorHex(
-                  editingScheme!,
+                  editingScheme,
                   key as ColorSchemeKey,
                   ($event.target as HTMLInputElement).value,
                 )
               "
             />
-            <span>{{ getHexDisplay(editingScheme![key as keyof RimeColorScheme]) }}</span>
+            <span>{{ getHexDisplay(editingScheme[key as keyof RimeColorScheme]) }}</span>
           </div>
         </div>
       </div>
@@ -706,6 +718,7 @@ async function saveStyle() {
         </button>
       </template>
     </WeaselModal>
+    </template>
   </div>
 </template>
 
@@ -714,6 +727,28 @@ async function saveStyle() {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.theme-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 64px 24px;
+  color: var(--color-text-secondary);
+}
+
+.theme-loading .async-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: theme-spin 0.8s linear infinite;
+}
+
+@keyframes theme-spin {
+  to { transform: rotate(360deg); }
 }
 
 .tabs {
