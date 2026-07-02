@@ -7,6 +7,39 @@ use ts_rs::TS;
 use crate::rime::config::{self, RimeConfig};
 use crate::rime::error::RimeError;
 
+fn set_patch_value(patch: &mut serde_yaml::Mapping, path: &str, value: Value) {
+    patch.insert(Value::String(path.into()), value);
+}
+
+fn remove_nested_patch_value(patch: &mut serde_yaml::Mapping, section: &str, key: &str) {
+    if let Some(value) = patch.get_mut(Value::String(section.into())) {
+        if let Some(map) = value.as_mapping_mut() {
+            map.remove(Value::String(key.into()));
+            if map.is_empty() {
+                patch.remove(Value::String(section.into()));
+            }
+        }
+    }
+}
+
+fn remove_nested_switch_key(patch: &mut serde_yaml::Mapping, key: &str) {
+    if let Some(value) = patch.get_mut(Value::String("ascii_composer".into())) {
+        if let Some(map) = value.as_mapping_mut() {
+            if let Some(switch_key) = map.get_mut(Value::String("switch_key".into())) {
+                if let Some(switch_key_map) = switch_key.as_mapping_mut() {
+                    switch_key_map.remove(Value::String(key.into()));
+                    if switch_key_map.is_empty() {
+                        map.remove(Value::String("switch_key".into()));
+                    }
+                }
+            }
+            if map.is_empty() {
+                patch.remove(Value::String("ascii_composer".into()));
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct GeneralSettings {
     #[ts(type = "number")]
@@ -107,87 +140,93 @@ pub fn get_general_settings() -> Result<GeneralSettings, RimeError> {
 pub fn save_general_settings(settings: GeneralSettings) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.default_custom_path(), |patch| {
-        let menu = patch
-            .entry(Value::String("menu".into()))
-            .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
-            .as_mapping_mut()
-            .ok_or_else(|| anyhow::anyhow!("menu is not a mapping"))?;
-        menu.insert(
-            Value::String("page_size".into()),
+        remove_nested_patch_value(patch, "menu", "page_size");
+        remove_nested_patch_value(patch, "translator", "enable_encoder");
+        remove_nested_patch_value(patch, "translator", "enable_sentence");
+        remove_nested_patch_value(patch, "translator", "enable_user_dict");
+        remove_nested_patch_value(patch, "translator", "encode_commit_history");
+        remove_nested_patch_value(patch, "switcher", "caption");
+        remove_nested_patch_value(patch, "switcher", "hotkeys");
+        remove_nested_patch_value(patch, "switcher", "fold_options");
+        remove_nested_patch_value(patch, "switcher", "abbreviate_options");
+        remove_nested_patch_value(patch, "ascii_composer", "good_old_caps_lock");
+        remove_nested_switch_key(patch, "Caps_Lock");
+        remove_nested_switch_key(patch, "Shift_L");
+        remove_nested_switch_key(patch, "Shift_R");
+
+        set_patch_value(
+            patch,
+            "menu/page_size",
             Value::Number(settings.page_size.into()),
         );
-
-        let translator = patch
-            .entry(Value::String("translator".into()))
-            .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
-            .as_mapping_mut()
-            .ok_or_else(|| anyhow::anyhow!("translator is not a mapping"))?;
-        translator.insert(
-            Value::String("enable_encoder".into()),
+        set_patch_value(
+            patch,
+            "translator/enable_encoder",
             Value::Bool(settings.enable_encoder),
         );
-        translator.insert(
-            Value::String("enable_sentence".into()),
+        set_patch_value(
+            patch,
+            "translator/enable_sentence",
             Value::Bool(settings.enable_sentence),
         );
-        translator.insert(
-            Value::String("enable_user_dict".into()),
+        set_patch_value(
+            patch,
+            "translator/enable_user_dict",
             Value::Bool(settings.enable_user_dict),
         );
-        translator.insert(
-            Value::String("encode_commit_history".into()),
+        set_patch_value(
+            patch,
+            "translator/encode_commit_history",
             Value::Bool(settings.encode_commit_history),
         );
 
         let hotkeys: Vec<Value> = settings
             .switcher_hotkeys
             .split(',')
-            .map(|s| Value::String(s.trim().to_string()))
+            .filter_map(|s| {
+                let hotkey = s.trim();
+                if hotkey.is_empty() {
+                    None
+                } else {
+                    Some(Value::String(hotkey.to_string()))
+                }
+            })
             .collect();
-        let switcher = patch
-            .entry(Value::String("switcher".into()))
-            .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
-            .as_mapping_mut()
-            .ok_or_else(|| anyhow::anyhow!("switcher is not a mapping"))?;
-        switcher.insert(
-            Value::String("caption".into()),
+        set_patch_value(
+            patch,
+            "switcher/caption",
             Value::String(settings.switcher_caption),
         );
-        switcher.insert(Value::String("hotkeys".into()), Value::Sequence(hotkeys));
-        switcher.insert(
-            Value::String("fold_options".into()),
+        set_patch_value(patch, "switcher/hotkeys", Value::Sequence(hotkeys));
+        set_patch_value(
+            patch,
+            "switcher/fold_options",
             Value::Bool(settings.switcher_fold_options),
         );
-        switcher.insert(
-            Value::String("abbreviate_options".into()),
+        set_patch_value(
+            patch,
+            "switcher/abbreviate_options",
             Value::Bool(settings.switcher_abbreviate_options),
         );
 
-        let ascii_composer = patch
-            .entry(Value::String("ascii_composer".into()))
-            .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
-            .as_mapping_mut()
-            .ok_or_else(|| anyhow::anyhow!("ascii_composer is not a mapping"))?;
-        ascii_composer.insert(
-            Value::String("good_old_caps_lock".into()),
+        set_patch_value(
+            patch,
+            "ascii_composer/good_old_caps_lock",
             Value::Bool(settings.good_old_caps_lock),
         );
-
-        let switch_key = ascii_composer
-            .entry(Value::String("switch_key".into()))
-            .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
-            .as_mapping_mut()
-            .ok_or_else(|| anyhow::anyhow!("switch_key is not a mapping"))?;
-        switch_key.insert(
-            Value::String("Caps_Lock".into()),
+        set_patch_value(
+            patch,
+            "ascii_composer/switch_key/Caps_Lock",
             Value::String(settings.caps_lock_action),
         );
-        switch_key.insert(
-            Value::String("Shift_L".into()),
+        set_patch_value(
+            patch,
+            "ascii_composer/switch_key/Shift_L",
             Value::String(settings.shift_left_action),
         );
-        switch_key.insert(
-            Value::String("Shift_R".into()),
+        set_patch_value(
+            patch,
+            "ascii_composer/switch_key/Shift_R",
             Value::String(settings.shift_right_action),
         );
 

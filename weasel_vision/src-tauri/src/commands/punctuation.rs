@@ -42,22 +42,31 @@ pub fn get_punctuation() -> Result<PunctuationData, RimeError> {
 pub fn save_punctuation(half: Vec<PunctRule>, full: Vec<PunctRule>) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.default_custom_path(), |patch| {
-        let punctuator = patch
-            .entry(Value::String("punctuator".into()))
-            .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
-            .as_mapping_mut()
-            .ok_or_else(|| anyhow::anyhow!("punctuator is not a mapping"))?;
-        punctuator.insert(
-            Value::String("half_shape".into()),
+        patch.insert(
+            Value::String("punctuator/half_shape".into()),
             Value::Mapping(serialize_punct_rules(&half)),
         );
-        punctuator.insert(
-            Value::String("full_shape".into()),
+        patch.insert(
+            Value::String("punctuator/full_shape".into()),
             Value::Mapping(serialize_punct_rules(&full)),
         );
+        remove_nested_patch_value(patch, "punctuator", "half_shape");
+        remove_nested_patch_value(patch, "punctuator", "full_shape");
         Ok(())
     })?;
     Ok(())
+}
+
+fn remove_nested_patch_value(patch: &mut serde_yaml::Mapping, section: &str, key: &str) {
+    let section_key = Value::String(section.into());
+    if let Some(section_value) = patch.get_mut(&section_key) {
+        if let Some(section_map) = section_value.as_mapping_mut() {
+            section_map.remove(Value::String(key.into()));
+            if section_map.is_empty() {
+                patch.remove(&section_key);
+            }
+        }
+    }
 }
 
 fn parse_punct_dict(dict: &serde_yaml::Mapping) -> Vec<PunctRule> {

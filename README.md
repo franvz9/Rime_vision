@@ -1,6 +1,14 @@
 # RimeVision
 
-macOS 上的 Rime 输入法可视化配置工具，基于 SwiftUI 构建。
+Rime 输入法可视化配置工具，当前重点维护跨平台版 WeaselVision。
+
+## 版本状态
+
+### 0.3.0
+
+0.3.0 在 0.2.0 的基础上进行了大量后端重构和 UI 优化，进一步完善了主题、方案、通用设置、按键绑定、标点、备份、同步和部署等核心功能。
+
+作为 Rime 的可视化配置工具，当前功能已经趋于完善和稳定。后续不会再进行大量新功能开发，维护重心将转向长期使用积累后的 bug 修复、兼容性修正和必要的小幅体验优化。
 
 ## 功能
 
@@ -13,20 +21,21 @@ macOS 上的 Rime 输入法可视化配置工具，基于 SwiftUI 构建。
 
 ## 技术栈
 
-- **语言**: Swift
-- **UI 框架**: SwiftUI
-- **最低系统**: macOS 13 (Ventura)
-- **依赖**: [Yams](https://github.com/jpsim/Yams) (YAML 解析)
+- **前端**: Vue 3 + TypeScript + Vite
+- **桌面端**: Tauri 2
+- **后端**: Rust
+- **配置格式**: YAML
 
 ## 构建 & 运行
 
 ```bash
-cd RimeVision
-swift run RimeVision
+cd weasel_vision
+npm install
+npm run tauri dev
 ```
 
-运行测试:
+构建前端:
 
 ```bash
-swift run RimeVisionTestRunner
+npm run build
 ```

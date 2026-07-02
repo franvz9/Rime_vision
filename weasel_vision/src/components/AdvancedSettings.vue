@@ -96,12 +96,12 @@ async function openRimeDir() {
     <div class="section">
       <h3>关于</h3>
       <div class="about">
-        <strong>WeaselVision</strong> <span class="version">v0.2.0</span>
+        <strong>WeaselVision</strong> <span class="version">v0.3.0</span>
         <p>Rime 输入法可视化配置工具（跨平台版）</p>
-      </div>
-      <div class="donate-section">
-        <p class="donate-text">制作不易，请作者喝杯咖啡吧 ☕</p>
-        <img src="../assets/donate-qrcode.jpg" alt="捐赠二维码" class="donate-qrcode" />
+        <div class="donate-section">
+          <p class="donate-text">如果这个工具帮到了你，可以请作者喝杯咖啡。</p>
+          <img class="donate-qrcode" src="../assets/donate-qrcode.jpg" alt="捐赠二维码" />
+        </div>
       </div>
     </div>
 
@@ -224,20 +224,15 @@ async function openRimeDir() {
 
 .donate-section {
   margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--color-border);
 }
 
 .donate-text {
-  font-size: 14px;
-  color: var(--color-text-primary);
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .donate-qrcode {
-  width: 200px;
-  height: auto;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  width: min(260px, 100%);
+  border-radius: 12px;
+  display: block;
 }
 </style>

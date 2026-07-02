@@ -101,6 +101,18 @@ pub fn deploy() -> Result<()> {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("WeaselDeployer /deploy failed: {}", stderr);
         }
+
+        let install_dir = deployer_path.parent().ok_or_else(|| {
+            anyhow::anyhow!("Unable to locate Weasel install directory")
+        })?;
+        let server_path = install_dir.join("WeaselServer.exe");
+        if server_path.exists() {
+            let _ = std::process::Command::new(&server_path).arg("/q").output();
+            std::process::Command::new(&server_path)
+                .current_dir(install_dir)
+                .spawn()
+                .map_err(|e| anyhow::anyhow!("Failed to restart WeaselServer.exe: {}", e))?;
+        }
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]

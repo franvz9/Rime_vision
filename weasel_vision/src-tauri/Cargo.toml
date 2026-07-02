@@ -1,6 +1,6 @@
 [package]
 name = "weasel-vision"
-version = "0.2.0"
+version = "0.3.0"
 description = "Rime Weasel configuration tool"
 authors = ["franvz9"]
 edition = "2021"

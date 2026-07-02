@@ -121,6 +121,29 @@ fn ensure_base_themes_in_patch(patch: &mut serde_yaml::Mapping, cfg: &RimeConfig
     }
 }
 
+#[cfg(target_os = "windows")]
+fn set_style_patch_value(patch: &mut serde_yaml::Mapping, key: &str, value: Value) {
+    patch.insert(Value::String(format!("style/{}", key)), value);
+    if let Some(style) = patch.get_mut(Value::String("style".into())) {
+        if let Some(style_map) = style.as_mapping_mut() {
+            style_map.remove(Value::String(key.into()));
+            if style_map.is_empty() {
+                patch.remove(Value::String("style".into()));
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_style_patch_value(patch: &mut serde_yaml::Mapping, key: &str, value: Value) {
+    let style_section = patch
+        .entry(Value::String("style".into()))
+        .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
+        .as_mapping_mut()
+        .expect("style patch entry must be a mapping");
+    style_section.insert(Value::String(key.into()), value);
+}
+
 #[derive(Serialize, Deserialize, TS)]
 pub struct StyleData {
     pub style: RimeStyle,
@@ -204,120 +227,104 @@ pub fn get_style_data() -> Result<StyleData, RimeError> {
 pub fn save_style(new_style: RimeStyle) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
-        let style_section = patch
-            .entry(Value::String("style".into()))
-            .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
-            .as_mapping_mut()
-            .ok_or_else(|| anyhow::anyhow!("style is not a mapping"))?;
-
-        style_section.insert(
-            Value::String("color_scheme".into()),
-            Value::String(new_style.color_scheme_name),
-        );
-        style_section.insert(
-            Value::String("color_scheme_dark".into()),
+        set_style_patch_value(patch, "color_scheme", Value::String(new_style.color_scheme_name));
+        set_style_patch_value(
+            patch,
+            "color_scheme_dark",
             Value::String(new_style.color_scheme_dark_name),
         );
-        style_section.insert(
-            Value::String("status_message_type".into()),
+        set_style_patch_value(
+            patch,
+            "status_message_type",
             Value::String(new_style.status_message_type),
         );
-        style_section.insert(
-            Value::String("candidate_format".into()),
+        set_style_patch_value(
+            patch,
+            "candidate_format",
             Value::String(new_style.candidate_format),
         );
-        style_section.insert(
-            Value::String("text_orientation".into()),
+        set_style_patch_value(
+            patch,
+            "text_orientation",
             Value::String(new_style.text_orientation),
         );
-        style_section.insert(
-            Value::String("inline_preedit".into()),
-            Value::Bool(new_style.inline_preedit),
-        );
-        style_section.insert(
-            Value::String("inline_candidate".into()),
-            Value::Bool(new_style.inline_candidate),
-        );
-        style_section.insert(
-            Value::String("translucency".into()),
-            Value::Bool(new_style.translucency),
-        );
-        style_section.insert(
-            Value::String("mutual_exclusive".into()),
-            Value::Bool(new_style.mutual_exclusive),
-        );
-        style_section.insert(
-            Value::String("memorize_size".into()),
-            Value::Bool(new_style.memorize_size),
-        );
-        style_section.insert(
-            Value::String("show_paging".into()),
-            Value::Bool(new_style.show_paging),
-        );
-        style_section.insert(
-            Value::String("candidate_list_layout".into()),
+        set_style_patch_value(patch, "inline_preedit", Value::Bool(new_style.inline_preedit));
+        set_style_patch_value(patch, "inline_candidate", Value::Bool(new_style.inline_candidate));
+        set_style_patch_value(patch, "translucency", Value::Bool(new_style.translucency));
+        set_style_patch_value(patch, "mutual_exclusive", Value::Bool(new_style.mutual_exclusive));
+        set_style_patch_value(patch, "memorize_size", Value::Bool(new_style.memorize_size));
+        set_style_patch_value(patch, "show_paging", Value::Bool(new_style.show_paging));
+        #[cfg(target_os = "windows")]
+        let horizontal_candidates = new_style.candidate_list_layout == "linear";
+        set_style_patch_value(
+            patch,
+            "candidate_list_layout",
             Value::String(new_style.candidate_list_layout),
         );
-        style_section.insert(
-            Value::String("alpha".into()),
-            Value::Number(new_style.alpha.into()),
-        );
-        style_section.insert(
-            Value::String("corner_radius".into()),
+        #[cfg(target_os = "windows")]
+        set_style_patch_value(patch, "horizontal", Value::Bool(horizontal_candidates));
+        set_style_patch_value(patch, "alpha", Value::Number(new_style.alpha.into()));
+        set_style_patch_value(
+            patch,
+            "corner_radius",
             Value::Number(new_style.corner_radius.into()),
         );
-        style_section.insert(
-            Value::String("hilited_corner_radius".into()),
+        set_style_patch_value(
+            patch,
+            "hilited_corner_radius",
             Value::Number(new_style.hilited_corner_radius.into()),
         );
-        style_section.insert(
-            Value::String("border_height".into()),
+        set_style_patch_value(
+            patch,
+            "border_height",
             Value::Number(new_style.border_height.into()),
         );
-        style_section.insert(
-            Value::String("border_width".into()),
+        set_style_patch_value(
+            patch,
+            "border_width",
             Value::Number(new_style.border_width.into()),
         );
-        style_section.insert(
-            Value::String("line_spacing".into()),
+        set_style_patch_value(
+            patch,
+            "line_spacing",
             Value::Number(new_style.line_spacing.into()),
         );
-        style_section.insert(
-            Value::String("spacing".into()),
-            Value::Number(new_style.spacing.into()),
-        );
-        style_section.insert(
-            Value::String("shadow_size".into()),
+        set_style_patch_value(patch, "spacing", Value::Number(new_style.spacing.into()));
+        set_style_patch_value(
+            patch,
+            "shadow_size",
             Value::Number(new_style.shadow_size.into()),
         );
-        style_section.insert(
-            Value::String("font_point".into()),
+        set_style_patch_value(
+            patch,
+            "font_point",
             Value::Number(new_style.font_point.into()),
         );
-        style_section.insert(
-            Value::String("label_font_point".into()),
+        set_style_patch_value(
+            patch,
+            "label_font_point",
             Value::Number(new_style.label_font_point.into()),
         );
-        style_section.insert(
-            Value::String("comment_font_point".into()),
+        set_style_patch_value(
+            patch,
+            "comment_font_point",
             Value::Number(new_style.comment_font_point.into()),
         );
 
         if !new_style.font_face.is_empty() {
-            style_section.insert(
-                Value::String("font_face".into()),
-                Value::String(new_style.font_face),
-            );
+            set_style_patch_value(patch, "font_face", Value::String(new_style.font_face));
         }
         if !new_style.label_font_face.is_empty() {
-            style_section.insert(
-                Value::String("label_font_face".into()),
+            set_style_patch_value(
+                patch,
+                "label_font_face",
                 Value::String(new_style.label_font_face),
             );
         }
         if !new_style.comment_font_face.is_empty() {
-            style_section.insert(
-                Value::String("comment_font_face".into()),
+            set_style_patch_value(
+                patch,
+                "comment_font_face",
                 Value::String(new_style.comment_font_face),
             );
         }
@@ -332,17 +339,8 @@ pub fn save_style(new_style: RimeStyle) -> Result<(), RimeError> {
 pub fn save_selected_schemes(light: String, dark: String) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
-        let style_section = patch
-            .entry(Value::String("style".into()))
-            .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
-            .as_mapping_mut()
-            .ok_or_else(|| anyhow::anyhow!("style is not a mapping"))?;
-
-        style_section.insert(Value::String("color_scheme".into()), Value::String(light));
-        style_section.insert(
-            Value::String("color_scheme_dark".into()),
-            Value::String(dark),
-        );
+        set_style_patch_value(patch, "color_scheme", Value::String(light));
+        set_style_patch_value(patch, "color_scheme_dark", Value::String(dark));
 
         Ok(())
     })?;
@@ -406,31 +404,28 @@ pub fn delete_color_scheme(name: String) -> Result<(), RimeError> {
             }
         }
 
-        let style_section = patch
-            .entry(Value::String("style".into()))
-            .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
-            .as_mapping_mut()
-            .ok_or_else(|| anyhow::anyhow!("style is not a mapping"))?;
+        let light_key = Value::String("style/color_scheme".into());
+        let dark_key = Value::String("style/color_scheme_dark".into());
+        let should_reset_light = patch.get(&light_key).and_then(|v| v.as_str()) == Some(&name)
+            || patch
+                .get(Value::String("style".into()))
+                .and_then(|v| v.as_mapping())
+                .and_then(|m| m.get(Value::String("color_scheme".into())))
+                .and_then(|v| v.as_str())
+                == Some(&name);
+        let should_reset_dark = patch.get(&dark_key).and_then(|v| v.as_str()) == Some(&name)
+            || patch
+                .get(Value::String("style".into()))
+                .and_then(|v| v.as_mapping())
+                .and_then(|m| m.get(Value::String("color_scheme_dark".into())))
+                .and_then(|v| v.as_str())
+                == Some(&name);
 
-        if style_section
-            .get(Value::String("color_scheme".into()))
-            .and_then(|v| v.as_str())
-            == Some(&name)
-        {
-            style_section.insert(
-                Value::String("color_scheme".into()),
-                Value::String("native".into()),
-            );
+        if should_reset_light {
+            set_style_patch_value(patch, "color_scheme", Value::String("native".into()));
         }
-        if style_section
-            .get(Value::String("color_scheme_dark".into()))
-            .and_then(|v| v.as_str())
-            == Some(&name)
-        {
-            style_section.insert(
-                Value::String("color_scheme_dark".into()),
-                Value::String("native".into()),
-            );
+        if should_reset_dark {
+            set_style_patch_value(patch, "color_scheme_dark", Value::String("native".into()));
         }
 
         Ok(())

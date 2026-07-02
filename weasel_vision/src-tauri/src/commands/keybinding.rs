@@ -99,17 +99,25 @@ pub fn save_keybindings(bindings: Vec<KeyBinding>) -> Result<(), RimeError> {
             })
             .collect();
 
-        let key_binder = patch
-            .entry(Value::String("key_binder".into()))
-            .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()))
-            .as_mapping_mut()
-            .ok_or_else(|| anyhow::anyhow!("key_binder is not a mapping"))?;
-        key_binder.insert(
-            Value::String("bindings".into()),
+        patch.insert(
+            Value::String("key_binder/bindings".into()),
             Value::Sequence(bindings_seq),
         );
+        remove_nested_patch_value(patch, "key_binder", "bindings");
 
         Ok(())
     })?;
     Ok(())
+}
+
+fn remove_nested_patch_value(patch: &mut serde_yaml::Mapping, section: &str, key: &str) {
+    let section_key = Value::String(section.into());
+    if let Some(section_value) = patch.get_mut(&section_key) {
+        if let Some(section_map) = section_value.as_mapping_mut() {
+            section_map.remove(Value::String(key.into()));
+            if section_map.is_empty() {
+                patch.remove(&section_key);
+            }
+        }
+    }
 }

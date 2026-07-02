@@ -86,9 +86,10 @@ impl RimeConfig {
     }
 
     pub fn style_path(&self) -> PathBuf {
-        // On Windows, compiled weasel.yaml is in build/
+        // On Windows, compiled weasel.yaml is in build/. Check dynamically because
+        // build/ can be created after the cached config is initialized.
         #[cfg(target_os = "windows")]
-        if let Some(ref build) = self.build_dir {
+        if let Some(build) = self.current_build_dir() {
             return build.join(&self.style_file);
         }
         self.user_dir.join(&self.style_file)
@@ -99,9 +100,10 @@ impl RimeConfig {
     }
 
     pub fn default_path(&self) -> PathBuf {
-        // On Windows, compiled default.yaml is in build/
+        // On Windows, compiled default.yaml is in build/. Check dynamically because
+        // build/ can be created after the cached config is initialized.
         #[cfg(target_os = "windows")]
-        if let Some(ref build) = self.build_dir {
+        if let Some(build) = self.current_build_dir() {
             return build.join(&self.default_yaml);
         }
         self.user_dir.join(&self.default_yaml)
@@ -133,8 +135,31 @@ impl RimeConfig {
     /// Returns the directory containing compiled/generated configs.
     /// On Windows with build/: returns build/ dir.
     /// Otherwise: returns user_dir (same as user-editable dir).
-    pub fn rime_data_dir(&self) -> &Path {
-        self.build_dir.as_deref().unwrap_or(&self.user_dir)
+    pub fn rime_data_dir(&self) -> PathBuf {
+        self.current_build_dir()
+            .unwrap_or_else(|| self.user_dir.clone())
+    }
+
+    fn current_build_dir(&self) -> Option<PathBuf> {
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(build_dir) = &self.build_dir {
+                if build_dir.exists() {
+                    return Some(build_dir.clone());
+                }
+            }
+            let build_dir = self.user_dir.join("build");
+            if build_dir.exists() {
+                return Some(build_dir);
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            if let Some(build_dir) = &self.build_dir {
+                return Some(build_dir.clone());
+            }
+        }
+        None
     }
 
     /// 动态检测 build_dir（deploy 后调用，获取最新状态）
