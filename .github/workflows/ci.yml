@@ -1,16 +1,7 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'weasel_vision/**'
-      - '.github/workflows/ci.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'weasel_vision/**'
-      - '.github/workflows/ci.yml'
+  workflow_dispatch:
 
 jobs:
   check:
