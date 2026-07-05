@@ -3,6 +3,8 @@ use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use serde_yaml::{Mapping, Value};
+#[cfg(target_os = "windows")]
+use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 
 use super::backup;
 use super::patch;
@@ -28,6 +30,41 @@ fn cached_config() -> &'static RimeConfig {
     CONFIG.get_or_init(RimeConfig::detect_inner)
 }
 
+#[cfg(target_os = "windows")]
+fn resolve_windows_user_dir() -> PathBuf {
+    if let Some(path) = windows_registry_user_dir() {
+        return path;
+    }
+    if let Some(path) = windows_env_user_dir() {
+        return path;
+    }
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("Rime")
+}
+
+#[cfg(target_os = "windows")]
+fn windows_registry_user_dir() -> Option<PathBuf> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let key = hkcu.open_subkey("Software\\Rime\\Weasel").ok()?;
+    let value: String = key.get_value("RimeUserDir").ok()?;
+    let path = PathBuf::from(value.trim());
+    if path.as_os_str().is_empty() {
+        return None;
+    }
+    Some(path)
+}
+
+#[cfg(target_os = "windows")]
+fn windows_env_user_dir() -> Option<PathBuf> {
+    let value = std::env::var_os("RIME_USER_DIR")?;
+    let path = PathBuf::from(value);
+    if path.as_os_str().is_empty() {
+        return None;
+    }
+    Some(path)
+}
+
 impl RimeConfig {
     /// Detect Rime config paths. Cached after first call — the user directory
     /// is determined by the OS home directory and does not change during a session.
@@ -36,8 +73,9 @@ impl RimeConfig {
     }
 
     fn detect_inner() -> Self {
-        if cfg!(target_os = "macos") {
-            Self {
+        #[cfg(target_os = "macos")]
+        {
+            return Self {
                 user_dir: dirs::home_dir()
                     .unwrap_or_else(|| {
                         std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
@@ -48,18 +86,18 @@ impl RimeConfig {
                 style_custom: "squirrel.custom.yaml".into(),
                 default_yaml: "default.yaml".into(),
                 default_custom: "default.custom.yaml".into(),
-            }
-        } else if cfg!(target_os = "windows") {
-            // On Windows, user_dir always points to the Rime root directory.
-            // build_dir (if present) holds compiled configs like default.yaml, weasel.yaml.
-            let base_dir = dirs::config_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join("Rime");
+            };
+        }
 
+        #[cfg(target_os = "windows")]
+        {
+            // On Windows, user_dir points to the actual Rime user root directory.
+            // Priority: registry custom path > RIME_USER_DIR > default %APPDATA%\Rime.
+            let base_dir = resolve_windows_user_dir();
             let build_dir_path = base_dir.join("build");
             let has_build_dir = build_dir_path.exists();
 
-            Self {
+            return Self {
                 user_dir: base_dir,
                 build_dir: if has_build_dir {
                     Some(build_dir_path)
@@ -70,8 +108,11 @@ impl RimeConfig {
                 style_custom: "weasel.custom.yaml".into(),
                 default_yaml: "default.yaml".into(),
                 default_custom: "default.custom.yaml".into(),
-            }
-        } else {
+            };
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
             Self {
                 user_dir: dirs::data_dir()
                     .unwrap_or_else(|| PathBuf::from("."))
