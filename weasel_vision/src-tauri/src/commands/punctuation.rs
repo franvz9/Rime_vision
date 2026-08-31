@@ -4,6 +4,7 @@ use ts_rs::TS;
 
 use crate::rime::config::{self, RimeConfig};
 use crate::rime::error::RimeError;
+use crate::rime::patch::get_patch_path_value;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct PunctRule {
@@ -42,8 +43,10 @@ pub fn custom_punct_keys(cfg: &RimeConfig, scope: Option<String>) -> Vec<String>
         .get(serde_yaml::Value::String("patch".into()))
         .and_then(|v| v.as_mapping())
     {
+        // 兼容 slash-form（punctuator/half_shape）与 nested-form
+        // （punctuator: { half_shape: ... }）两种写法。
         for prefix in ["punctuator/half_shape", "punctuator/full_shape"] {
-            if let Some(Value::Mapping(m)) = patch.get(serde_yaml::Value::String(prefix.into())) {
+            if let Some(Value::Mapping(m)) = get_patch_path_value(patch, prefix) {
                 for k in m.keys() {
                     if let Some(s) = k.as_str() {
                         keys.push(s.to_string());
@@ -234,7 +237,7 @@ fn serialize_punct_rules(rules: &[PunctRule]) -> serde_yaml::Mapping {
 
         if has_content {
             // If only commit exists and no pair/list, write as plain string
-            if inner.len() == 1 && inner.contains_key(&Value::String("commit".into())) {
+            if inner.len() == 1 && inner.contains_key(Value::String("commit".into())) {
                 dict.insert(
                     Value::String(rule.key.clone()),
                     Value::String(rule.commit.clone()),
@@ -373,7 +376,7 @@ mod tests {
     #[test]
     fn test_custom_punct_keys() {
         let (_tmp, cfg) = test_cfg();
-        // 方案 custom 显式定义 / 和 . 两个 half_shape 键
+        // 方案 custom 显式定义 / 和 . 两个 half_shape 键（slash-form）
         std::fs::write(
             cfg.user_dir.join("ck_schema.custom.yaml"),
             "patch:\n  punctuator/half_shape:\n    '/': '/'\n    '.': '。'\n",
@@ -382,6 +385,21 @@ mod tests {
         let keys = custom_punct_keys(&cfg, Some("ck_schema".to_string()));
         assert!(keys.contains(&"/".to_string()));
         assert!(keys.contains(&".".to_string()));
+        assert_eq!(keys.len(), 2);
+    }
+
+    #[test]
+    fn test_custom_punct_keys_nested_form() {
+        let (_tmp, cfg) = test_cfg();
+        // 手写 nested-form：punctuator: { half_shape: { ... } } 也应识别为自定义
+        std::fs::write(
+            cfg.user_dir.join("ck_nested.custom.yaml"),
+            "patch:\n  punctuator:\n    half_shape:\n      '/': '/'\n    full_shape:\n      '.': '。'\n",
+        )
+        .unwrap();
+        let keys = custom_punct_keys(&cfg, Some("ck_nested".to_string()));
+        assert!(keys.contains(&"/".to_string()), "nested-form 应识别 /");
+        assert!(keys.contains(&".".to_string()), "nested-form 应识别 full_shape 的 .");
         assert_eq!(keys.len(), 2);
     }
 

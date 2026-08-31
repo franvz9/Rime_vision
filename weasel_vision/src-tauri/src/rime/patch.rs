@@ -169,6 +169,33 @@ fn merge_value(value: &Value, dict: &mut Mapping, path: &[&str]) {
     dict.insert(key, value.clone());
 }
 
+/// Resolve a slash-separated path against a *patch* mapping, supporting both
+/// accepted Rime patch spellings:
+///
+///   - slash-form:  literal top-level key `"punctuator/half_shape"` → value
+///   - nested-form: `punctuator: { half_shape: { ... } }` → value
+///
+/// Returns `None` when the path is absent in either form.
+pub fn get_patch_path_value<'a>(patch: &'a Mapping, path: &str) -> Option<&'a Value> {
+    // slash-form: literal top-level key
+    if let Some(v) = patch.get(Value::String(path.to_string())) {
+        return Some(v);
+    }
+    // nested-form: walk each path segment, returning the value at the final
+    // segment (the last segment is the key whose value we want, not a mapping
+    // to descend into).
+    let segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let (last, parents) = segs.split_last()?;
+    let mut current = patch;
+    for seg in parents {
+        match current.get(Value::String(seg.to_string())) {
+            Some(Value::Mapping(m)) => current = m,
+            _ => return None,
+        }
+    }
+    current.get(Value::String(last.to_string()))
+}
+
 /// Deep-merge a patch mapping into a base mapping with NO path expansion.
 /// Nested mappings merge recursively; scalar/sequence patch values win.
 fn merge_literal(base: &Mapping, patch: &Mapping) -> Mapping {
@@ -253,5 +280,34 @@ mod tests {
 
         remove_value(&mut dict, &["a".to_string(), "b".to_string()]);
         assert!(dict.get(Value::String("a".into())).is_none());
+    }
+
+    #[test]
+    fn test_get_patch_path_value_slash_form() {
+        // slash-form: literal top-level key "punctuator/half_shape"
+        let patch_yaml = "punctuator/half_shape:\n  '/': '/'\n";
+        let patch: Mapping = serde_yaml::from_str(patch_yaml).unwrap();
+        let v = get_patch_path_value(&patch, "punctuator/half_shape");
+        assert!(v.is_some());
+        assert!(v.unwrap().as_mapping().is_some());
+        // unrelated path -> None
+        assert!(get_patch_path_value(&patch, "punctuator/full_shape").is_none());
+    }
+
+    #[test]
+    fn test_get_patch_path_value_nested_form() {
+        // nested-form: punctuator -> half_shape
+        let patch_yaml = "punctuator:\n  half_shape:\n    '/': '/'\n";
+        let patch: Mapping = serde_yaml::from_str(patch_yaml).unwrap();
+        let v = get_patch_path_value(&patch, "punctuator/half_shape");
+        assert!(v.is_some());
+        let hs = v.unwrap().as_mapping().unwrap();
+        assert!(hs.contains_key(Value::String("/".into())));
+    }
+
+    #[test]
+    fn test_get_patch_path_value_missing() {
+        let patch: Mapping = Mapping::new();
+        assert!(get_patch_path_value(&patch, "menu/page_size").is_none());
     }
 }

@@ -4,11 +4,22 @@ use ts_rs::TS;
 
 use crate::rime::config::{self, RimeConfig};
 use crate::rime::error::RimeError;
+use crate::rime::patch::get_patch_path_value;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct PageSizeDetail {
     pub page_size: i64,
     pub is_custom: bool,
+}
+
+/// 判断 custom 文件中是否显式定义了给定 patch 路径（兼容 slash-form
+/// 「menu/page_size」与 nested-form 「menu: { page_size: ... }」）。
+fn is_patch_path_custom(custom: &Value, path: &str) -> bool {
+    custom
+        .get(Value::String("patch".into()))
+        .and_then(|v| v.as_mapping())
+        .map(|m| get_patch_path_value(m, path).is_some())
+        .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -32,11 +43,7 @@ pub fn get_page_size_detail(scope: Option<String>) -> Result<PageSizeDetail, Rim
             .ok_or_else(|| RimeError::InvalidPath(format!("Invalid schema_id: {}", id)))?,
     };
     let custom = cfg.load_yaml(&custom_path)?;
-    let is_custom = custom
-        .get(Value::String("patch".into()))
-        .and_then(|v| v.as_mapping())
-        .map(|m| m.contains_key(Value::String("menu/page_size".into())))
-        .unwrap_or(false);
+    let is_custom = is_patch_path_custom(&custom, "menu/page_size");
 
     Ok(PageSizeDetail { page_size, is_custom })
 }
@@ -133,6 +140,25 @@ mod tests {
         assert!(!detail.is_custom);
     }
 
+    #[test]
+    fn test_get_page_size_detail_custom_nested_form() {
+        let (_tmp, cfg) = test_cfg();
+        // 手写 nested-form：menu: { page_size: ... } 也应识别为自定义
+        std::fs::write(
+            cfg.user_dir.join("ps_nd.schema.yaml"),
+            "menu:\n  page_size: 6\n",
+        )
+        .unwrap();
+        std::fs::write(
+            cfg.user_dir.join("ps_nd.custom.yaml"),
+            "patch:\n  menu:\n    page_size: 9\n",
+        )
+        .unwrap();
+        let detail = get_page_size_detail_inner(&cfg, Some("ps_nd".to_string())).unwrap();
+        assert_eq!(detail.page_size, 9);
+        assert!(detail.is_custom, "nested-form menu/page_size 应识别为自定义");
+    }
+
     /// 测试用内部封装（避免 Tauri command 的注入依赖）
     fn get_page_size_detail_inner(
         cfg: &RimeConfig,
@@ -153,11 +179,7 @@ mod tests {
                 .ok_or_else(|| RimeError::InvalidPath(format!("Invalid schema_id: {}", id)))?,
         };
         let custom = cfg.load_yaml(&custom_path)?;
-        let is_custom = custom
-            .get(Value::String("patch".into()))
-            .and_then(|v| v.as_mapping())
-            .map(|m| m.contains_key(Value::String("menu/page_size".into())))
-            .unwrap_or(false);
+        let is_custom = is_patch_path_custom(&custom, "menu/page_size");
 
         Ok(PageSizeDetail { page_size, is_custom })
     }
