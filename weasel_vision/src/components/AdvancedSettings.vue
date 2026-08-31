@@ -96,7 +96,7 @@ async function openRimeDir() {
     <div class="section">
       <h3>关于</h3>
       <div class="about">
-        <strong>WeaselVision</strong> <span class="version">v0.3.0</span>
+        <strong>WeaselVision</strong> <span class="version">v0.4.0</span>
         <p>Rime 输入法可视化配置工具（跨平台版）</p>
         <div class="donate-section">
           <p class="donate-text">如果这个工具帮到了你，可以请作者喝杯咖啡。</p>

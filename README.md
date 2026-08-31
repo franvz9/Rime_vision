@@ -6,10 +6,10 @@ Rime 输入法可视化配置工具。跨平台版 **WeaselVision** 当前为活
 
 | 平台 | 架构 | 文件 |
 |------|------|------|
-| macOS | Apple Silicon (arm64) | `WeaselVision_0.3.0_arm64.dmg` |
-| macOS | Intel (x64) | `WeaselVision_0.3.0_x64.dmg` |
-| Windows | ARM64 | `WeaselVision_0.3.0_Windows_arm64.zip` |
-| Windows | x64 | `WeaselVision_0.3.0_Windows_x64.zip` |
+| macOS | Apple Silicon (arm64) | `WeaselVision_0.4.0_arm64.dmg` |
+| macOS | Intel (x64) | `WeaselVision_0.4.0_x64.dmg` |
+| Windows | ARM64 | `WeaselVision_0.4.0_Windows_arm64.zip` |
+| Windows | x64 | `WeaselVision_0.4.0_Windows_x64.zip` |
 
 ## 安装与使用
 

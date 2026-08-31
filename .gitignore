@@ -45,7 +45,10 @@ squirrel/
 rime_setting/
 
 # Docs / Design (not pushed)
-docs/
+# 过程文档与设计稿（task brief/report/review、plans/specs 等）排除；
+# README 引用的截图（docs/screenshots/）保留。
+.superpowers/
+docs/superpowers/
 weasel_vision/DESIGN.md
 weasel_vision/docs/
 weasel_vision/weasel/
