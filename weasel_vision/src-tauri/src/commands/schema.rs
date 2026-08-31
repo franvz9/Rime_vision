@@ -220,8 +220,8 @@ pub fn set_current_schema(schema_id: String) -> Result<(), RimeError> {
 }
 
 fn set_current_schema_with_cfg(cfg: &RimeConfig, schema_id: &str) -> Result<(), RimeError> {
-    // 校验 schema_id 防止路径遍历
-    if schema_id.contains("..") || schema_id.contains('/') || schema_id.contains('\\') {
+    // 复用统一校验（拒绝路径遍历/换行/空串等）
+    if !RimeConfig::valid_schema_id(schema_id) {
         return Err(RimeError::InvalidPath("Invalid schema_id".into()));
     }
     let user_path = cfg.user_yaml_path();

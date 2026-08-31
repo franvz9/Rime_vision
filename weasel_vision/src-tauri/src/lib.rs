@@ -98,6 +98,7 @@ mod export_tests {
         // commands::translator
         crate::commands::translator::TranslatorSettings::export().unwrap();
         crate::commands::translator::TranslatorProfile::export().unwrap();
+        crate::commands::translator::TranslatorPatch::export().unwrap();
 
         // commands::keybinding
         crate::commands::keybinding::KeyBinding::export().unwrap();
@@ -106,6 +107,9 @@ mod export_tests {
         crate::commands::punctuation::PunctRule::export().unwrap();
         crate::commands::punctuation::PunctuationData::export().unwrap();
         crate::commands::punctuation::PunctuationProfile::export().unwrap();
+
+        // commands::page_size
+        crate::commands::page_size::PageSizeDetail::export().unwrap();
 
         // commands::schema
         crate::commands::schema::SchemaListData::export().unwrap();

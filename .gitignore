@@ -60,3 +60,6 @@ weasel_vision/app/
 .github/
 .reasonix/
 reasonix.toml
+
+# Local dev helper (machine-specific absolute paths)
+dev.sh

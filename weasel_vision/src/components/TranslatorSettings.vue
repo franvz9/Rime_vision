@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
@@ -19,7 +19,9 @@ const settings = ref<TSettings>({
   encode_commit_history: true,
 })
 const isCustom = ref(false)
-const dirty = ref(false)
+/** 本次会话被改动过的字段集合（差异写入依据） */
+const dirtyFields = ref<Set<keyof TSettings>>(new Set())
+const dirty = computed(() => dirtyFields.value.size > 0)
 let mounted = true
 
 async function load() {
@@ -33,16 +35,37 @@ async function load() {
     if (!mounted) return
     settings.value = { ...profile.settings }
     isCustom.value = profile.is_custom
-    dirty.value = false
+    dirtyFields.value = new Set()
   } catch (e) {
     if (!mounted) return
     toast.error(`加载翻译器设置失败: ${errorMessage(e)}`)
   }
 }
 
+/** 标记某个字段为已改动 */
+function markDirty(field: keyof TSettings) {
+  dirtyFields.value.add(field)
+  dirtyFields.value = new Set(dirtyFields.value)
+}
+
 async function save() {
   try {
-    await invoke('save_translator', { scope: props.scope || null, settings: settings.value })
+    // 差异写入：仅传被改动字段（未被改动字段保持 None，后端不写入）
+    const patch = {
+      enable_encoder: dirtyFields.value.has('enable_encoder')
+        ? settings.value.enable_encoder
+        : null,
+      enable_sentence: dirtyFields.value.has('enable_sentence')
+        ? settings.value.enable_sentence
+        : null,
+      enable_user_dict: dirtyFields.value.has('enable_user_dict')
+        ? settings.value.enable_user_dict
+        : null,
+      encode_commit_history: dirtyFields.value.has('encode_commit_history')
+        ? settings.value.encode_commit_history
+        : null,
+    }
+    await invoke('save_translator', { scope: props.scope || null, patch })
     toast.success(props.scope ? `已保存到 ${props.scope}.custom.yaml` : '翻译器设置已保存')
     await load()
   } catch (e) {
@@ -51,10 +74,6 @@ async function save() {
 }
 
 watch(() => props.scope, load, { immediate: true })
-
-onMounted(() => {
-  load()
-})
 
 onUnmounted(() => {
   mounted = false
@@ -67,28 +86,44 @@ defineExpose({ save })
   <div class="translator-settings">
     <div class="translator-card" :class="{ 'is-default': !isCustom && !dirty }">
       <label class="checkbox-row">
-        <input v-model="settings.enable_encoder" type="checkbox" @change="dirty = true" />
+        <input
+          v-model="settings.enable_encoder"
+          type="checkbox"
+          @change="markDirty('enable_encoder')"
+        />
         <span>
           <strong>启用自动造词</strong>
           <small class="sub">(enable_encoder) 输入时自动学习并造词</small>
         </span>
       </label>
       <label class="checkbox-row">
-        <input v-model="settings.enable_sentence" type="checkbox" @change="dirty = true" />
+        <input
+          v-model="settings.enable_sentence"
+          type="checkbox"
+          @change="markDirty('enable_sentence')"
+        />
         <span>
           <strong>启用自动句子输入</strong>
           <small class="sub">(enable_sentence) 自动对短语进行编码，形成句子</small>
         </span>
       </label>
       <label class="checkbox-row">
-        <input v-model="settings.enable_user_dict" type="checkbox" @change="dirty = true" />
+        <input
+          v-model="settings.enable_user_dict"
+          type="checkbox"
+          @change="markDirty('enable_user_dict')"
+        />
         <span>
           <strong>启用用户词典</strong>
           <small class="sub">(enable_user_dict) 允许使用用户词典</small>
         </span>
       </label>
       <label class="checkbox-row">
-        <input v-model="settings.encode_commit_history" type="checkbox" @change="dirty = true" />
+        <input
+          v-model="settings.encode_commit_history"
+          type="checkbox"
+          @change="markDirty('encode_commit_history')"
+        />
         <span>
           <strong>自动编码上屏词语</strong>
           <small class="sub">(encode_commit_history) 对已上屏的词语进行编码</small>

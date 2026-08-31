@@ -40,6 +40,19 @@ pub struct TranslatorProfile {
     pub is_custom: bool,
 }
 
+/// 差异写入：仅包含需自定义的键（None 表示不改动该键）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+pub struct TranslatorPatch {
+    #[serde(default)]
+    pub enable_encoder: Option<bool>,
+    #[serde(default)]
+    pub enable_sentence: Option<bool>,
+    #[serde(default)]
+    pub enable_user_dict: Option<bool>,
+    #[serde(default)]
+    pub encode_commit_history: Option<bool>,
+}
+
 /// 判断 custom 文件中是否显式定义了 translator 下的某个键（兼容 slash/nested 写法）。
 fn is_translator_key_custom(custom: &Value, key: &str) -> bool {
     custom
@@ -49,14 +62,9 @@ fn is_translator_key_custom(custom: &Value, key: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// 获取 scope 的翻译器 Profile（生效值 + 是否自定义）。
-///
-/// - scope = None → 全局（default.yaml + default.custom.yaml）
-/// - scope = Some(id) → 方案（schema + custom，含 import_preset 解析）
-#[tauri::command]
-pub fn get_translator_profile(scope: Option<String>) -> Result<TranslatorProfile, RimeError> {
-    let cfg = RimeConfig::detect();
-    let dict_value = match scope.as_deref() {
+/// 计算 scope 的翻译器生效值与自定义标记（命令与测试共用）。
+fn translator_profile(cfg: &RimeConfig, scope: Option<&str>) -> Result<TranslatorProfile, RimeError> {
+    let dict_value = match scope {
         None => cfg.load_effective(&cfg.default_path(), &cfg.default_custom_path())?,
         Some(id) => cfg.load_schema_effective(id)?,
     };
@@ -69,7 +77,7 @@ pub fn get_translator_profile(scope: Option<String>) -> Result<TranslatorProfile
         encode_commit_history: config::get_bool(translator, "encode_commit_history").unwrap_or(true),
     };
 
-    let custom_path = match scope.as_deref() {
+    let custom_path = match scope {
         None => cfg.default_custom_path(),
         Some(id) => cfg
             .schema_custom_path(id)
@@ -83,11 +91,21 @@ pub fn get_translator_profile(scope: Option<String>) -> Result<TranslatorProfile
     Ok(TranslatorProfile { settings, is_custom })
 }
 
-/// 保存 scope 的翻译器设置（差异写入：仅在需自定义的键上写 patch）。
+/// 获取 scope 的翻译器 Profile（生效值 + 是否自定义）。
+///
+/// - scope = None → 全局（default.yaml + default.custom.yaml）
+/// - scope = Some(id) → 方案（schema + custom，含 import_preset 解析）
+#[tauri::command]
+pub fn get_translator_profile(scope: Option<String>) -> Result<TranslatorProfile, RimeError> {
+    let cfg = RimeConfig::detect();
+    translator_profile(&cfg, scope.as_deref())
+}
+
+/// 保存 scope 的翻译器设置（差异写入：仅写入 patch 中 Some 的键）。
 #[tauri::command]
 pub fn save_translator(
     scope: Option<String>,
-    settings: TranslatorSettings,
+    patch: TranslatorPatch,
 ) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     let target_path = match scope.as_deref() {
@@ -96,23 +114,16 @@ pub fn save_translator(
             .schema_custom_path(id)
             .ok_or_else(|| RimeError::InvalidPath(format!("Invalid schema_id: {}", id)))?,
     };
-    cfg.save_patch(&target_path, |patch| {
-        patch.insert(
-            Value::String("translator/enable_encoder".into()),
-            Value::Bool(settings.enable_encoder),
-        );
-        patch.insert(
-            Value::String("translator/enable_sentence".into()),
-            Value::Bool(settings.enable_sentence),
-        );
-        patch.insert(
-            Value::String("translator/enable_user_dict".into()),
-            Value::Bool(settings.enable_user_dict),
-        );
-        patch.insert(
-            Value::String("translator/encode_commit_history".into()),
-            Value::Bool(settings.encode_commit_history),
-        );
+    cfg.save_patch(&target_path, |m| {
+        let mut insert_if_some = |key: &str, v: Option<bool>| {
+            if let Some(b) = v {
+                m.insert(Value::String(key.into()), Value::Bool(b));
+            }
+        };
+        insert_if_some("translator/enable_encoder", patch.enable_encoder);
+        insert_if_some("translator/enable_sentence", patch.enable_sentence);
+        insert_if_some("translator/enable_user_dict", patch.enable_user_dict);
+        insert_if_some("translator/encode_commit_history", patch.encode_commit_history);
         Ok(())
     })?;
     Ok(())
@@ -141,7 +152,7 @@ mod tests {
     fn test_translator_defaults_when_missing() {
         let (_tmp, cfg) = test_cfg();
         // 无任何配置 → 全默认 true
-        let profile = get_translator_profile_inner(&cfg, None).unwrap();
+        let profile = translator_profile(&cfg, None).unwrap();
         assert!(profile.settings.enable_encoder);
         assert!(profile.settings.enable_sentence);
         assert!(profile.settings.enable_user_dict);
@@ -162,7 +173,7 @@ mod tests {
             "patch:\n  translator:\n    enable_encoder: false\n    enable_user_dict: false\n",
         )
         .unwrap();
-        let profile = get_translator_profile_inner(&cfg, None).unwrap();
+        let profile = translator_profile(&cfg, None).unwrap();
         assert!(!profile.settings.enable_encoder, "custom 覆盖 enable_encoder");
         assert!(profile.settings.enable_sentence);
         assert!(!profile.settings.enable_user_dict);
@@ -183,47 +194,29 @@ mod tests {
             "patch:\n  translator/enable_sentence: true\n",
         )
         .unwrap();
-        let profile = get_translator_profile_inner(&cfg, Some("tr".to_string())).unwrap();
+        let profile = translator_profile(&cfg, Some("tr")).unwrap();
         assert!(profile.settings.enable_sentence, "方案 custom 覆盖为 true");
         assert!(profile.settings.enable_encoder);
         assert!(profile.is_custom);
     }
 
-    /// 测试用内部封装（避免 Tauri command 的注入依赖）
-    fn get_translator_profile_inner(
-        cfg: &RimeConfig,
-        scope: Option<String>,
-    ) -> Result<TranslatorProfile, RimeError> {
-        let dict_value = match scope.as_deref() {
-            None => cfg.load_effective(&cfg.default_path(), &cfg.default_custom_path())?,
-            Some(id) => cfg.load_schema_effective(id)?,
-        };
-        let dict = config::value_as_mapping(&dict_value);
-        let translator = config::get_mapping(dict, "translator");
-        let settings = TranslatorSettings {
-            enable_encoder: config::get_bool(translator, "enable_encoder").unwrap_or(true),
-            enable_sentence: config::get_bool(translator, "enable_sentence").unwrap_or(true),
-            enable_user_dict: config::get_bool(translator, "enable_user_dict").unwrap_or(true),
-            encode_commit_history: config::get_bool(translator, "encode_commit_history")
-                .unwrap_or(true),
-        };
-
-        let custom_path = match scope.as_deref() {
-            None => cfg.default_custom_path(),
-            Some(id) => cfg
-                .schema_custom_path(id)
-                .ok_or_else(|| RimeError::InvalidPath(format!("Invalid schema_id: {}", id)))?,
-        };
-        let custom = cfg.load_yaml(&custom_path).unwrap_or_default();
-        let is_custom = [
-            "enable_encoder",
-            "enable_sentence",
-            "enable_user_dict",
-            "encode_commit_history",
-        ]
-        .iter()
-        .any(|k| is_translator_key_custom(&custom, k));
-
-        Ok(TranslatorProfile { settings, is_custom })
+    #[test]
+    fn test_save_translator_diff_write() {
+        let (_tmp, cfg) = test_cfg();
+        // 只改 enable_encoder，其余字段不写入
+        let custom_path = cfg.default_custom_path();
+        cfg.save_patch(&custom_path, |m| {
+            m.insert(
+                Value::String("translator/enable_encoder".into()),
+                Value::Bool(false),
+            );
+            Ok(())
+        })
+        .unwrap();
+        let content = std::fs::read_to_string(&custom_path).unwrap();
+        assert!(content.contains("enable_encoder"));
+        assert!(!content.contains("enable_sentence"), "未改动字段不应写入");
+        assert!(!content.contains("enable_user_dict"), "未改动字段不应写入");
+        assert!(!content.contains("encode_commit_history"), "未改动字段不应写入");
     }
 }

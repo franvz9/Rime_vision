@@ -115,23 +115,20 @@ onMounted(async () => {
       </div>
 
       <div class="profile-body">
+        <!-- 用 v-show 而非 v-if：保持子面板常驻挂载，切 Tab 不丢失未保存编辑 -->
         <PageSizeSettings
-          v-if="activeTab === 'candidate'"
+          v-show="activeTab === 'candidate'"
           ref="pageSizeRef"
           :scope="selectedScope"
         />
         <PunctuationSettings
-          v-else-if="activeTab === 'punctuation'"
+          v-show="activeTab === 'punctuation'"
           ref="punctRef"
           :scope="selectedScope"
         />
-        <KeybindingEditor
-          v-else-if="activeTab === 'keybinding'"
-          ref="kbRef"
-          :scope="selectedScope"
-        />
+        <KeybindingEditor v-show="activeTab === 'keybinding'" ref="kbRef" :scope="selectedScope" />
         <TranslatorSettings
-          v-else-if="activeTab === 'translator'"
+          v-show="activeTab === 'translator'"
           ref="translatorRef"
           :scope="selectedScope"
         />

@@ -189,7 +189,7 @@ impl RimeConfig {
 
     /// Validate a schema_id used to build a file path.
     /// Rejects path separators, traversal sequences, and NUL/control chars.
-    fn valid_schema_id(schema_id: &str) -> bool {
+    pub(crate) fn valid_schema_id(schema_id: &str) -> bool {
         !schema_id.contains('/')
             && !schema_id.contains('\\')
             && !schema_id.contains("..")
@@ -238,6 +238,14 @@ impl RimeConfig {
     /// - Mapping 值：深度合并（预设为基础，当前定义覆盖）
     /// - Sequence 值（如 key_binder.bindings）：追加（预设 + 当前）
     /// - 其它值：当前定义覆盖
+    ///
+    /// 能力边界（当前实现）：
+    /// - 仅解析单层 import_preset：预设文件自身若也含 import_preset 不会递归
+    ///   解析（symbols.yaml / default.yaml 是叶子预设，实际不触发）。
+    /// - 仅支持字符串形式的 import_preset（`import_preset: symbols`），不支持
+    ///   列表形式 `import_preset: [symbols, default]`。
+    /// - 预设查找仅在 user_dir（`symbols` → user_dir/{name}.yaml，`default` →
+    ///   default_path()）；若预设位于 Squirrel 共享目录则静默跳过。
     fn resolve_import_presets(&self, value: Value) -> Result<Value> {
         let map = match value {
             Value::Mapping(m) => m,
@@ -259,7 +267,11 @@ impl RimeConfig {
                             .load_preset_section(&preset_name, &key, &mut preset_cache)?
                         {
                             if let Some(pm) = preset_section.as_mapping() {
-                                Value::Mapping(merge_preset_section(pm, &section, true))
+                                let mut merged = merge_preset_section(pm, &section, true);
+                                // 合并完成后 import_preset 仅是元数据，移除以避免
+                                // 输出非规范的残留键。
+                                merged.remove(Value::String("import_preset".into()));
+                                Value::Mapping(merged)
                             } else {
                                 Value::Mapping(section)
                             }
@@ -388,27 +400,7 @@ impl RimeConfig {
 
     pub fn load_effective(&self, base_path: &Path, custom_path: &Path) -> Result<Value> {
         let base = self.load_yaml(base_path)?;
-        let custom = match self.load_yaml(custom_path) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!(
-                    "Warning: failed to parse {}: {}, using base config only",
-                    custom_path.display(),
-                    e
-                );
-                return Ok(base);
-            }
-        };
-
-        if let Some(patch_map) = custom.get(Value::String("patch".into())) {
-            if let Some(patch_mapping) = patch_map.as_mapping() {
-                if let Some(base_mapping) = base.as_mapping() {
-                    return Ok(Value::Mapping(patch::merge(base_mapping, patch_mapping)));
-                }
-            }
-        }
-
-        Ok(base)
+        self.merge_custom_patch(base, custom_path)
     }
 
     pub fn save_patch<F>(&self, custom_path: &Path, mutate: F) -> Result<()>

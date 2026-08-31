@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onUnmounted, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
@@ -42,10 +42,6 @@ async function save() {
 }
 
 watch(() => props.scope, load, { immediate: true })
-
-onMounted(() => {
-  load()
-})
 
 onUnmounted(() => {
   mounted = false
