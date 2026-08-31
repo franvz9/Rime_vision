@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import DeployNotice from './DeployNotice.vue'
 import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
 import type { KeyBinding } from '../../src-tauri/bindings/KeyBinding'
 
-defineProps<{
+const props = defineProps<{
   /** 作用域: '' 或 undefined = 全局, 否则为方案 id */
   scope?: string
 }>()
@@ -73,16 +73,24 @@ const bindings = ref<BindingItem[]>([])
 
 let keyMounted = true
 
-onMounted(async () => {
+async function load() {
   try {
-    const data = await invoke<KeyBinding[]>('get_keybindings')
+    const data = await invoke<KeyBinding[]>('get_keybindings', {
+      scope: props.scope || null,
+    })
     if (!keyMounted) return
     bindings.value = data.map((b) => ({ ...b, _id: nextBindingId++ }))
   } catch (e) {
     if (!keyMounted) return
     toast.error(`加载快捷键失败: ${errorMessage(e)}`)
   }
+}
+
+onMounted(() => {
+  load()
 })
+
+watch(() => props.scope, load)
 
 onUnmounted(() => {
   keyMounted = false
@@ -107,8 +115,8 @@ async function save() {
   try {
     // Strip _id before sending to backend
     const payload: KeyBinding[] = bindings.value.map(({ _id, ...rest }) => rest)
-    await invoke('save_keybindings', { bindings: payload })
-    toast.success('快捷键已保存')
+    await invoke('save_keybindings', { scope: props.scope || null, bindings: payload })
+    toast.success(props.scope ? `已保存到 ${props.scope}.custom.yaml` : '快捷键已保存')
   } catch (e) {
     toast.error(`保存快捷键失败: ${errorMessage(e)}`)
   }
@@ -206,7 +214,9 @@ async function save() {
     </div>
 
     <div class="actions">
-      <button class="wv-btn wv-btn-primary" @click="save">保存</button>
+      <button class="wv-btn wv-btn-primary" @click="save">
+        保存{{ scope ? `到 ${scope}.custom.yaml` : '' }}
+      </button>
     </div>
   </div>
 </template>
