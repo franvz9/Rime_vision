@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import DeployNotice from './DeployNotice.vue'
 import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
 
@@ -55,17 +54,9 @@ onUnmounted(() => {
 
 <template>
   <div class="page-size-settings">
-    <DeployNotice />
-
     <div class="scope-field" :class="{ 'is-default': !isCustom && !dirty }">
       <label class="scope-label">候选词数</label>
-      <input
-        v-model.number="pageSize"
-        type="number"
-        min="1"
-        max="20"
-        @input="dirty = true"
-      />
+      <input v-model.number="pageSize" type="number" min="1" max="20" @input="dirty = true" />
       <span v-if="isCustom || dirty" class="badge badge-custom">自定义</span>
       <span v-else class="badge badge-default">默认</span>
       <p v-if="!isCustom && !dirty" class="hint">

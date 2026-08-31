@@ -214,8 +214,107 @@ impl RimeConfig {
                 schema_id
             )));
         };
-        self.load_effective(&schema_path, &custom_path)
+        // 1. 读取方案 schema 源文件
+        let mut base = self.load_yaml(&schema_path)?;
+        // 2. 解析 import_preset 引用（如 punctuator.import_preset: symbols），
+        //    使方案配置能读到预设引用的完整内容（符号集、默认按键绑定等）。
+        base = self.resolve_import_presets(base)?;
+        // 3. 应用方案 custom patch
+        self.merge_custom_patch(base, &custom_path)
             .map_err(crate::rime::error::RimeError::from)
+    }
+
+    /// 解析配置顶层各 section 的 `import_preset` 引用。
+    ///
+    /// Rime 方案常用 `punctuator: { import_preset: symbols }`、
+    /// `key_binder: { import_preset: default }` 等方式复用预设内容，而这些
+    /// 预设引用的完整内容并不在 schema 文件本身里。此方法会找到对应预设
+    /// 文件，把其同名的 section 作为基础，再用当前 schema 的 section 覆盖合并，
+    /// 从而让 effective 配置包含完整内容。
+    ///
+    /// 合并规则：
+    /// - Mapping 值：深度合并（预设为基础，当前定义覆盖）
+    /// - Sequence 值（如 key_binder.bindings）：追加（预设 + 当前）
+    /// - 其它值：当前定义覆盖
+    fn resolve_import_presets(&self, value: Value) -> Result<Value> {
+        let map = match value {
+            Value::Mapping(m) => m,
+            other => return Ok(other),
+        };
+        // 缓存已加载的预设文件，避免重复读取
+        let mut preset_cache: std::collections::HashMap<String, Value> =
+            std::collections::HashMap::new();
+        let mut new_map = serde_yaml::Mapping::new();
+        for (key, value) in map {
+            let mapped = match value {
+                Value::Mapping(section) => {
+                    let preset_name = section
+                        .get(Value::String("import_preset".into()))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    if let Some(preset_name) = preset_name {
+                        if let Some(preset_section) = self
+                            .load_preset_section(&preset_name, &key, &mut preset_cache)?
+                        {
+                            if let Some(pm) = preset_section.as_mapping() {
+                                Value::Mapping(merge_preset_section(pm, &section, true))
+                            } else {
+                                Value::Mapping(section)
+                            }
+                        } else {
+                            Value::Mapping(section)
+                        }
+                    } else {
+                        Value::Mapping(section)
+                    }
+                }
+                other => other,
+            };
+            new_map.insert(key, mapped);
+        }
+        Ok(Value::Mapping(new_map))
+    }
+
+    /// 加载预设文件中某个顶层 section 的内容。
+    /// 返回 `None` 表示该预设文件或 section 不存在（静默跳过）。
+    fn load_preset_section<'a>(
+        &self,
+        preset_name: &str,
+        section_key: &Value,
+        cache: &'a mut std::collections::HashMap<String, Value>,
+    ) -> Result<Option<&'a Value>> {
+        if !cache.contains_key(preset_name) {
+            let path = match preset_name {
+                "default" => self.default_path(),
+                name => self.user_dir.join(format!("{}.yaml", name)),
+            };
+            let loaded = self.load_yaml(&path)?;
+            cache.insert(preset_name.to_string(), loaded);
+        }
+        Ok(cache.get(preset_name).and_then(|doc| doc.get(section_key)))
+    }
+
+    /// 将 custom 文件的 patch 合并到 base 配置上。
+    fn merge_custom_patch(&self, base: Value, custom_path: &Path) -> Result<Value> {
+        let custom = match self.load_yaml(custom_path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!(
+                    "Warning: failed to parse {}: {}, using base config only",
+                    custom_path.display(),
+                    e
+                );
+                return Ok(base);
+            }
+        };
+        if let Some(patch_map) = custom.get(Value::String("patch".into())) {
+            if let Some(patch_mapping) = patch_map.as_mapping() {
+                if let Some(base_mapping) = base.as_mapping() {
+                    return Ok(Value::Mapping(patch::merge(base_mapping, patch_mapping)));
+                }
+            }
+        }
+        Ok(base)
     }
 
     /// Returns the directory containing compiled/generated configs.
@@ -333,6 +432,38 @@ impl RimeConfig {
         eprintln!("WeaselVision: File written successfully");
         Ok(())
     }
+}
+
+/// 合并预设 section 与当前定义 section（模拟 Rime import_preset 语义）。
+///
+/// `preset` 为基础，`override_map`（当前 schema 定义）覆盖：
+/// - Mapping 值：深度合并
+/// - Sequence 值：
+///   - 顶层 section 直接子键（如 `key_binder.bindings`）：追加（预设 + 当前）
+///   - 嵌套层级（如 `punctuator.half_shape` 内的某个键值）：覆盖
+/// - 其它值：当前定义覆盖
+fn merge_preset_section(
+    preset: &serde_yaml::Mapping,
+    override_map: &serde_yaml::Mapping,
+    top: bool,
+) -> serde_yaml::Mapping {
+    let mut result = preset.clone();
+    for (k, v) in override_map {
+        match (result.get(k), v) {
+            (Some(Value::Mapping(pm)), Value::Mapping(om)) => {
+                result.insert(k.clone(), Value::Mapping(merge_preset_section(pm, om, false)));
+            }
+            (Some(Value::Sequence(ps)), Value::Sequence(os)) if top => {
+                let mut merged = ps.clone();
+                merged.extend(os.clone());
+                result.insert(k.clone(), Value::Sequence(merged));
+            }
+            _ => {
+                result.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    result
 }
 
 pub fn parse_yaml(text: &str) -> Result<Value> {
@@ -575,6 +706,114 @@ mod tests {
         // schema 文件不存在时，应返回空映射而不是报错
         let eff = cfg.load_schema_effective("nonexistent_schema").unwrap();
         assert!(eff.as_mapping().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_load_schema_effective_resolves_import_preset_symbols() {
+        let (_tmp, cfg) = temp_config();
+        // 模拟 symbols.yaml 预设：含完整 half_shape/full_shape
+        std::fs::write(
+            cfg.user_dir.join("symbols.yaml"),
+            "punctuator:\n  half_shape:\n    '!': '！'\n    '?': '？'\n    '.': '。'\n    '*': ['*', '＊', '・']\n  full_shape:\n    '!': '！'\n    '?': '？'\n",
+        )
+        .unwrap();
+        // 方案 schema 用 import_preset: symbols，并内联覆盖部分键
+        std::fs::write(
+            cfg.user_dir.join("ip_schema.schema.yaml"),
+            "punctuator:\n  import_preset: symbols\n  half_shape:\n    '/': '/'\n    '*': ['*', '×', '※']\n",
+        )
+        .unwrap();
+
+        let eff = cfg.load_schema_effective("ip_schema").unwrap();
+        let dict = eff.as_mapping().unwrap();
+        let punct = dict
+            .get(serde_yaml::Value::String("punctuator".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        let hs = punct
+            .get(serde_yaml::Value::String("half_shape".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        // preset 的键应被解析进来
+        assert_eq!(
+            hs.get(serde_yaml::Value::String("!".into())).and_then(|v| v.as_str()),
+            Some("！")
+        );
+        assert_eq!(
+            hs.get(serde_yaml::Value::String("?".into())).and_then(|v| v.as_str()),
+            Some("？")
+        );
+        // schema 内联覆盖的键也应保留
+        assert_eq!(
+            hs.get(serde_yaml::Value::String("/".into())).and_then(|v| v.as_str()),
+            Some("/")
+        );
+        // 嵌套 sequence 键：schema 覆盖 preset，而非追加（避免重复）
+        let star = hs
+            .get(serde_yaml::Value::String("*".into()))
+            .and_then(|v| v.as_sequence())
+            .unwrap();
+        assert_eq!(star.len(), 3, "嵌套 sequence 应为覆盖而非追加");
+        assert_eq!(star, &vec![serde_yaml::Value::String("*".into()), serde_yaml::Value::String("×".into()), serde_yaml::Value::String("※".into())]);
+        // full_shape 也从 preset 解析
+        let fs = punct
+            .get(serde_yaml::Value::String("full_shape".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        assert_eq!(fs.len(), 2);
+    }
+
+    #[test]
+    fn test_load_schema_effective_resolves_import_preset_default_bindings() {
+        let (_tmp, cfg) = temp_config();
+        // 模拟 default.yaml 预设：key_binder 含默认 bindings
+        std::fs::write(
+            cfg.user_dir.join("default.yaml"),
+            "key_binder:\n  bindings:\n    - {when: composing, accept: Control+p, send: Up}\n    - {when: composing, accept: Control+n, send: Down}\n",
+        )
+        .unwrap();
+        // 方案 schema 用 import_preset: default，并追加自定义绑定
+        std::fs::write(
+            cfg.user_dir.join("ipkb.schema.yaml"),
+            "key_binder:\n  import_preset: default\n  bindings:\n    - {when: always, accept: F4, send: Escape}\n",
+        )
+        .unwrap();
+
+        let eff = cfg.load_schema_effective("ipkb").unwrap();
+        let dict = eff.as_mapping().unwrap();
+        let kb = dict
+            .get(serde_yaml::Value::String("key_binder".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        let seq = kb
+            .get(serde_yaml::Value::String("bindings".into()))
+            .and_then(|v| v.as_sequence())
+            .unwrap();
+        // 预设 bindings（2 个）+ 方案 bindings（1 个）= 3 个（追加）
+        assert_eq!(seq.len(), 3);
+    }
+
+    #[test]
+    fn test_load_schema_effective_without_preset_unchanged() {
+        let (_tmp, cfg) = temp_config();
+        // 无 import_preset 的方案，行为不变
+        std::fs::write(
+            cfg.user_dir.join("plain.schema.yaml"),
+            "punctuator:\n  half_shape:\n    '/': '/'\n",
+        )
+        .unwrap();
+        let eff = cfg.load_schema_effective("plain").unwrap();
+        let dict = eff.as_mapping().unwrap();
+        let punct = dict
+            .get(serde_yaml::Value::String("punctuator".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        let hs = punct
+            .get(serde_yaml::Value::String("half_shape".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        assert_eq!(hs.len(), 1);
+        assert!(hs.contains_key(serde_yaml::Value::String("/".into())));
     }
 
     #[test]

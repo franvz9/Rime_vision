@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import DeployNotice from './DeployNotice.vue'
 import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
 import WeaselModal from './WeaselModal.vue'
@@ -148,8 +147,6 @@ async function save() {
 
 <template>
   <div class="punctuation-settings">
-    <DeployNotice />
-
     <div class="tabs">
       <button :class="['tab', { active: activeTab === 'half' }]" @click="activeTab = 'half'">
         半角标点
@@ -308,8 +305,6 @@ async function save() {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 400px;
-  overflow-y: auto;
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
   border-radius: 8px;

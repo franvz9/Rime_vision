@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import DeployNotice from './DeployNotice.vue'
 import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
 import type { KeyBinding } from '../../src-tauri/bindings/KeyBinding'
@@ -125,8 +124,6 @@ async function save() {
 
 <template>
   <div class="keybinding-editor">
-    <DeployNotice />
-
     <div class="binding-main">
       <div class="binding-editor-pane">
         <h3>快捷键绑定</h3>
@@ -223,23 +220,18 @@ async function save() {
 
 <style scoped>
 .keybinding-editor {
-  height: 100%;
   max-width: 100%;
   display: flex;
   flex-direction: column;
-  min-height: 0;
 }
 
 .binding-main {
-  flex: 1 1 auto;
-  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 700px) minmax(260px, 1fr);
   gap: 16px;
 }
 
 .binding-editor-pane {
-  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -292,12 +284,9 @@ async function save() {
 }
 
 .binding-list {
-  flex: 1 1 auto;
-  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow-y: auto;
   padding-right: 4px;
 }
 
