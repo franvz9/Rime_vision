@@ -30,6 +30,7 @@ build/
 *.egg-info/
 *.dmg
 *.zip
+*.exe
 
 # Swift build artifacts
 RimeVision/.build/
