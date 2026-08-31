@@ -36,8 +36,8 @@
 |------|------|------|
 | macOS | Apple Silicon (arm64) | `WeaselVision_0.4.0_arm64.dmg` |
 | macOS | Intel (x64) | `WeaselVision_0.4.0_x64.dmg` |
-| Windows | ARM64 | `WeaselVision_0.4.0_Windows_arm64.zip` |
-| Windows | x64 | `WeaselVision_0.4.0_Windows_x64.zip` |
+| Windows | ARM64 | `WeaselVision_0.4.0_Windows_arm64.exe` |
+| Windows | x64 | `WeaselVision_0.4.0_Windows_x64.exe` |
 
 ---
 

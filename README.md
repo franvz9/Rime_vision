@@ -8,8 +8,8 @@ Rime 输入法可视化配置工具。跨平台版 **WeaselVision** 当前为活
 |------|------|------|
 | macOS | Apple Silicon (arm64) | `WeaselVision_0.4.0_arm64.dmg` |
 | macOS | Intel (x64) | `WeaselVision_0.4.0_x64.dmg` |
-| Windows | ARM64 | `WeaselVision_0.4.0_Windows_arm64.zip` |
-| Windows | x64 | `WeaselVision_0.4.0_Windows_x64.zip` |
+| Windows | ARM64 | `WeaselVision_0.4.0_Windows_arm64.exe` |
+| Windows | x64 | `WeaselVision_0.4.0_Windows_x64.exe` |
 
 ## 安装与使用
 
@@ -29,7 +29,7 @@ sudo xattr -rd com.apple.quarantine /Applications/WeaselVision.app
 
 #### Windows 安装
 
-解压 `.zip`，双击 `WeaselVision.exe` 运行。
+运行 `WeaselVision_0.4.0_Windows_<架构>.exe` 安装向导，安装完成后从开始菜单启动 WeaselVision。
 
 ## 截图
 
