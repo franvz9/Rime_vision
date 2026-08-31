@@ -19,9 +19,9 @@ const settings = ref<TSettings>({
   encode_commit_history: true,
 })
 const isCustom = ref(false)
-/** 本次会话被改动过的字段集合（差异写入依据） */
-const dirtyFields = ref<Set<keyof TSettings>>(new Set())
-const dirty = computed(() => dirtyFields.value.size > 0)
+/** 本次会话被改动过的字段（差异写入依据） */
+const dirtyFields = ref<Partial<Record<keyof TSettings, true>>>({})
+const dirty = computed(() => Object.keys(dirtyFields.value).length > 0)
 let mounted = true
 
 async function load() {
@@ -35,7 +35,7 @@ async function load() {
     if (!mounted) return
     settings.value = { ...profile.settings }
     isCustom.value = profile.is_custom
-    dirtyFields.value = new Set()
+    dirtyFields.value = {}
   } catch (e) {
     if (!mounted) return
     toast.error(`加载翻译器设置失败: ${errorMessage(e)}`)
@@ -44,24 +44,17 @@ async function load() {
 
 /** 标记某个字段为已改动 */
 function markDirty(field: keyof TSettings) {
-  dirtyFields.value.add(field)
-  dirtyFields.value = new Set(dirtyFields.value)
+  dirtyFields.value = { ...dirtyFields.value, [field]: true }
 }
 
 async function save() {
   try {
-    // 差异写入：仅传被改动字段（未被改动字段保持 None，后端不写入）
+    // 差异写入：仅传被改动字段（未被改动字段保持 null，后端不写入）
     const patch = {
-      enable_encoder: dirtyFields.value.has('enable_encoder')
-        ? settings.value.enable_encoder
-        : null,
-      enable_sentence: dirtyFields.value.has('enable_sentence')
-        ? settings.value.enable_sentence
-        : null,
-      enable_user_dict: dirtyFields.value.has('enable_user_dict')
-        ? settings.value.enable_user_dict
-        : null,
-      encode_commit_history: dirtyFields.value.has('encode_commit_history')
+      enable_encoder: dirtyFields.value.enable_encoder ? settings.value.enable_encoder : null,
+      enable_sentence: dirtyFields.value.enable_sentence ? settings.value.enable_sentence : null,
+      enable_user_dict: dirtyFields.value.enable_user_dict ? settings.value.enable_user_dict : null,
+      encode_commit_history: dirtyFields.value.encode_commit_history
         ? settings.value.encode_commit_history
         : null,
     }
@@ -70,6 +63,17 @@ async function save() {
     await load()
   } catch (e) {
     toast.error(`保存翻译器设置失败: ${errorMessage(e)}`)
+  }
+}
+
+/** 恢复默认：删除该 scope 的 translator 自定义键，回退到 schema/全局默认 */
+async function resetToDefault() {
+  try {
+    await invoke('reset_translator', { scope: props.scope || null })
+    toast.success('已恢复默认')
+    await load()
+  } catch (e) {
+    toast.error(`恢复默认失败: ${errorMessage(e)}`)
   }
 }
 
@@ -133,6 +137,7 @@ defineExpose({ save })
       <div class="badge-row">
         <span v-if="isCustom || dirty" class="badge badge-custom">自定义</span>
         <span v-else class="badge badge-default">默认</span>
+        <button v-if="isCustom" class="btn-restore" @click="resetToDefault">恢复默认</button>
       </div>
     </div>
   </div>
@@ -188,6 +193,29 @@ defineExpose({ save })
 
 .badge-row {
   margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-restore {
+  padding: 4px 12px;
+  border: 1px solid var(--color-border-dark);
+  border-radius: 6px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.btn-restore:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
 }
 
 .badge {

@@ -42,6 +42,7 @@ pub fn run() {
             page_size::save_page_size,
             translator::get_translator_profile,
             translator::save_translator,
+            translator::reset_translator,
             backup::list_backups,
             backup::get_backup_detail,
             backup::create_backup,

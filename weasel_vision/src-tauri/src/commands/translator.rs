@@ -129,6 +129,48 @@ pub fn save_translator(
     Ok(())
 }
 
+/// 恢复默认：删除 scope 的 translator 自定义键（4 个 bool），回退到
+/// schema/全局默认值。与标点面板「删除键回退默认」语义一致。
+#[tauri::command]
+pub fn reset_translator(scope: Option<String>) -> Result<(), RimeError> {
+    let cfg = RimeConfig::detect();
+    reset_translator_with_cfg(&cfg, scope.as_deref())
+}
+
+fn reset_translator_with_cfg(cfg: &RimeConfig, scope: Option<&str>) -> Result<(), RimeError> {
+    let target_path = match scope {
+        None => cfg.default_custom_path(),
+        Some(id) => cfg
+            .schema_custom_path(id)
+            .ok_or_else(|| RimeError::InvalidPath(format!("Invalid schema_id: {}", id)))?,
+    };
+    let keys = [
+        "enable_encoder",
+        "enable_sentence",
+        "enable_user_dict",
+        "encode_commit_history",
+    ];
+    cfg.save_patch(&target_path, |patch| {
+        // slash-form：删除 translator/<key>
+        for key in keys {
+            patch.remove(Value::String(format!("translator/{}", key)));
+        }
+        // nested-form：删除 translator: { <key>: ... }
+        if let Some(translator) = patch.get_mut(Value::String("translator".into())) {
+            if let Some(t_map) = translator.as_mapping_mut() {
+                for key in keys {
+                    t_map.remove(Value::String(key.into()));
+                }
+                if t_map.is_empty() {
+                    patch.remove(Value::String("translator".into()));
+                }
+            }
+        }
+        Ok(())
+    })?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,5 +260,37 @@ mod tests {
         assert!(!content.contains("enable_sentence"), "未改动字段不应写入");
         assert!(!content.contains("enable_user_dict"), "未改动字段不应写入");
         assert!(!content.contains("encode_commit_history"), "未改动字段不应写入");
+    }
+
+    #[test]
+    fn test_reset_translator_removes_custom_keys() {
+        let (_tmp, cfg) = test_cfg();
+        let custom_path = cfg.default_custom_path();
+        // 预置 slash-form 与 nested-form 的 translator 键
+        cfg.save_patch(&custom_path, |m| {
+            m.insert(
+                Value::String("translator/enable_encoder".into()),
+                Value::Bool(false),
+            );
+            m.insert(
+                Value::String("translator/enable_sentence".into()),
+                Value::Bool(false),
+            );
+            let mut nested = serde_yaml::Mapping::new();
+            nested.insert(
+                Value::String("enable_user_dict".into()),
+                Value::Bool(false),
+            );
+            m.insert(Value::String("translator".into()), Value::Mapping(nested));
+            Ok(())
+        })
+        .unwrap();
+
+        reset_translator_with_cfg(&cfg, None).unwrap();
+
+        let content = std::fs::read_to_string(&custom_path).unwrap();
+        assert!(!content.contains("enable_encoder"), "slash-form 键应删除");
+        assert!(!content.contains("enable_sentence"), "slash-form 键应删除");
+        assert!(!content.contains("enable_user_dict"), "nested-form 键应删除");
     }
 }
