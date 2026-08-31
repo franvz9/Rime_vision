@@ -1,7 +1,7 @@
 mod commands;
 mod rime;
 
-use commands::{backup, dict, grammar, keybinding, punctuation, schema, settings, style, sync};
+use commands::{backup, dict, grammar, keybinding, page_size, punctuation, schema, settings, style, sync};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -36,6 +36,8 @@ pub fn run() {
             grammar::import_grammar,
             punctuation::get_punctuation,
             punctuation::save_punctuation,
+            page_size::get_page_size_detail,
+            page_size::save_page_size,
             backup::list_backups,
             backup::get_backup_detail,
             backup::create_backup,

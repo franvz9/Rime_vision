@@ -140,7 +140,6 @@ pub fn get_general_settings() -> Result<GeneralSettings, RimeError> {
 pub fn save_general_settings(settings: GeneralSettings) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.default_custom_path(), |patch| {
-        remove_nested_patch_value(patch, "menu", "page_size");
         remove_nested_patch_value(patch, "translator", "enable_encoder");
         remove_nested_patch_value(patch, "translator", "enable_sentence");
         remove_nested_patch_value(patch, "translator", "enable_user_dict");
@@ -154,11 +153,6 @@ pub fn save_general_settings(settings: GeneralSettings) -> Result<(), RimeError>
         remove_nested_switch_key(patch, "Shift_L");
         remove_nested_switch_key(patch, "Shift_R");
 
-        set_patch_value(
-            patch,
-            "menu/page_size",
-            Value::Number(settings.page_size.into()),
-        );
         set_patch_value(
             patch,
             "translator/enable_encoder",
