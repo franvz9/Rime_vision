@@ -172,13 +172,14 @@ mod tests {
     fn test_save_keybindings_writes_schema_custom() {
         let (_tmp, cfg) = test_cfg();
         let custom_path = cfg.schema_custom_path("kb_schema2").unwrap();
-        let bindings = vec![KeyBinding {
+        let bindings = [KeyBinding {
             when: "always".into(),
             accept: "Control+Shift+E".into(),
             send: String::new(),
             toggle: "emoji_suggestion".into(),
             select: String::new(),
-        }];
+        }]
+        .to_vec();
         cfg.save_patch(&custom_path, |patch| {
             let bindings_seq: Vec<Value> = bindings
                 .iter()
