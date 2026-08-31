@@ -6,22 +6,29 @@ import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
 import WeaselModal from './WeaselModal.vue'
 import type { PunctRule } from '../../src-tauri/bindings/PunctRule'
-import type { PunctuationData } from '../../src-tauri/bindings/PunctuationData'
+import type { PunctuationProfile } from '../../src-tauri/bindings/PunctuationProfile'
 
-defineProps<{
+const props = defineProps<{
   /** 作用域: '' 或 undefined = 全局, 否则为方案 id */
   scope?: string
 }>()
 
 const toast = useToast()
 
-const data = ref<PunctuationData | null>(null)
+const data = ref<PunctuationProfile | null>(null)
 const activeTab = ref<'half' | 'full'>('half')
 const editingRule = ref<PunctRule | null>(null)
 const showEditor = ref(false)
 const showSaved = ref(false)
 const editType = ref<'commit' | 'pair' | 'list'>('commit')
 const originalKey = ref('')
+
+/** 原本自定义（custom 文件中显式定义）的键集合 */
+const customKeys = ref<Set<string>>(new Set())
+/** 用户本次会话新增/修改的键集合（差异写入依据） */
+const dirtyKeys = ref<Set<string>>(new Set())
+
+const isCustomKey = (key: string) => customKeys.value.has(key) || dirtyKeys.value.has(key)
 
 watch(
   editingRule,
@@ -43,15 +50,26 @@ const currentRules = computed(() => {
 let punctMounted = true
 let saveToastTimer: ReturnType<typeof setTimeout> | null = null
 
-onMounted(async () => {
+async function load() {
   try {
-    data.value = await invoke('get_punctuation')
+    const profile = await invoke<PunctuationProfile>('get_punctuation_profile', {
+      scope: props.scope || null,
+    })
     if (!punctMounted) return
+    data.value = profile
+    customKeys.value = new Set(profile.custom_keys || [])
+    dirtyKeys.value = new Set()
   } catch (e) {
     if (!punctMounted) return
     toast.error(`加载标点设置失败: ${errorMessage(e)}`)
   }
+}
+
+onMounted(() => {
+  load()
 })
+
+watch(() => props.scope, load)
 
 onUnmounted(() => {
   punctMounted = false
@@ -77,6 +95,9 @@ function deleteRule(key: string) {
   } else {
     data.value.full_shape = data.value.full_shape.filter((r) => r.key !== key)
   }
+  // 从 custom 集合中移除该键：保存时不再包含它，等于从方案 custom 中删除
+  customKeys.value.delete(key)
+  dirtyKeys.value.delete(key)
 }
 
 function saveEditedRule(rule: PunctRule) {
@@ -89,18 +110,32 @@ function saveEditedRule(rule: PunctRule) {
     target.push(rule)
   }
   target.sort((a, b) => a.key.localeCompare(b.key))
+  // 标记该键为 dirty（新增或修改 → 需写入 custom）
+  dirtyKeys.value.add(rule.key)
   showEditor.value = false
   editingRule.value = null
   originalKey.value = ''
 }
 
+/**
+ * 差异保存：仅将"原本自定义 + 本次修改/新增"的键传给后端。
+ * 默认项（既非 custom 又未修改）不写入 custom 文件。
+ */
 async function save() {
   if (!data.value) return
   try {
+    // 需要写入的键 = customKeys ∪ dirtyKeys
+    const needWrite = new Set<string>([...customKeys.value, ...dirtyKeys.value])
+    const half = data.value.half_shape.filter((r) => needWrite.has(r.key))
+    const full = data.value.full_shape.filter((r) => needWrite.has(r.key))
     await invoke('save_punctuation', {
-      half: data.value.half_shape,
-      full: data.value.full_shape,
+      scope: props.scope || null,
+      half,
+      full,
     })
+    // 保存成功后，这些键成为"自定义"
+    customKeys.value = new Set(needWrite)
+    dirtyKeys.value = new Set()
     showSaved.value = true
     saveToastTimer = setTimeout(() => {
       showSaved.value = false
@@ -126,7 +161,11 @@ async function save() {
     </div>
 
     <div class="rule-list">
-      <div v-for="rule in currentRules" :key="rule.key" class="rule-item">
+      <div
+        v-for="rule in currentRules"
+        :key="rule.key"
+        :class="['rule-item', { 'rule-default': !isCustomKey(rule.key) }]"
+      >
         <span class="rule-key">{{ rule.key }}</span>
         <span class="arrow">→</span>
         <span class="rule-value">
@@ -142,6 +181,8 @@ async function save() {
         <span class="rule-type">
           {{ rule.commit ? 'commit' : rule.pair.length ? 'pair' : 'list' }}
         </span>
+        <span v-if="isCustomKey(rule.key)" class="badge badge-custom">自定义</span>
+        <span v-else class="badge badge-default">默认</span>
         <span class="rule-actions">
           <button class="wv-icon-btn" @click="editRule(rule)">📝</button>
           <button class="wv-icon-btn danger" @click="deleteRule(rule.key)">🗑</button>
@@ -151,7 +192,9 @@ async function save() {
 
     <div class="actions">
       <span v-if="showSaved" class="wv-saved-hint">已保存</span>
-      <button class="wv-btn wv-btn-primary" @click="save">保存到 default.custom.yaml</button>
+      <button class="wv-btn wv-btn-primary" @click="save">
+        保存到 {{ scope ? `${scope}.custom.yaml` : 'default.custom.yaml' }}
+      </button>
     </div>
 
     <!-- Edit modal -->
@@ -282,6 +325,29 @@ async function save() {
 
 .rule-item:nth-child(even) {
   background: var(--color-bg-tertiary);
+}
+
+.rule-item.rule-default {
+  opacity: 0.65;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge-custom {
+  background: var(--color-accent);
+  color: white;
+}
+
+.badge-default {
+  background: var(--color-bg-active);
+  color: var(--color-text-tertiary);
 }
 
 .rule-key {

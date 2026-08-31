@@ -22,6 +22,57 @@ pub struct PunctuationData {
     pub full_shape: Vec<PunctRule>,
 }
 
+#[derive(Serialize, Deserialize, TS)]
+pub struct PunctuationProfile {
+    pub half_shape: Vec<PunctRule>,
+    pub full_shape: Vec<PunctRule>,
+    /// custom 文件中已显式定义的 half_shape/full_shape 键集合（用于前端标注"自定义"）
+    pub custom_keys: Vec<String>,
+}
+
+/// 读取 scope 对应 custom 文件中显式定义的 punctuator 键集合
+pub fn custom_punct_keys(cfg: &RimeConfig, scope: Option<String>) -> Vec<String> {
+    let custom_path = match scope.as_deref() {
+        None => cfg.default_custom_path(),
+        Some(id) => cfg.schema_custom_path(id).unwrap_or_default(),
+    };
+    let custom = cfg.load_yaml(&custom_path).unwrap_or_default();
+    let mut keys = Vec::new();
+    if let Some(patch) = custom
+        .get(serde_yaml::Value::String("patch".into()))
+        .and_then(|v| v.as_mapping())
+    {
+        for prefix in ["punctuator/half_shape", "punctuator/full_shape"] {
+            if let Some(Value::Mapping(m)) = patch.get(serde_yaml::Value::String(prefix.into())) {
+                for k in m.keys() {
+                    if let Some(s) = k.as_str() {
+                        keys.push(s.to_string());
+                    }
+                }
+            }
+        }
+    }
+    keys.sort();
+    keys
+}
+
+/// 获取 scope 的标点 Profile（生效值 + custom 键集合）
+#[tauri::command]
+pub fn get_punctuation_profile(scope: Option<String>) -> Result<PunctuationProfile, RimeError> {
+    let cfg = RimeConfig::detect();
+    let (dict_value, _target) = punct_dict_source(&cfg, scope.clone())?;
+    let dict = config::value_as_mapping(&dict_value);
+    let punctuator = config::get_mapping(dict, "punctuator");
+    let half_shape = parse_punct_dict(config::get_mapping(punctuator, "half_shape"));
+    let full_shape = parse_punct_dict(config::get_mapping(punctuator, "full_shape"));
+    let custom_keys = custom_punct_keys(&cfg, scope);
+    Ok(PunctuationProfile {
+        half_shape,
+        full_shape,
+        custom_keys,
+    })
+}
+
 /// Resolve the effective config mapping and the target custom path for a scope.
 ///
 /// - `scope = None` → global: `load_effective(default.yaml, default.custom.yaml)`, target = default.custom.yaml
@@ -317,5 +368,27 @@ mod tests {
         let (_tmp, cfg) = test_cfg();
         let err = punct_dict_source(&cfg, Some("a/b".to_string())).unwrap_err();
         assert!(matches!(err, RimeError::InvalidPath(_)));
+    }
+
+    #[test]
+    fn test_custom_punct_keys() {
+        let (_tmp, cfg) = test_cfg();
+        // 方案 custom 显式定义 / 和 . 两个 half_shape 键
+        std::fs::write(
+            cfg.user_dir.join("ck_schema.custom.yaml"),
+            "patch:\n  punctuator/half_shape:\n    '/': '/'\n    '.': '。'\n",
+        )
+        .unwrap();
+        let keys = custom_punct_keys(&cfg, Some("ck_schema".to_string()));
+        assert!(keys.contains(&"/".to_string()));
+        assert!(keys.contains(&".".to_string()));
+        assert_eq!(keys.len(), 2);
+    }
+
+    #[test]
+    fn test_custom_punct_keys_global_empty() {
+        let (_tmp, cfg) = test_cfg();
+        // 无 custom 文件 → 空
+        assert!(custom_punct_keys(&cfg, None).is_empty());
     }
 }

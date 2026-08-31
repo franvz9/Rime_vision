@@ -35,6 +35,7 @@ pub fn run() {
             grammar::unmount_grammar,
             grammar::import_grammar,
             punctuation::get_punctuation,
+            punctuation::get_punctuation_profile,
             punctuation::save_punctuation,
             page_size::get_page_size_detail,
             page_size::save_page_size,
@@ -97,6 +98,7 @@ mod export_tests {
         // commands::punctuation
         crate::commands::punctuation::PunctRule::export().unwrap();
         crate::commands::punctuation::PunctuationData::export().unwrap();
+        crate::commands::punctuation::PunctuationProfile::export().unwrap();
 
         // commands::schema
         crate::commands::schema::SchemaListData::export().unwrap();
