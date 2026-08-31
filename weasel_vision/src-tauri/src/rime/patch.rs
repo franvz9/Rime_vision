@@ -15,12 +15,11 @@ pub fn expanded_patch(patch: &Mapping) -> Mapping {
             if key_str == "__delete__" || key_str == "__append__" {
                 continue;
             }
-            let expanded = if let Some(nested) = value.as_mapping() {
-                Value::Mapping(expanded_patch(nested))
-            } else {
-                value.clone()
-            };
-            set_value(&mut result, &split_path(key_str), expanded);
+            // Split only the top-level slash-separated key into a path.
+            // Nested mapping VALUES are literal data (e.g. punctuation keys like
+            // '/', '\', "'"), NOT further path specs — re-expanding them would
+            // drop keys whose name contains a path separator.
+            set_value(&mut result, &split_path(key_str), value.clone());
         }
     }
 
@@ -159,12 +158,33 @@ fn merge_value(value: &Value, dict: &mut Mapping, path: &[&str]) {
     let key = Value::String(path[0].to_string());
     if let Some(patch_dict) = value.as_mapping() {
         if let Some(Value::Mapping(base_dict)) = dict.get(&key) {
-            let merged = merge(base_dict, patch_dict);
+            // Merge literally: the patch value is already an expanded tree whose
+            // keys may be literal punctuation (e.g. '/'). Do NOT re-route through
+            // `merge`/`expanded_patch` again, which would re-split those keys.
+            let merged = merge_literal(base_dict, patch_dict);
             dict.insert(key, Value::Mapping(merged));
             return;
         }
     }
     dict.insert(key, value.clone());
+}
+
+/// Deep-merge a patch mapping into a base mapping with NO path expansion.
+/// Nested mappings merge recursively; scalar/sequence patch values win.
+fn merge_literal(base: &Mapping, patch: &Mapping) -> Mapping {
+    let mut result = base.clone();
+    for (key, value) in patch {
+        match (result.get(key), value) {
+            (Some(Value::Mapping(base_map)), Value::Mapping(patch_map)) => {
+                let merged = merge_literal(base_map, patch_map);
+                result.insert(key.clone(), Value::Mapping(merged));
+            }
+            _ => {
+                result.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -192,6 +212,34 @@ mod tests {
 
         let val = value_at(&dict, &["style".to_string(), "font_face".to_string()]);
         assert_eq!(val, Some(&Value::String("Arial".into())));
+    }
+
+    #[test]
+    fn test_merge_preserves_literal_separator_keys() {
+        // Regression: patch keys like '/' (punctuation half_shape) must not be
+        // dropped when nested under a slash-separated path (e.g.
+        // "punctuator/half_shape"). See weasel "标点 / 直接上屏无效".
+        let base_yaml = "punctuator:\n  half_shape:\n    '/': ['/', '÷']\n";
+        let custom_yaml = "patch:\n  punctuator/half_shape:\n    '/': '/'\n";
+        let base: Value = serde_yaml::from_str(base_yaml).unwrap();
+        let custom: Value = serde_yaml::from_str(custom_yaml).unwrap();
+
+        let patch_map = custom
+            .get(Value::String("patch".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        let merged = merge(base.as_mapping().unwrap(), patch_map);
+
+        let half_shape = merged
+            .get(Value::String("punctuator".into()))
+            .and_then(|v| v.as_mapping())
+            .and_then(|p| p.get(Value::String("half_shape".into())))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        assert_eq!(
+            half_shape.get(Value::String("/".into())).and_then(|v| v.as_str()),
+            Some("/")
+        );
     }
 
     #[test]

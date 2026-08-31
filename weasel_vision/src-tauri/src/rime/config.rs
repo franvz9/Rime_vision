@@ -173,6 +173,39 @@ impl RimeConfig {
         Some(self.user_dir.join(format!("{}.custom.yaml", schema_id)))
     }
 
+    /// Get path to <schema>.schema.yaml
+    /// Returns None if schema_id contains path traversal characters
+    pub fn schema_path(&self, schema_id: &str) -> Option<PathBuf> {
+        if schema_id.contains('/') || schema_id.contains('\\') || schema_id.contains("..") {
+            eprintln!(
+                "Warning: schema_id '{}' contains invalid path characters",
+                schema_id
+            );
+            return None;
+        }
+        Some(self.user_dir.join(format!("{}.schema.yaml", schema_id)))
+    }
+
+    /// Merge <schema>.schema.yaml with <schema>.custom.yaml patch.
+    /// Missing schema file -> empty mapping (so callers can distinguish
+    /// "no per-schema config" from "error").
+    pub fn load_schema_effective(&self, schema_id: &str) -> Result<Value, crate::rime::error::RimeError> {
+        let Some(schema_path) = self.schema_path(schema_id) else {
+            return Err(crate::rime::error::RimeError::InvalidPath(format!(
+                "Invalid schema_id: {}",
+                schema_id
+            )));
+        };
+        let Some(custom_path) = self.schema_custom_path(schema_id) else {
+            return Err(crate::rime::error::RimeError::InvalidPath(format!(
+                "Invalid schema_id: {}",
+                schema_id
+            )));
+        };
+        self.load_effective(&schema_path, &custom_path)
+            .map_err(crate::rime::error::RimeError::from)
+    }
+
     /// Returns the directory containing compiled/generated configs.
     /// On Windows with build/: returns build/ dir.
     /// Otherwise: returns user_dir (same as user-editable dir).
@@ -474,6 +507,58 @@ mod tests {
             .load_yaml(&cfg.user_dir.join("nonexistent.yaml"))
             .unwrap();
         assert!(result.as_mapping().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_schema_path_rejects_traversal() {
+        let (_tmp, cfg) = temp_config();
+        assert!(cfg.schema_path("../evil").is_none());
+        assert!(cfg.schema_path("a/b").is_none());
+        assert!(cfg.schema_path("a\\b").is_none());
+    }
+
+    #[test]
+    fn test_load_schema_effective_merges_custom() {
+        let (_tmp, cfg) = temp_config();
+        // schema 基础文件
+        std::fs::write(
+            cfg.user_dir.join("test_schema.schema.yaml"),
+            "punctuator:\n  half_shape:\n    '/': ['/', '÷']\n",
+        )
+        .unwrap();
+        // 方案 custom patch
+        std::fs::write(
+            cfg.user_dir.join("test_schema.custom.yaml"),
+            "patch:\n  punctuator/half_shape:\n    '/': '/'\n",
+        )
+        .unwrap();
+
+        let eff = cfg
+            .load_schema_effective("test_schema")
+            .expect("load should succeed");
+        let dict = eff.as_mapping().unwrap();
+        let punct = dict
+            .get(serde_yaml::Value::String("punctuator".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        let hs = punct
+            .get(serde_yaml::Value::String("half_shape".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        // custom patch 覆盖 schema: '/' -> '/'
+        assert_eq!(
+            hs.get(serde_yaml::Value::String("/".into()))
+                .and_then(|v| v.as_str()),
+            Some("/")
+        );
+    }
+
+    #[test]
+    fn test_load_schema_effective_missing_schema_file() {
+        let (_tmp, cfg) = temp_config();
+        // schema 文件不存在时，应返回空映射而不是报错
+        let eff = cfg.load_schema_effective("nonexistent_schema").unwrap();
+        assert!(eff.as_mapping().unwrap().is_empty());
     }
 
     #[test]
