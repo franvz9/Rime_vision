@@ -55,6 +55,7 @@ const BackupManager = createLazyComponent(() => import('./components/BackupManag
 const DictManager = createLazyComponent(() => import('./components/DictManager.vue'))
 const SyncManager = createLazyComponent(() => import('./components/SyncManager.vue'))
 const AdvancedSettings = createLazyComponent(() => import('./components/AdvancedSettings.vue'))
+const PageSizeSettings = createLazyComponent(() => import('./components/PageSizeSettings.vue'))
 
 // ── State ──────────────────────────────────────────────────────────────
 
@@ -116,15 +117,21 @@ onUnmounted(() => {
 const tabs = [
   { id: 'general', label: '通用设置', icon: '⚙️' },
   { id: 'theme', label: '主题外观', icon: '🎨' },
-  { id: 'schema', label: '方案管理', icon: '📝' },
   { id: 'grammar', label: '语言模型', icon: '🧠' },
-  { id: 'keybinding', label: '快捷键', icon: '⌨️' },
-  { id: 'punctuation', label: '标点符号', icon: '🔤' },
   { id: 'backup', label: '备份管理', icon: '💾' },
   { id: 'dict', label: '词典管理', icon: '📖' },
   { id: 'sync', label: '同步管理', icon: '🔄' },
   { id: 'advanced', label: '高级设置', icon: '🔧' },
 ]
+
+const schemaTabs = [
+  { id: 'schema', label: '方案列表', icon: '📝' },
+  { id: 'punctuation', label: '标点符号', icon: '🔤' },
+  { id: 'keybinding', label: '快捷键', icon: '⌨️' },
+  { id: 'candidate', label: '候选词数', icon: '🔢' },
+]
+
+const allTabs = [...tabs, ...schemaTabs]
 
 async function deploy() {
   console.log('[App] Deploy called, pending deletes:', pendingDeletes.value.length)
@@ -156,8 +163,19 @@ async function deploy() {
     <aside class="sidebar">
       <div class="sidebar-title">RimeVision</div>
       <nav class="sidebar-nav">
+        <div class="nav-group-title">全局配置</div>
         <button
           v-for="tab in tabs"
+          :key="tab.id"
+          :class="['nav-item', { active: selectedTab === tab.id }]"
+          @click="selectedTab = tab.id"
+        >
+          <span class="nav-icon">{{ tab.icon }}</span>
+          <span class="nav-label">{{ tab.label }}</span>
+        </button>
+        <div class="nav-group-title">方案配置</div>
+        <button
+          v-for="tab in schemaTabs"
           :key="tab.id"
           :class="['nav-item', { active: selectedTab === tab.id }]"
           @click="selectedTab = tab.id"
@@ -171,7 +189,7 @@ async function deploy() {
     <main class="content">
       <header class="toolbar">
         <div class="toolbar-left">
-          <h2 class="page-title">{{ tabs.find((t) => t.id === selectedTab)?.label }}</h2>
+          <h2 class="page-title">{{ allTabs.find((t) => t.id === selectedTab)?.label }}</h2>
         </div>
         <div class="toolbar-right">
           <span v-if="pendingDeletes.length > 0" class="delete-hint">
@@ -192,6 +210,7 @@ async function deploy() {
         <GrammarModel v-else-if="selectedTab === 'grammar'" />
         <KeybindingEditor v-else-if="selectedTab === 'keybinding'" />
         <PunctuationSettings v-else-if="selectedTab === 'punctuation'" />
+        <PageSizeSettings v-else-if="selectedTab === 'candidate'" />
         <BackupManager v-else-if="selectedTab === 'backup'" />
         <DictManager v-else-if="selectedTab === 'dict'" />
         <SyncManager v-else-if="selectedTab === 'sync'" />
@@ -389,6 +408,15 @@ body {
 .sidebar-nav {
   padding: 8px;
   flex: 1;
+}
+
+.nav-group-title {
+  padding: 10px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .nav-item {
