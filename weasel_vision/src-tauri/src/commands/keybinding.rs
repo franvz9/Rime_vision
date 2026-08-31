@@ -18,9 +18,12 @@ pub struct KeyBinding {
 }
 
 #[tauri::command]
-pub fn get_keybindings() -> Result<Vec<KeyBinding>, RimeError> {
+pub fn get_keybindings(scope: Option<String>) -> Result<Vec<KeyBinding>, RimeError> {
     let cfg = RimeConfig::detect();
-    let dict_value = cfg.load_effective(&cfg.default_path(), &cfg.default_custom_path())?;
+    let dict_value = match scope.as_deref() {
+        None => cfg.load_effective(&cfg.default_path(), &cfg.default_custom_path())?,
+        Some(id) => cfg.load_schema_effective(id)?,
+    };
     let dict = config::value_as_mapping(&dict_value);
 
     let mut bindings = Vec::new();
@@ -68,9 +71,18 @@ pub fn get_keybindings() -> Result<Vec<KeyBinding>, RimeError> {
 }
 
 #[tauri::command]
-pub fn save_keybindings(bindings: Vec<KeyBinding>) -> Result<(), RimeError> {
+pub fn save_keybindings(
+    scope: Option<String>,
+    bindings: Vec<KeyBinding>,
+) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
-    cfg.save_patch(&cfg.default_custom_path(), |patch| {
+    let target_path = match scope.as_deref() {
+        None => cfg.default_custom_path(),
+        Some(id) => cfg
+            .schema_custom_path(id)
+            .ok_or_else(|| RimeError::InvalidPath(format!("Invalid schema_id: {}", id)))?,
+    };
+    cfg.save_patch(&target_path, |patch| {
         let bindings_seq: Vec<Value> = bindings
             .iter()
             .map(|b| {
@@ -119,5 +131,86 @@ fn remove_nested_patch_value(patch: &mut serde_yaml::Mapping, section: &str, key
                 patch.remove(&section_key);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rime::config::RimeConfig;
+    use tempfile::tempdir;
+
+    fn test_cfg() -> (tempfile::TempDir, RimeConfig) {
+        let tmp = tempdir().unwrap();
+        let cfg = RimeConfig {
+            user_dir: tmp.path().to_path_buf(),
+            build_dir: None,
+            style_file: "squirrel.yaml".into(),
+            style_custom: "squirrel.custom.yaml".into(),
+            default_yaml: "default.yaml".into(),
+            default_custom: "default.custom.yaml".into(),
+        };
+        (tmp, cfg)
+    }
+
+    #[test]
+    fn test_get_keybindings_scope_schema() {
+        let (_tmp, cfg) = test_cfg();
+        std::fs::write(
+            cfg.user_dir.join("kb_schema.schema.yaml"),
+            "key_binder:\n  import_preset: default\n  bindings:\n    - {accept: 'Control+Shift+E', send: '', when: always}\n",
+        )
+        .unwrap();
+        let eff = cfg.load_schema_effective("kb_schema").unwrap();
+        let dict = config::value_as_mapping(&eff);
+        let kb = config::get_mapping(dict, "key_binder");
+        let seq = config::get_sequence(kb, "bindings");
+        assert_eq!(seq.len(), 1);
+    }
+
+    #[test]
+    fn test_save_keybindings_writes_schema_custom() {
+        let (_tmp, cfg) = test_cfg();
+        let custom_path = cfg.schema_custom_path("kb_schema2").unwrap();
+        let bindings = vec![KeyBinding {
+            when: "always".into(),
+            accept: "Control+Shift+E".into(),
+            send: String::new(),
+            toggle: "emoji_suggestion".into(),
+            select: String::new(),
+        }];
+        cfg.save_patch(&custom_path, |patch| {
+            let bindings_seq: Vec<Value> = bindings
+                .iter()
+                .map(|b| {
+                    let mut item = serde_yaml::Mapping::new();
+                    item.insert(Value::String("when".into()), Value::String(b.when.clone()));
+                    item.insert(
+                        Value::String("accept".into()),
+                        Value::String(b.accept.clone()),
+                    );
+                    if !b.send.is_empty() {
+                        item.insert(Value::String("send".into()), Value::String(b.send.clone()));
+                    }
+                    if !b.toggle.is_empty() {
+                        item.insert(
+                            Value::String("toggle".into()),
+                            Value::String(b.toggle.clone()),
+                        );
+                    }
+                    Value::Mapping(item)
+                })
+                .collect();
+            patch.insert(
+                Value::String("key_binder/bindings".into()),
+                Value::Sequence(bindings_seq),
+            );
+            Ok(())
+        })
+        .unwrap();
+
+        let content = std::fs::read_to_string(&custom_path).unwrap();
+        assert!(content.contains("key_binder/bindings"));
+        assert!(content.contains("Control+Shift+E"));
     }
 }
