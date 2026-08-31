@@ -18,7 +18,6 @@ const data = ref<PunctuationProfile | null>(null)
 const activeTab = ref<'half' | 'full'>('half')
 const editingRule = ref<PunctRule | null>(null)
 const showEditor = ref(false)
-const showSaved = ref(false)
 const editType = ref<'commit' | 'pair' | 'list'>('commit')
 const originalKey = ref('')
 
@@ -47,7 +46,6 @@ const currentRules = computed(() => {
 })
 
 let punctMounted = true
-let saveToastTimer: ReturnType<typeof setTimeout> | null = null
 
 async function load() {
   try {
@@ -72,8 +70,9 @@ watch(() => props.scope, load)
 
 onUnmounted(() => {
   punctMounted = false
-  if (saveToastTimer) clearTimeout(saveToastTimer)
 })
+
+defineExpose({ save })
 
 function editRule(rule: PunctRule) {
   originalKey.value = rule.key
@@ -135,10 +134,7 @@ async function save() {
     // 保存成功后，这些键成为"自定义"
     customKeys.value = new Set(needWrite)
     dirtyKeys.value = new Set()
-    showSaved.value = true
-    saveToastTimer = setTimeout(() => {
-      showSaved.value = false
-    }, 2000)
+    toast.success(props.scope ? `已保存到 ${props.scope}.custom.yaml` : '标点设置已保存')
   } catch (e) {
     toast.error(`保存标点设置失败: ${errorMessage(e)}`)
   }
@@ -154,7 +150,11 @@ async function save() {
       <button :class="['tab', { active: activeTab === 'full' }]" @click="activeTab = 'full'">
         全角标点
       </button>
-      <button class="btn-add" @click="addRule">+</button>
+    </div>
+
+    <div class="list-header">
+      <h3 class="list-title">{{ activeTab === 'half' ? '半角标点' : '全角标点' }}</h3>
+      <button class="add-btn" @click="addRule">+ 新增</button>
     </div>
 
     <div class="rule-list">
@@ -185,13 +185,6 @@ async function save() {
           <button class="wv-icon-btn danger" @click="deleteRule(rule.key)">🗑</button>
         </span>
       </div>
-    </div>
-
-    <div class="actions">
-      <span v-if="showSaved" class="wv-saved-hint">已保存</span>
-      <button class="wv-btn wv-btn-primary" @click="save">
-        保存到 {{ scope ? `${scope}.custom.yaml` : 'default.custom.yaml' }}
-      </button>
     </div>
 
     <!-- Edit modal -->
@@ -267,38 +260,67 @@ async function save() {
 
 .tabs {
   display: flex;
-  gap: 4px;
-  background: var(--color-bg-active);
-  padding: 4px;
-  border-radius: 8px;
+  gap: 2px;
+  border-bottom: 1px solid var(--color-border);
   width: fit-content;
 }
 
 .tab {
-  padding: 6px 16px;
+  padding: 6px 12px;
   border: none;
+  border-bottom: 2px solid transparent;
   background: none;
-  color: var(--color-text-primary);
-  border-radius: 6px;
+  color: var(--color-text-tertiary);
   cursor: pointer;
   font-size: 13px;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.tab:hover {
+  color: var(--color-text-primary);
 }
 
 .tab.active {
-  background: var(--color-bg-secondary);
-  box-shadow: var(--shadow-sm);
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+  font-weight: 500;
 }
 
-.btn-add {
-  width: 32px;
-  height: 32px;
-  border: 1px dashed var(--color-border-dark);
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 4px 0 8px;
+}
+
+.list-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--color-border-dark);
+  border-radius: 6px;
   background: var(--color-bg-secondary);
   color: var(--color-text-primary);
-  border-radius: 6px;
+  font-size: 13px;
   cursor: pointer;
-  font-size: 16px;
-  margin-left: 8px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.add-btn:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 .rule-list {
@@ -378,19 +400,9 @@ async function save() {
   line-height: 1;
 }
 
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .wv-btn {
   padding: 8px 16px;
   border-radius: 6px;
-  font-size: 13px;
-}
-
-.wv-saved-hint {
   font-size: 13px;
 }
 

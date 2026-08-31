@@ -50,6 +50,8 @@ onMounted(() => {
 onUnmounted(() => {
   mounted = false
 })
+
+defineExpose({ save })
 </script>
 
 <template>
@@ -63,12 +65,6 @@ onUnmounted(() => {
         此方案未自定义候选词数，使用全局默认值。修改后保存将写入
         {{ scope ? `${scope}.custom.yaml` : 'default.custom.yaml' }}。
       </p>
-    </div>
-
-    <div class="actions">
-      <button class="wv-btn wv-btn-primary" :disabled="dirty && pageSize === 0" @click="save">
-        保存
-      </button>
     </div>
   </div>
 </template>
@@ -132,15 +128,5 @@ onUnmounted(() => {
 .hint {
   font-size: 12px;
   color: var(--color-text-tertiary);
-}
-
-.actions {
-  margin-top: 8px;
-}
-
-.wv-btn {
-  padding: 8px 20px;
-  border: none;
-  font-size: 14px;
 }
 </style>

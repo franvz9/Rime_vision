@@ -9,11 +9,6 @@ import type { GeneralSettings } from '../../src-tauri/bindings/GeneralSettings'
 const toast = useToast()
 
 const settings = ref<GeneralSettings>({
-  page_size: 6,
-  enable_encoder: true,
-  enable_sentence: true,
-  enable_user_dict: true,
-  encode_commit_history: true,
   switcher_caption: '〔方案切换〕',
   switcher_hotkeys: 'Control+grave,Control+Shift+grave',
   switcher_fold_options: true,
@@ -110,34 +105,6 @@ async function save() {
   <div class="general-settings">
     <div class="settings-scroll">
       <DeployNotice />
-
-      <div class="section">
-        <h3>候选词</h3>
-        <div class="form-row">
-          <label>每页候选词数:</label>
-          <input v-model.number="settings.page_size" type="number" min="3" max="10" />
-        </div>
-      </div>
-
-      <div class="section">
-        <h3>翻译器</h3>
-        <label class="checkbox">
-          <input v-model="settings.enable_encoder" type="checkbox" />
-          启用自动造词 (enable_encoder)
-        </label>
-        <label class="checkbox">
-          <input v-model="settings.enable_sentence" type="checkbox" />
-          启用自动句子输入 (enable_sentence)
-        </label>
-        <label class="checkbox">
-          <input v-model="settings.enable_user_dict" type="checkbox" />
-          启用用户词典 (enable_user_dict)
-        </label>
-        <label class="checkbox">
-          <input v-model="settings.encode_commit_history" type="checkbox" />
-          自动编码上屏词语 (encode_commit_history)
-        </label>
-      </div>
 
       <div class="section">
         <h3>方案切换器 (switcher)</h3>

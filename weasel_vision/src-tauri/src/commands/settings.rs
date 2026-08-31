@@ -42,12 +42,6 @@ fn remove_nested_switch_key(patch: &mut serde_yaml::Mapping, key: &str) {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct GeneralSettings {
-    #[ts(type = "number")]
-    pub page_size: i64,
-    pub enable_encoder: bool,
-    pub enable_sentence: bool,
-    pub enable_user_dict: bool,
-    pub encode_commit_history: bool,
     pub switcher_caption: String,
     pub switcher_hotkeys: String,
     pub switcher_fold_options: bool,
@@ -61,11 +55,6 @@ pub struct GeneralSettings {
 impl Default for GeneralSettings {
     fn default() -> Self {
         Self {
-            page_size: 6,
-            enable_encoder: true,
-            enable_sentence: true,
-            enable_user_dict: true,
-            encode_commit_history: true,
             switcher_caption: "〔方案切换〕".to_string(),
             switcher_hotkeys: "Control+grave,Control+Shift+grave".to_string(),
             switcher_fold_options: true,
@@ -85,22 +74,6 @@ pub fn get_general_settings() -> Result<GeneralSettings, RimeError> {
     let dict = config::value_as_mapping(&dict_value);
 
     let mut settings = GeneralSettings::default();
-
-    if let Some(menu) = dict.get(Value::String("menu".into())) {
-        if let Some(menu_map) = menu.as_mapping() {
-            settings.page_size = config::get_i64(menu_map, "page_size").unwrap_or(6);
-        }
-    }
-
-    if let Some(translator) = dict.get(Value::String("translator".into())) {
-        if let Some(t_map) = translator.as_mapping() {
-            settings.enable_encoder = config::get_bool(t_map, "enable_encoder").unwrap_or(true);
-            settings.enable_sentence = config::get_bool(t_map, "enable_sentence").unwrap_or(true);
-            settings.enable_user_dict = config::get_bool(t_map, "enable_user_dict").unwrap_or(true);
-            settings.encode_commit_history =
-                config::get_bool(t_map, "encode_commit_history").unwrap_or(true);
-        }
-    }
 
     if let Some(switcher) = dict.get(Value::String("switcher".into())) {
         if let Some(s_map) = switcher.as_mapping() {
@@ -140,10 +113,6 @@ pub fn get_general_settings() -> Result<GeneralSettings, RimeError> {
 pub fn save_general_settings(settings: GeneralSettings) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.default_custom_path(), |patch| {
-        remove_nested_patch_value(patch, "translator", "enable_encoder");
-        remove_nested_patch_value(patch, "translator", "enable_sentence");
-        remove_nested_patch_value(patch, "translator", "enable_user_dict");
-        remove_nested_patch_value(patch, "translator", "encode_commit_history");
         remove_nested_patch_value(patch, "switcher", "caption");
         remove_nested_patch_value(patch, "switcher", "hotkeys");
         remove_nested_patch_value(patch, "switcher", "fold_options");
@@ -152,27 +121,6 @@ pub fn save_general_settings(settings: GeneralSettings) -> Result<(), RimeError>
         remove_nested_switch_key(patch, "Caps_Lock");
         remove_nested_switch_key(patch, "Shift_L");
         remove_nested_switch_key(patch, "Shift_R");
-
-        set_patch_value(
-            patch,
-            "translator/enable_encoder",
-            Value::Bool(settings.enable_encoder),
-        );
-        set_patch_value(
-            patch,
-            "translator/enable_sentence",
-            Value::Bool(settings.enable_sentence),
-        );
-        set_patch_value(
-            patch,
-            "translator/enable_user_dict",
-            Value::Bool(settings.enable_user_dict),
-        );
-        set_patch_value(
-            patch,
-            "translator/encode_commit_history",
-            Value::Bool(settings.encode_commit_history),
-        );
 
         let hotkeys: Vec<Value> = settings
             .switcher_hotkeys

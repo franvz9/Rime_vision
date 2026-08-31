@@ -95,6 +95,8 @@ onUnmounted(() => {
   keyMounted = false
 })
 
+defineExpose({ save })
+
 function addBinding() {
   bindings.value.push({
     _id: nextBindingId++,
@@ -126,7 +128,10 @@ async function save() {
   <div class="keybinding-editor">
     <div class="binding-main">
       <div class="binding-editor-pane">
-        <h3>快捷键绑定</h3>
+        <div class="list-header">
+          <h3>快捷键绑定</h3>
+          <button class="add-btn" @click="addBinding">+ 新增</button>
+        </div>
         <p class="hint">配置全局快捷键绑定规则，定义在特定条件下按某个键时执行的操作</p>
 
         <div class="binding-list">
@@ -172,8 +177,6 @@ async function save() {
             <button class="remove-btn" @click="removeBinding(binding._id)">×</button>
           </div>
         </div>
-
-        <button class="add-btn" @click="addBinding">+ 添加绑定</button>
       </div>
 
       <aside class="info-box">
@@ -208,12 +211,6 @@ async function save() {
           Ctrl+N 向下移动光标
         </p>
       </aside>
-    </div>
-
-    <div class="actions">
-      <button class="wv-btn wv-btn-primary" @click="save">
-        保存{{ scope ? `到 ${scope}.custom.yaml` : '' }}
-      </button>
     </div>
   </div>
 </template>
@@ -347,32 +344,37 @@ async function save() {
   background: var(--color-btn-danger-hover);
 }
 
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.list-header h3 {
+  font-size: 15px;
+  margin: 0;
+}
+
 .add-btn {
-  flex: 0 0 auto;
-  margin-top: 12px;
-  padding: 8px 16px;
-  border: 1px dashed var(--color-border-dark);
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--color-border-dark);
   border-radius: 6px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-size: 13px;
   cursor: pointer;
-  color: var(--color-accent);
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .add-btn:hover {
-  background: var(--color-accent-muted);
-}
-
-.actions {
-  flex: 0 0 auto;
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-bg-primary);
-}
-
-.wv-btn {
-  padding: 8px 20px;
-  border: none;
-  font-size: 14px;
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 </style>

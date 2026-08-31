@@ -1,7 +1,7 @@
 mod commands;
 pub mod rime;
 
-use commands::{backup, dict, grammar, keybinding, page_size, punctuation, schema, settings, style, sync};
+use commands::{backup, dict, grammar, keybinding, page_size, punctuation, schema, settings, style, sync, translator};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -39,6 +39,8 @@ pub fn run() {
             punctuation::save_punctuation,
             page_size::get_page_size_detail,
             page_size::save_page_size,
+            translator::get_translator_profile,
+            translator::save_translator,
             backup::list_backups,
             backup::get_backup_detail,
             backup::create_backup,
@@ -91,6 +93,10 @@ mod export_tests {
         crate::commands::sync::SyncStatus::export().unwrap();
         crate::commands::sync::SyncedDevice::export().unwrap();
         crate::commands::sync::SyncResult::export().unwrap();
+
+        // commands::translator
+        crate::commands::translator::TranslatorSettings::export().unwrap();
+        crate::commands::translator::TranslatorProfile::export().unwrap();
 
         // commands::keybinding
         crate::commands::keybinding::KeyBinding::export().unwrap();

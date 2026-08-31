@@ -13,10 +13,7 @@ const emit = defineEmits<{
 <template>
   <div class="scope-field" :class="{ 'is-default': !isCustom }">
     <label class="scope-label">{{ label }}</label>
-    <input
-      :value="value"
-      @input="emit('update', ($event.target as HTMLInputElement).value)"
-    />
+    <input :value="value" @input="emit('update', ($event.target as HTMLInputElement).value)" />
     <span v-if="isCustom" class="badge badge-custom">自定义</span>
     <span v-else class="badge badge-default">默认</span>
     <button v-if="isCustom" class="btn-restore" @click="emit('restore')">恢复默认</button>

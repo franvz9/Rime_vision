@@ -5,13 +5,20 @@ import DeployNotice from './DeployNotice.vue'
 import PageSizeSettings from './PageSizeSettings.vue'
 import PunctuationSettings from './PunctuationSettings.vue'
 import KeybindingEditor from './KeybindingEditor.vue'
+import TranslatorSettings from './TranslatorSettings.vue'
 
 /** 哨兵值：空字符串代表「全局默认」范围 */
 const GLOBAL_SCOPE = ''
 
 const schemas = ref<string[]>([])
 const selectedScope = ref<string>(GLOBAL_SCOPE)
-const activeTab = ref<'punctuation' | 'keybinding' | 'candidate'>('punctuation')
+const activeTab = ref<'punctuation' | 'keybinding' | 'candidate' | 'translator'>('punctuation')
+
+/** 子面板 ref，用于统一在顶部保存 */
+const punctRef = ref<InstanceType<typeof PunctuationSettings> | null>(null)
+const kbRef = ref<InstanceType<typeof KeybindingEditor> | null>(null)
+const pageSizeRef = ref<InstanceType<typeof PageSizeSettings> | null>(null)
+const translatorRef = ref<InstanceType<typeof TranslatorSettings> | null>(null)
 
 /** 是否当前查看全局默认配置 */
 const isGlobal = computed(() => selectedScope.value === GLOBAL_SCOPE)
@@ -20,6 +27,14 @@ const isGlobal = computed(() => selectedScope.value === GLOBAL_SCOPE)
 const scopeFile = computed(() =>
   isGlobal.value ? 'default.custom.yaml' : `${selectedScope.value}.custom.yaml`,
 )
+
+/** 保存当前激活子面板的配置（调用子面板暴露的 save 方法） */
+function saveActive() {
+  if (activeTab.value === 'punctuation') punctRef.value?.save()
+  else if (activeTab.value === 'keybinding') kbRef.value?.save()
+  else if (activeTab.value === 'candidate') pageSizeRef.value?.save()
+  else translatorRef.value?.save()
+}
 
 onMounted(async () => {
   try {
@@ -70,31 +85,56 @@ onMounted(async () => {
 
       <!-- 内部 Tab -->
       <div class="profile-tabs">
-        <button
-          :class="['profile-tab', { active: activeTab === 'punctuation' }]"
-          @click="activeTab = 'punctuation'"
-        >
-          标点符号
-        </button>
-        <button
-          :class="['profile-tab', { active: activeTab === 'keybinding' }]"
-          @click="activeTab = 'keybinding'"
-        >
-          快捷键
-        </button>
-        <button
-          :class="['profile-tab', { active: activeTab === 'candidate' }]"
-          @click="activeTab = 'candidate'"
-        >
-          候选词数
-        </button>
+        <div class="profile-tab-group">
+          <button
+            :class="['profile-tab', { active: activeTab === 'punctuation' }]"
+            @click="activeTab = 'punctuation'"
+          >
+            标点符号
+          </button>
+          <button
+            :class="['profile-tab', { active: activeTab === 'keybinding' }]"
+            @click="activeTab = 'keybinding'"
+          >
+            快捷键
+          </button>
+          <button
+            :class="['profile-tab', { active: activeTab === 'translator' }]"
+            @click="activeTab = 'translator'"
+          >
+            翻译器
+          </button>
+          <button
+            :class="['profile-tab', { active: activeTab === 'candidate' }]"
+            @click="activeTab = 'candidate'"
+          >
+            候选词数
+          </button>
+        </div>
+        <button class="wv-btn wv-btn-save" @click="saveActive">保存当前配置</button>
       </div>
 
       <div class="profile-body">
-        <PageSizeSettings v-if="activeTab === 'candidate'" :scope="selectedScope" />
-        <!-- Task 7/8 接入：标点、快捷键 -->
-        <PunctuationSettings v-else-if="activeTab === 'punctuation'" :scope="selectedScope" />
-        <KeybindingEditor v-else-if="activeTab === 'keybinding'" :scope="selectedScope" />
+        <PageSizeSettings
+          v-if="activeTab === 'candidate'"
+          ref="pageSizeRef"
+          :scope="selectedScope"
+        />
+        <PunctuationSettings
+          v-else-if="activeTab === 'punctuation'"
+          ref="punctRef"
+          :scope="selectedScope"
+        />
+        <KeybindingEditor
+          v-else-if="activeTab === 'keybinding'"
+          ref="kbRef"
+          :scope="selectedScope"
+        />
+        <TranslatorSettings
+          v-else-if="activeTab === 'translator'"
+          ref="translatorRef"
+          :scope="selectedScope"
+        />
       </div>
     </div>
   </div>
@@ -167,6 +207,13 @@ onMounted(async () => {
 
 .profile-tabs {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-tab-group {
+  display: flex;
   gap: 4px;
   background: var(--color-bg-active);
   padding: 4px;
@@ -187,6 +234,20 @@ onMounted(async () => {
 .profile-tab.active {
   background: var(--color-bg-secondary);
   box-shadow: var(--shadow-sm);
+}
+
+.wv-btn-save {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--color-btn-primary-bg);
+  color: var(--color-text-inverse);
+}
+
+.wv-btn-save:hover {
+  background: var(--color-btn-primary-hover);
 }
 
 .profile-body {
