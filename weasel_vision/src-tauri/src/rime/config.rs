@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
+use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
+use serde::Deserializer;
 use serde_yaml::{Mapping, Value};
 #[cfg(target_os = "windows")]
 use winreg::{enums::HKEY_CURRENT_USER, RegKey};
@@ -467,8 +469,88 @@ fn merge_preset_section(
 }
 
 pub fn parse_yaml(text: &str) -> Result<Value> {
-    let value: Value = serde_yaml::from_str(text)?;
-    Ok(normalize(value))
+    match serde_yaml::from_str::<Value>(text) {
+        Ok(value) => Ok(normalize(value)),
+        Err(_) => {
+            // 某些用户/方案 YAML 存在重复键（如 wubi86_jidian.schema.yaml 的
+            // translator 段重复 enable_user_dict）。serde_yaml 严格模式会拒绝，
+            // 但 Rime 的解析器允许重复键（后者覆盖前者）。此处回退到宽松解析，
+            // 与 Rime 行为保持一致，避免整个方案面板加载失败。
+            match lenient_parse_yaml(text) {
+                Ok(value) => Ok(normalize(value)),
+                Err(e) => Err(e),
+            }
+        }
+    }
+}
+
+/// 宽松 YAML 解析：重复键后者覆盖前者（与 Rime 行为一致）。
+fn lenient_parse_yaml(text: &str) -> Result<Value> {
+    use std::fmt;
+    struct LenientValue;
+    impl<'de> DeserializeSeed<'de> for LenientValue {
+        type Value = Value;
+        fn deserialize<D>(self, deserializer: D) -> Result<Value, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            deserializer.deserialize_any(LenientValue)
+        }
+    }
+    impl<'de> Visitor<'de> for LenientValue {
+        type Value = Value;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("any valid YAML value")
+        }
+        fn visit_bool<E>(self, v: bool) -> Result<Value, E> {
+            Ok(Value::Bool(v))
+        }
+        fn visit_i64<E>(self, v: i64) -> Result<Value, E> {
+            Ok(Value::Number(v.into()))
+        }
+        fn visit_u64<E>(self, v: u64) -> Result<Value, E> {
+            Ok(Value::Number(v.into()))
+        }
+        fn visit_f64<E>(self, v: f64) -> Result<Value, E> {
+            Ok(Value::Number(v.into()))
+        }
+        fn visit_str<E>(self, v: &str) -> Result<Value, E> {
+            Ok(Value::String(v.to_string()))
+        }
+        fn visit_string<E>(self, v: String) -> Result<Value, E> {
+            Ok(Value::String(v))
+        }
+        fn visit_none<E>(self) -> Result<Value, E> {
+            Ok(Value::Null)
+        }
+        fn visit_unit<E>(self) -> Result<Value, E> {
+            Ok(Value::Null)
+        }
+        fn visit_seq<A>(self, mut seq: A) -> Result<Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut out = Vec::new();
+            while let Some(v) = seq.next_element_seed(LenientValue)? {
+                out.push(v);
+            }
+            Ok(Value::Sequence(out))
+        }
+        fn visit_map<A>(self, mut map: A) -> Result<Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let mut m = Mapping::new();
+            while let Some((k, v)) = map.next_entry_seed(LenientValue, LenientValue)? {
+                // 后者覆盖前者
+                m.insert(k, v);
+            }
+            Ok(Value::Mapping(m))
+        }
+    }
+    serde_yaml::Deserializer::from_str(text)
+        .deserialize_any(LenientValue)
+        .map_err(Into::into)
 }
 
 fn normalize(value: Value) -> Value {
@@ -831,5 +913,42 @@ mod tests {
                 .and_then(|v| v.as_i64()),
             Some(42)
         );
+    }
+
+    #[test]
+    fn test_parse_yaml_tolerates_duplicate_keys() {
+        // 某些方案 schema（如 wubi86_jidian）存在重复键，应宽松解析（后者覆盖），
+        // 与 Rime 行为一致，而不是整体加载失败。
+        let yaml = "translator:\n  enable_user_dict: true\n  enable_user_dict: false\n  nested:\n    a: 1\n    a: 2\n";
+        let value = parse_yaml(yaml).unwrap();
+        let dict = value.as_mapping().unwrap();
+        let translator = dict
+            .get(Value::String("translator".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        // 重复键后者覆盖前者
+        assert_eq!(
+            translator
+                .get(Value::String("enable_user_dict".into()))
+                .and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        let nested = translator
+            .get(Value::String("nested".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        assert_eq!(
+            nested
+                .get(Value::String("a".into()))
+                .and_then(|v| v.as_i64()),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn test_parse_yaml_invalid_syntax_still_errors() {
+        // 语法错误（非重复键）仍应报错
+        let yaml = "foo: [unclosed\n";
+        assert!(parse_yaml(yaml).is_err());
     }
 }
