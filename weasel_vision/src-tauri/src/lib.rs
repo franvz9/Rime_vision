@@ -1,5 +1,5 @@
 mod commands;
-mod rime;
+pub mod rime;
 
 use commands::{backup, dict, grammar, keybinding, page_size, punctuation, schema, settings, style, sync};
 
