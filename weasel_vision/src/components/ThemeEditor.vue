@@ -426,6 +426,10 @@ async function saveStyle() {
 
       <!-- Style editing tab -->
       <div v-if="activeTab === 'style' && localStyle" class="style-editor">
+        <div class="style-editor-header">
+          <h3>样式设置</h3>
+          <button class="wv-btn wv-btn-primary" @click="saveStyle">保存样式</button>
+        </div>
         <div class="style-scroll">
           <div class="style-section">
             <h4>字体</h4>
@@ -626,10 +630,6 @@ async function saveStyle() {
               </label>
             </div>
           </div>
-        </div>
-
-        <div class="style-footer">
-          <button class="wv-btn wv-btn-primary" @click="saveStyle">保存样式</button>
         </div>
       </div>
 
@@ -992,6 +992,18 @@ async function saveStyle() {
   gap: 12px;
 }
 
+.style-editor-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.style-editor-header h3 {
+  font-size: 15px;
+  margin: 0;
+}
+
 .style-scroll {
   flex: 1 1 auto;
   min-height: 0;
@@ -1086,15 +1098,6 @@ async function saveStyle() {
 .toggle-field input[type='checkbox'] {
   width: 16px;
   height: 16px;
-}
-
-.style-footer {
-  flex: 0 0 auto;
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-bg-primary);
 }
 
 .pending-notice {

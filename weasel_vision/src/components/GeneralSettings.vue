@@ -107,7 +107,13 @@ async function save() {
       <DeployNotice />
 
       <div class="section">
-        <h3>方案切换器 (switcher)</h3>
+        <div class="section-header">
+          <h3>方案切换器 (switcher)</h3>
+          <div class="section-header-actions">
+            <span v-if="showSaved" class="wv-saved-hint">已保存</span>
+            <button class="wv-btn wv-btn-primary" @click="save">保存</button>
+          </div>
+        </div>
         <div class="form-row">
           <label>切换标题:</label>
           <input v-model="settings.switcher_caption" />
@@ -161,11 +167,6 @@ async function save() {
         </div>
       </div>
     </div>
-
-    <div class="actions">
-      <span v-if="showSaved" class="wv-saved-hint">已保存</span>
-      <button class="wv-btn wv-btn-primary" @click="save">保存</button>
-    </div>
   </div>
 </template>
 
@@ -198,6 +199,28 @@ async function save() {
 .section h3 {
   font-size: 15px;
   margin-bottom: 12px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.section-header h3 {
+  margin: 0;
+}
+
+.section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wv-saved-hint {
+  font-size: 13px;
+  color: var(--color-success);
 }
 
 .form-row {
@@ -256,17 +279,6 @@ async function save() {
   padding: 6px 0;
   font-size: 14px;
   cursor: pointer;
-}
-
-.actions {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: auto;
-  padding-top: 16px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-bg-primary);
 }
 
 .wv-btn {
