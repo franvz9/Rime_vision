@@ -162,8 +162,7 @@ impl RimeConfig {
     /// Get the custom config path for a given schema_id
     /// Returns None if schema_id contains path traversal characters
     pub fn schema_custom_path(&self, schema_id: &str) -> Option<PathBuf> {
-        // Reject schema_id with path traversal characters
-        if schema_id.contains('/') || schema_id.contains('\\') || schema_id.contains("..") {
+        if !Self::valid_schema_id(schema_id) {
             eprintln!(
                 "Warning: schema_id '{}' contains invalid path characters",
                 schema_id
@@ -176,7 +175,7 @@ impl RimeConfig {
     /// Get path to <schema>.schema.yaml
     /// Returns None if schema_id contains path traversal characters
     pub fn schema_path(&self, schema_id: &str) -> Option<PathBuf> {
-        if schema_id.contains('/') || schema_id.contains('\\') || schema_id.contains("..") {
+        if !Self::valid_schema_id(schema_id) {
             eprintln!(
                 "Warning: schema_id '{}' contains invalid path characters",
                 schema_id
@@ -184,6 +183,19 @@ impl RimeConfig {
             return None;
         }
         Some(self.user_dir.join(format!("{}.schema.yaml", schema_id)))
+    }
+
+    /// Validate a schema_id used to build a file path.
+    /// Rejects path separators, traversal sequences, and NUL/control chars.
+    fn valid_schema_id(schema_id: &str) -> bool {
+        !schema_id.contains('/')
+            && !schema_id.contains('\\')
+            && !schema_id.contains("..")
+            && !schema_id.contains('\0')
+            && !schema_id.contains('\n')
+            && !schema_id.contains('\r')
+            && !schema_id.contains('\t')
+            && !schema_id.is_empty()
     }
 
     /// Merge <schema>.schema.yaml with <schema>.custom.yaml patch.
@@ -515,6 +527,10 @@ mod tests {
         assert!(cfg.schema_path("../evil").is_none());
         assert!(cfg.schema_path("a/b").is_none());
         assert!(cfg.schema_path("a\\b").is_none());
+        assert!(cfg.schema_path("evil\0x").is_none());
+        assert!(cfg.schema_path("evil\n").is_none());
+        assert!(cfg.schema_path("").is_none());
+        assert!(cfg.schema_custom_path("evil\0x").is_none());
     }
 
     #[test]

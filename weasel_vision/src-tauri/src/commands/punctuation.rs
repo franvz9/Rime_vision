@@ -22,10 +22,34 @@ pub struct PunctuationData {
     pub full_shape: Vec<PunctRule>,
 }
 
+/// Resolve the effective config mapping and the target custom path for a scope.
+///
+/// - `scope = None` → global: `load_effective(default.yaml, default.custom.yaml)`, target = default.custom.yaml
+/// - `scope = Some(id)` → schema: `load_schema_effective(id)`, target = <id>.custom.yaml
+/// - invalid schema_id → `RimeError::InvalidPath`
+fn punct_dict_source(
+    cfg: &RimeConfig,
+    scope: Option<String>,
+) -> Result<(serde_yaml::Value, std::path::PathBuf), RimeError> {
+    match scope.as_deref() {
+        None => {
+            let dict_value = cfg.load_effective(&cfg.default_path(), &cfg.default_custom_path())?;
+            Ok((dict_value, cfg.default_custom_path()))
+        }
+        Some(id) => {
+            let dict_value = cfg.load_schema_effective(id)?;
+            let custom_path = cfg
+                .schema_custom_path(id)
+                .ok_or_else(|| RimeError::InvalidPath(format!("Invalid schema_id: {}", id)))?;
+            Ok((dict_value, custom_path))
+        }
+    }
+}
+
 #[tauri::command]
-pub fn get_punctuation() -> Result<PunctuationData, RimeError> {
+pub fn get_punctuation(scope: Option<String>) -> Result<PunctuationData, RimeError> {
     let cfg = RimeConfig::detect();
-    let dict_value = cfg.load_effective(&cfg.default_path(), &cfg.default_custom_path())?;
+    let (dict_value, _target) = punct_dict_source(&cfg, scope)?;
     let dict = config::value_as_mapping(&dict_value);
 
     let punctuator = config::get_mapping(dict, "punctuator");
@@ -39,9 +63,19 @@ pub fn get_punctuation() -> Result<PunctuationData, RimeError> {
 }
 
 #[tauri::command]
-pub fn save_punctuation(half: Vec<PunctRule>, full: Vec<PunctRule>) -> Result<(), RimeError> {
+pub fn save_punctuation(
+    scope: Option<String>,
+    half: Vec<PunctRule>,
+    full: Vec<PunctRule>,
+) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
-    cfg.save_patch(&cfg.default_custom_path(), |patch| {
+    let target_path = match scope.as_deref() {
+        None => cfg.default_custom_path(),
+        Some(id) => cfg
+            .schema_custom_path(id)
+            .ok_or_else(|| RimeError::InvalidPath(format!("Invalid schema_id: {}", id)))?,
+    };
+    cfg.save_patch(&target_path, |patch| {
         patch.insert(
             Value::String("punctuator/half_shape".into()),
             Value::Mapping(serialize_punct_rules(&half)),
@@ -161,4 +195,127 @@ fn serialize_punct_rules(rules: &[PunctRule]) -> serde_yaml::Mapping {
     }
 
     dict
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rime::config::RimeConfig;
+    use tempfile::tempdir;
+
+    fn test_cfg() -> (tempfile::TempDir, RimeConfig) {
+        let tmp = tempdir().unwrap();
+        let cfg = RimeConfig {
+            user_dir: tmp.path().to_path_buf(),
+            build_dir: None,
+            style_file: "squirrel.yaml".into(),
+            style_custom: "squirrel.custom.yaml".into(),
+            default_yaml: "default.yaml".into(),
+            default_custom: "default.custom.yaml".into(),
+        };
+        (tmp, cfg)
+    }
+
+    #[test]
+    fn test_get_punctuation_scope_schema() {
+        let (_tmp, cfg) = test_cfg();
+        std::fs::write(
+            cfg.user_dir.join("sc_schema.schema.yaml"),
+            "punctuator:\n  half_shape:\n    '/': ['/', '÷']\n",
+        )
+        .unwrap();
+        // 方案 custom patch：/ 直接上屏
+        std::fs::write(
+            cfg.user_dir.join("sc_schema.custom.yaml"),
+            "patch:\n  punctuator/half_shape:\n    '/': '/'\n",
+        )
+        .unwrap();
+
+        let eff = cfg.load_schema_effective("sc_schema").unwrap();
+        let dict = config::value_as_mapping(&eff);
+        let punct = config::get_mapping(dict, "punctuator");
+        let hs = config::get_mapping(punct, "half_shape");
+        let rules = parse_punct_dict(hs);
+        // / 应为直接上屏 commit
+        let slash = rules.iter().find(|r| r.key == "/").unwrap();
+        assert_eq!(slash.commit, "/");
+        assert!(slash.list.is_empty());
+    }
+
+    #[test]
+    fn test_save_punctuation_writes_schema_custom() {
+        let (_tmp, cfg) = test_cfg();
+        // 模拟 save 到方案 custom：/ 直接上屏 + , 默认（不写）
+        let half = vec![PunctRule {
+            key: "/".into(),
+            commit: "/".into(),
+            pair: vec![],
+            list: vec![],
+        }];
+        let full: Vec<PunctRule> = vec![];
+        let custom_path = cfg.schema_custom_path("sc_schema2").unwrap();
+        cfg.save_patch(&custom_path, |patch| {
+            patch.insert(
+                serde_yaml::Value::String("punctuator/half_shape".into()),
+                serde_yaml::Value::Mapping(serialize_punct_rules(&half)),
+            );
+            patch.insert(
+                serde_yaml::Value::String("punctuator/full_shape".into()),
+                serde_yaml::Value::Mapping(serialize_punct_rules(&full)),
+            );
+            Ok(())
+        })
+        .unwrap();
+
+        let content = std::fs::read_to_string(&custom_path).unwrap();
+        assert!(content.contains("punctuator/half_shape"));
+        assert!(content.contains("/:"));
+        assert!(content.contains("/"));
+    }
+    #[test]
+    fn test_punct_dict_source_scope_none_uses_default() {
+        let (_tmp, cfg) = test_cfg();
+        std::fs::write(
+            cfg.user_dir.join("default.yaml"),
+            "punctuator:\n  half_shape:\n    '/': ['/', '÷']\n",
+        )
+        .unwrap();
+        let (dict, target) = punct_dict_source(&cfg, None).unwrap();
+        assert_eq!(target, cfg.default_custom_path());
+        let hs = config::get_mapping(config::get_mapping(config::value_as_mapping(&dict), "punctuator"), "half_shape");
+        let slash = hs
+            .get(Value::String("/".into()))
+            .and_then(|v| v.as_sequence())
+            .unwrap();
+        assert_eq!(slash.len(), 2);
+    }
+
+    #[test]
+    fn test_punct_dict_source_scope_schema_uses_schema_custom() {
+        let (_tmp, cfg) = test_cfg();
+        std::fs::write(
+            cfg.user_dir.join("sc_a.schema.yaml"),
+            "punctuator:\n  half_shape:\n    '/': ['/', '÷']\n",
+        )
+        .unwrap();
+        std::fs::write(
+            cfg.user_dir.join("sc_a.custom.yaml"),
+            "patch:\n  punctuator/half_shape:\n    '/': '/'\n",
+        )
+        .unwrap();
+        let (dict, target) = punct_dict_source(&cfg, Some("sc_a".to_string())).unwrap();
+        assert_eq!(target, cfg.user_dir.join("sc_a.custom.yaml"));
+        let hs = config::get_mapping(config::get_mapping(config::value_as_mapping(&dict), "punctuator"), "half_shape");
+        let slash = hs
+            .get(Value::String("/".into()))
+            .and_then(|v| v.as_str())
+            .unwrap();
+        assert_eq!(slash, "/");
+    }
+
+    #[test]
+    fn test_punct_dict_source_scope_invalid_id_rejected() {
+        let (_tmp, cfg) = test_cfg();
+        let err = punct_dict_source(&cfg, Some("a/b".to_string())).unwrap_err();
+        assert!(matches!(err, RimeError::InvalidPath(_)));
+    }
 }
