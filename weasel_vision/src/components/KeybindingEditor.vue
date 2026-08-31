@@ -6,6 +6,11 @@ import { useToast } from '../composables/useToast'
 import { errorMessage } from '../utils'
 import type { KeyBinding } from '../../src-tauri/bindings/KeyBinding'
 
+defineProps<{
+  /** 作用域: '' 或 undefined = 全局, 否则为方案 id */
+  scope?: string
+}>()
+
 /** KeyBinding with a stable id for use as v-for key */
 interface BindingItem extends KeyBinding {
   _id: number

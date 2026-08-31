@@ -47,15 +47,11 @@ const GeneralSettings = createLazyComponent(() => import('./components/GeneralSe
 const ThemeEditor = createLazyComponent(() => import('./components/ThemeEditor.vue'))
 const SchemaManager = createLazyComponent(() => import('./components/SchemaManager.vue'))
 const GrammarModel = createLazyComponent(() => import('./components/GrammarModel.vue'))
-const KeybindingEditor = createLazyComponent(() => import('./components/KeybindingEditor.vue'))
-const PunctuationSettings = createLazyComponent(
-  () => import('./components/PunctuationSettings.vue'),
-)
 const BackupManager = createLazyComponent(() => import('./components/BackupManager.vue'))
 const DictManager = createLazyComponent(() => import('./components/DictManager.vue'))
 const SyncManager = createLazyComponent(() => import('./components/SyncManager.vue'))
 const AdvancedSettings = createLazyComponent(() => import('./components/AdvancedSettings.vue'))
-const PageSizeSettings = createLazyComponent(() => import('./components/PageSizeSettings.vue'))
+const SchemeProfile = createLazyComponent(() => import('./components/SchemeProfile.vue'))
 
 // ── State ──────────────────────────────────────────────────────────────
 
@@ -126,9 +122,7 @@ const tabs = [
 
 const schemaTabs = [
   { id: 'schema', label: '方案列表', icon: '📝' },
-  { id: 'punctuation', label: '标点符号', icon: '🔤' },
-  { id: 'keybinding', label: '快捷键', icon: '⌨️' },
-  { id: 'candidate', label: '候选词数', icon: '🔢' },
+  { id: 'profile', label: '方案配置', icon: '⚙️' },
 ]
 
 const allTabs = [...tabs, ...schemaTabs]
@@ -207,10 +201,8 @@ async function deploy() {
         <GeneralSettings v-if="selectedTab === 'general'" />
         <ThemeEditor v-else-if="selectedTab === 'theme'" />
         <SchemaManager v-else-if="selectedTab === 'schema'" />
+        <SchemeProfile v-else-if="selectedTab === 'profile'" />
         <GrammarModel v-else-if="selectedTab === 'grammar'" />
-        <KeybindingEditor v-else-if="selectedTab === 'keybinding'" />
-        <PunctuationSettings v-else-if="selectedTab === 'punctuation'" />
-        <PageSizeSettings v-else-if="selectedTab === 'candidate'" />
         <BackupManager v-else-if="selectedTab === 'backup'" />
         <DictManager v-else-if="selectedTab === 'dict'" />
         <SyncManager v-else-if="selectedTab === 'sync'" />

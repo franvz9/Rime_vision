@@ -8,6 +8,11 @@ import WeaselModal from './WeaselModal.vue'
 import type { PunctRule } from '../../src-tauri/bindings/PunctRule'
 import type { PunctuationData } from '../../src-tauri/bindings/PunctuationData'
 
+defineProps<{
+  /** 作用域: '' 或 undefined = 全局, 否则为方案 id */
+  scope?: string
+}>()
+
 const toast = useToast()
 
 const data = ref<PunctuationData | null>(null)
