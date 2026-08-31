@@ -16,6 +16,12 @@ pub struct RimeSchema {
     pub version: String,
 
     #[serde(default)]
+    pub author: String,
+
+    #[serde(default)]
+    pub description: String,
+
+    #[serde(default)]
     pub dependencies: Vec<String>,
 }
 
@@ -30,6 +36,8 @@ impl RimeSchema {
             enabled: true,
             name: String::new(),
             version: String::new(),
+            author: String::new(),
+            description: String::new(),
             dependencies: Vec::new(),
         }
     }

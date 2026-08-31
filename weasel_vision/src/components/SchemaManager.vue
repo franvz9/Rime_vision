@@ -13,6 +13,8 @@ const toast = useToast()
 const schemas = ref<RimeSchema[]>([])
 const currentSchema = ref<string>('')
 const pendingDeleteSchemas = ref<Set<string>>(new Set())
+/** 右侧预览的方案（默认跟随当前使用中方案） */
+const previewSchema = ref<RimeSchema | null>(null)
 
 let schemaMounted = true
 
@@ -22,6 +24,8 @@ onMounted(async () => {
     if (!schemaMounted) return
     schemas.value = data.schemas
     currentSchema.value = data.current_schema || ''
+    previewSchema.value =
+      schemas.value.find((s) => s.schema === currentSchema.value) || schemas.value[0] || null
   } catch (e) {
     if (!schemaMounted) return
     toast.error(`加载输入方案失败: ${errorMessage(e)}`)
@@ -31,6 +35,24 @@ onMounted(async () => {
 onUnmounted(() => {
   schemaMounted = false
 })
+
+/** 点击方案项：切换"使用中"方案 */
+async function setActive(schema: RimeSchema) {
+  if (currentSchema.value === schema.schema) return
+  try {
+    await invoke('set_current_schema', { schemaId: schema.schema })
+    currentSchema.value = schema.schema
+    previewSchema.value = schema
+    toast.success(`已切换到 ${schema.name || schema.schema}`)
+  } catch (e) {
+    toast.error(`切换方案失败: ${errorMessage(e)}`)
+  }
+}
+
+/** 点击列表项（非切换），仅更新右侧预览 */
+function selectPreview(schema: RimeSchema) {
+  previewSchema.value = schema
+}
 
 function toggleSchema(schema: RimeSchema) {
   schema.enabled = !schema.enabled
@@ -96,64 +118,111 @@ function toggleDeleteSchema(schemaId: string) {
     <div class="section">
       <div class="section-header">
         <h3>输入方案列表</h3>
-        <button class="wv-btn btn-sm" @click="importSchema">📥 导入方案</button>
-      </div>
-      <p class="hint">启用的方案将显示在输入法方案切换菜单中</p>
-
-      <div class="schema-list">
-        <div
-          v-for="schema in schemas"
-          :key="schema.schema"
-          :class="[
-            'schema-item',
-            {
-              active: currentSchema === schema.schema,
-              'is-deleting': pendingDeleteSchemas.has(schema.schema),
-            },
-          ]"
-        >
-          <label class="toggle">
-            <input type="checkbox" :checked="schema.enabled" @change="toggleSchema(schema)" />
-            <span class="toggle-slider"></span>
-          </label>
-          <span class="schema-id">{{ schema.schema }}</span>
-          <span
-            v-if="currentSchema === schema.schema && !pendingDeleteSchemas.has(schema.schema)"
-            class="badge badge-active"
-            >使用中</span
-          >
-          <span v-if="pendingDeleteSchemas.has(schema.schema)" class="badge badge-deleting"
-            >待删除</span
-          >
-          <button
-            v-if="pendingDeleteSchemas.has(schema.schema)"
-            class="btn-cancel-delete"
-            @click.stop="toggleDeleteSchema(schema.schema)"
-          >
-            取消删除
-          </button>
-          <button
-            v-else
-            class="btn-delete"
-            :disabled="!canDeleteSchema(schema.schema)"
-            :title="!canDeleteSchema(schema.schema) ? '使用中不可删除' : '删除'"
-            @click.stop="toggleDeleteSchema(schema.schema)"
-          >
-            🗑
-          </button>
+        <div class="header-actions">
+          <button class="wv-btn wv-btn-primary btn-sm" @click="save">保存配置</button>
+          <button class="wv-btn btn-sm" @click="importSchema">📥 导入方案</button>
         </div>
       </div>
-    </div>
+      <p class="hint">点击方案可切换为「使用中」，启用/停用、删除后记得保存</p>
 
-    <div class="actions">
-      <button class="wv-btn wv-btn-primary" @click="save">保存</button>
+      <div class="schema-main">
+        <!-- 左侧：方案列表 -->
+        <div class="schema-list-col">
+          <div
+            v-for="schema in schemas"
+            :key="schema.schema"
+            :class="[
+              'schema-item',
+              {
+                active: currentSchema === schema.schema,
+                preview: previewSchema?.schema === schema.schema,
+                'is-deleting': pendingDeleteSchemas.has(schema.schema),
+              },
+            ]"
+            @click="selectPreview(schema)"
+          >
+            <label class="toggle">
+              <input
+                type="checkbox"
+                :checked="schema.enabled"
+                @click.stop
+                @change="toggleSchema(schema)"
+              />
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="schema-id">{{ schema.name || schema.schema }}</span>
+            <span
+              v-if="currentSchema === schema.schema && !pendingDeleteSchemas.has(schema.schema)"
+              class="badge badge-active"
+              >使用中</span
+            >
+            <span v-if="pendingDeleteSchemas.has(schema.schema)" class="badge badge-deleting"
+              >待删除</span
+            >
+            <button
+              v-if="pendingDeleteSchemas.has(schema.schema)"
+              class="btn-cancel-delete"
+              @click.stop="toggleDeleteSchema(schema.schema)"
+            >
+              取消删除
+            </button>
+            <button
+              v-else
+              class="btn-delete"
+              :disabled="!canDeleteSchema(schema.schema)"
+              :title="!canDeleteSchema(schema.schema) ? '使用中不可删除' : '删除'"
+              @click.stop="toggleDeleteSchema(schema.schema)"
+            >
+              🗑
+            </button>
+          </div>
+        </div>
+
+        <!-- 右侧：方案信息预览 -->
+        <div class="schema-preview-col">
+          <template v-if="previewSchema">
+            <div class="preview-header">
+              <h4 class="preview-name">{{ previewSchema.name || previewSchema.schema }}</h4>
+              <span v-if="currentSchema === previewSchema.schema" class="badge badge-active"
+                >使用中</span
+              >
+            </div>
+            <div class="preview-meta">
+              <span v-if="previewSchema.schema" class="meta-item"
+                >ID: {{ previewSchema.schema }}</span
+              >
+              <span v-if="previewSchema.version" class="meta-item"
+                >版本: {{ previewSchema.version }}</span
+              >
+            </div>
+            <div v-if="previewSchema.author" class="preview-author">
+              作者: {{ previewSchema.author }}
+            </div>
+            <div v-if="previewSchema.description" class="preview-desc">
+              {{ previewSchema.description }}
+            </div>
+            <div v-if="previewSchema.dependencies.length" class="preview-deps">
+              <strong>依赖：</strong>
+              <span v-for="d in previewSchema.dependencies" :key="d" class="dep-chip">{{ d }}</span>
+            </div>
+            <button
+              class="wv-btn wv-btn-primary switch-btn"
+              :disabled="currentSchema === previewSchema.schema"
+              @click="setActive(previewSchema)"
+            >
+              {{ currentSchema === previewSchema.schema ? '当前使用中' : '切换到此方案' }}
+            </button>
+          </template>
+          <div v-else class="preview-empty">选择左侧方案查看详情</div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
 .schema-manager {
-  max-width: 600px;
+  max-width: 1000px;
 }
 
 .section {
@@ -176,14 +245,25 @@ function toggleDeleteSchema(schemaId: string) {
   margin: 0;
 }
 
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .btn-sm {
-  padding: 4px 12px;
+  padding: 6px 14px;
   border: 1px solid var(--color-border);
   background: var(--color-bg-secondary);
   color: var(--color-text-primary);
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
+}
+
+.btn-sm.wv-btn-primary {
+  background: var(--color-btn-primary-bg);
+  color: var(--color-text-inverse);
+  border: none;
 }
 
 .hint {
@@ -192,7 +272,14 @@ function toggleDeleteSchema(schemaId: string) {
   margin-bottom: 12px;
 }
 
-.schema-list {
+.schema-main {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.schema-list-col {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -206,11 +293,21 @@ function toggleDeleteSchema(schemaId: string) {
   background: var(--color-bg-secondary);
   border-radius: 8px;
   border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.schema-item:hover {
+  border-color: var(--color-accent);
 }
 
 .schema-item.active {
   border-color: var(--color-success);
   background: var(--color-success-muted);
+}
+
+.schema-item.preview {
+  outline: 2px solid var(--color-accent-light);
 }
 
 .badge {
@@ -228,7 +325,98 @@ function toggleDeleteSchema(schemaId: string) {
 
 .schema-id {
   font-size: 14px;
-  font-family: monospace;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 右侧方案信息预览 ─────────────────────────── */
+.schema-preview-col {
+  padding: 16px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  min-height: 240px;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.preview-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.preview-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+}
+
+.preview-author {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+}
+
+.preview-desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  margin-bottom: 12px;
+}
+
+.preview-deps {
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.dep-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  margin: 2px;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.switch-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--color-btn-primary-bg);
+  color: var(--color-text-inverse);
+}
+
+.switch-btn:hover:not(:disabled) {
+  background: var(--color-btn-primary-hover);
+}
+
+.switch-btn:disabled {
+  background: var(--color-border-dark);
+  cursor: not-allowed;
+}
+
+.preview-empty {
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+  text-align: center;
+  padding: 40px 0;
 }
 
 .toggle {
@@ -271,42 +459,6 @@ function toggleDeleteSchema(schemaId: string) {
 
 .toggle input:checked + .toggle-slider::before {
   transform: translateX(18px);
-}
-
-.form-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-.form-row label {
-  font-size: 14px;
-}
-
-.form-row input {
-  width: 80px;
-  padding: 6px 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  font-size: 14px;
-  background: var(--color-bg-input);
-  color: var(--color-text-primary);
-}
-
-.actions {
-  margin-top: 16px;
-}
-
-.wv-btn {
-  padding: 8px 20px;
-  border: none;
-  font-size: 14px;
-  color: var(--color-text-primary);
-}
-
-.actions .wv-btn-primary {
-  color: var(--color-text-inverse);
 }
 
 .schema-item.is-deleting {

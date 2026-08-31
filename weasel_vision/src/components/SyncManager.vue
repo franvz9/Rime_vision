@@ -196,7 +196,7 @@ async function openSyncDir() {
     </div>
 
     <!-- Settings modal -->
-    <WeaselModal :show="showSettings" title="同步设置" @close="showSettings = false">
+    <WeaselModal :show="showSettings" title="同步设置" wide @close="showSettings = false">
       <div class="info-box">
         <p><strong>ℹ️ 说明：</strong></p>
         <ul>

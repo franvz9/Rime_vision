@@ -41,7 +41,7 @@ pub fn get_schemas() -> Result<SchemaListData, RimeError> {
     for item in schema_list {
         if let Some(schema_id) = item.get(Value::String("schema".into())) {
             if let Some(id) = schema_id.as_str() {
-                schemas.push(RimeSchema::new(id.to_string()));
+                schemas.push(load_schema_meta(&cfg, id.to_string()));
             }
         }
     }
@@ -181,4 +181,151 @@ pub fn import_schema(file_path: String) -> Result<(), RimeError> {
     }
 
     Err(RimeError::NotFound("No schema_id found in file".into()))
+}
+
+/// 读取方案 schema 文件的元信息（名称、版本、作者、简介、依赖等），
+/// 用于方案信息预览。读取失败时返回仅含 schema_id 的默认结构。
+fn load_schema_meta(cfg: &RimeConfig, schema_id: String) -> RimeSchema {
+    let mut schema = RimeSchema::new(schema_id.clone());
+    let Some(path) = cfg.schema_path(&schema_id) else {
+        return schema;
+    };
+    let Ok(value) = cfg.load_yaml(&path) else {
+        return schema;
+    };
+    let dict = config::value_as_mapping(&value);
+    let meta = config::get_mapping(dict, "schema");
+    schema.name = config::get_string(meta, "name").unwrap_or_default();
+    schema.version = config::get_string(meta, "version").unwrap_or_default();
+    schema.author = config::get_string(meta, "author").unwrap_or_default();
+    schema.description = config::get_string(meta, "description").unwrap_or_default();
+    if let Some(deps) = meta
+        .get(Value::String("dependencies".into()))
+        .and_then(|v| v.as_sequence())
+    {
+        schema.dependencies = deps
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+    }
+    schema
+}
+
+/// 切换"使用中"的方案：写入 user.yaml 的 var/previously_selected_schema。
+/// 保留 user.yaml 中其它内容（如 schema_access_time、last_build_time 等）。
+#[tauri::command]
+pub fn set_current_schema(schema_id: String) -> Result<(), RimeError> {
+    let cfg = RimeConfig::detect();
+    set_current_schema_with_cfg(&cfg, &schema_id)
+}
+
+fn set_current_schema_with_cfg(cfg: &RimeConfig, schema_id: &str) -> Result<(), RimeError> {
+    // 校验 schema_id 防止路径遍历
+    if schema_id.contains("..") || schema_id.contains('/') || schema_id.contains('\\') {
+        return Err(RimeError::InvalidPath("Invalid schema_id".into()));
+    }
+    let user_path = cfg.user_yaml_path();
+
+    // 读取现有 user.yaml（若存在），更新 var.previously_selected_schema
+    let mut user_value = cfg.load_yaml(&user_path)?;
+    let dict = user_value
+        .as_mapping_mut()
+        .ok_or_else(|| RimeError::Config("user.yaml is not a mapping".into()))?;
+    let var = dict
+        .entry(Value::String("var".into()))
+        .or_insert_with(|| Value::Mapping(serde_yaml::Mapping::new()));
+    let var_map = var
+        .as_mapping_mut()
+        .ok_or_else(|| RimeError::Config("user.yaml var is not a mapping".into()))?;
+    var_map.insert(
+        Value::String("previously_selected_schema".into()),
+        Value::String(schema_id.to_string()),
+    );
+
+    let content = serde_yaml::to_string(&user_value)?;
+    crate::rime::backup::write_if_changed(&content, &user_path)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn test_cfg() -> (tempfile::TempDir, RimeConfig) {
+        let tmp = tempdir().unwrap();
+        let cfg = RimeConfig {
+            user_dir: tmp.path().to_path_buf(),
+            build_dir: None,
+            style_file: "squirrel.yaml".into(),
+            style_custom: "squirrel.custom.yaml".into(),
+            default_yaml: "default.yaml".into(),
+            default_custom: "default.custom.yaml".into(),
+        };
+        (tmp, cfg)
+    }
+
+    #[test]
+    fn test_load_schema_meta_reads_fields() {
+        let (_tmp, cfg) = test_cfg();
+        std::fs::write(
+            cfg.user_dir.join("demo.schema.yaml"),
+            "schema:\n  schema_id: demo\n  name: 演示方案\n  version: '1.0'\n  author: tester\n  description: |\n    这是一个演示方案。\n  dependencies:\n    - radical_pinyin\n    - melt_eng\n",
+        )
+        .unwrap();
+        let meta = load_schema_meta(&cfg, "demo".to_string());
+        assert_eq!(meta.name, "演示方案");
+        assert_eq!(meta.version, "1.0");
+        assert_eq!(meta.author, "tester");
+        assert!(meta.description.contains("演示方案"));
+        assert_eq!(meta.dependencies.len(), 2);
+        assert!(meta.dependencies.contains(&"melt_eng".to_string()));
+    }
+
+    #[test]
+    fn test_load_schema_meta_missing_falls_back() {
+        let (_tmp, cfg) = test_cfg();
+        let meta = load_schema_meta(&cfg, "nonexistent".to_string());
+        assert_eq!(meta.schema_id, "nonexistent");
+        assert!(meta.name.is_empty());
+    }
+
+    #[test]
+    fn test_set_current_schema_writes_user_yaml() {
+        let (_tmp, cfg) = test_cfg();
+        // 预置 user.yaml
+        std::fs::write(
+            cfg.user_dir.join("user.yaml"),
+            "var:\n  last_build_time: 123\n  previously_selected_schema: old_schema\n",
+        )
+        .unwrap();
+        set_current_schema_with_cfg(&cfg, "new_schema").unwrap();
+
+        let user = cfg.load_yaml(&cfg.user_yaml_path()).unwrap();
+        let dict = user.as_mapping().unwrap();
+        let var = dict
+            .get(Value::String("var".into()))
+            .and_then(|v| v.as_mapping())
+            .unwrap();
+        // 新方案已写入
+        assert_eq!(
+            var.get(Value::String("previously_selected_schema".into()))
+                .and_then(|v| v.as_str()),
+            Some("new_schema")
+        );
+        // 其它字段保留
+        assert!(var.contains_key(Value::String("last_build_time".into())));
+    }
+
+    #[test]
+    fn test_set_current_schema_rejects_invalid() {
+        let (_tmp, cfg) = test_cfg();
+        std::fs::write(
+            cfg.user_dir.join("user.yaml"),
+            "var:\n  previously_selected_schema: old\n",
+        )
+        .unwrap();
+        let err = set_current_schema_with_cfg(&cfg, "../evil").unwrap_err();
+        assert!(matches!(err, RimeError::InvalidPath(_)));
+    }
 }

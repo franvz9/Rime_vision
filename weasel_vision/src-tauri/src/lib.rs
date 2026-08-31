@@ -19,6 +19,7 @@ pub fn run() {
             schema::get_schemas,
             schema::save_schemas,
             schema::import_schema,
+            schema::set_current_schema,
             keybinding::get_keybindings,
             keybinding::save_keybindings,
             settings::get_general_settings,
