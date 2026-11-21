@@ -1,308 +1,33 @@
-use parking_lot::Mutex;
-use std::path::PathBuf;
-use std::time::Instant;
+//! Tauri IPC 命令薄壳：实际逻辑见 rime-core::service::sync。
+use rime_core::RimeError;
+use rime_core::service::sync as svc;
 
-use serde::{Deserialize, Serialize};
-use serde_yaml::Value;
-use ts_rs::TS;
-
-use crate::rime::config::{self, RimeConfig};
-use crate::rime::error::RimeError;
-
-type Mapping = serde_yaml::Mapping;
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct SyncSettings {
-    pub sync_dir: Option<String>,
-    pub installation_id: String,
-    pub sync_user_dict: bool,
-    pub sync_config: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct SyncStatus {
-    pub configured: bool,
-    pub last_sync_time: Option<String>,
-    pub sync_dir_exists: bool,
-    pub current_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct SyncedDevice {
-    pub id: String,
-    pub last_sync: String,
-    pub synced_dicts: Vec<String>,
-    pub synced_configs: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct SyncResult {
-    pub success: bool,
-    pub uploaded: Vec<String>,
-    pub downloaded: Vec<String>,
-    pub errors: Vec<String>,
-}
-
-fn installation_yaml_path() -> PathBuf {
-    let cfg = RimeConfig::detect();
-    cfg.user_dir.join("installation.yaml")
-}
-
-fn load_installation_yaml() -> Result<Mapping, RimeError> {
-    let path = installation_yaml_path();
-    if !path.exists() {
-        return Ok(Mapping::new());
-    }
-    let content = std::fs::read_to_string(&path)?;
-    let value: Value = serde_yaml::from_str(&content)?;
-    Ok(value.as_mapping().cloned().unwrap_or_default())
-}
-
-fn save_installation_yaml(dict: &Mapping) -> Result<(), RimeError> {
-    let path = installation_yaml_path();
-    let content = serde_yaml::to_string(dict)?;
-    crate::rime::backup::write_if_changed(&content, &path)?;
-    Ok(())
-}
+pub use rime_core::service::sync::{SyncResult, SyncSettings, SyncStatus, SyncedDevice};
 
 #[tauri::command]
 pub fn get_sync_settings() -> Result<SyncSettings, RimeError> {
-    let dict = load_installation_yaml()?;
-    let sync_dir = config::get_string(&dict, "sync_dir");
-    let installation_id = config::get_string(&dict, "installation_id").unwrap_or_else(uuid_simple);
-    let sync_user_dict = config::get_bool(&dict, "sync_user_dict").unwrap_or(true);
-    let sync_config = config::get_bool(&dict, "sync_config").unwrap_or(true);
-
-    Ok(SyncSettings {
-        sync_dir,
-        installation_id,
-        sync_user_dict,
-        sync_config,
-    })
+    svc::get_sync_settings()
 }
 
 #[tauri::command]
 pub fn save_sync_settings(settings: SyncSettings) -> Result<(), RimeError> {
-    validate_installation_id(&settings.installation_id)?;
-    let mut dict = load_installation_yaml()?;
-
-    if let Some(ref dir) = settings.sync_dir {
-        // Validate sync_dir: non-empty, no control chars, no path traversal
-        if dir.is_empty() {
-            return Err(RimeError::InvalidPath("sync_dir cannot be empty".into()));
-        }
-        if dir.contains('\0') || dir.contains('\n') || dir.contains('\r') || dir.contains('\t') {
-            return Err(RimeError::InvalidPath(
-                "sync_dir contains invalid characters".into(),
-            ));
-        }
-        if dir.contains("..") {
-            return Err(RimeError::InvalidPath(
-                "sync_dir contains path traversal".into(),
-            ));
-        }
-        dict.insert(Value::String("sync_dir".into()), Value::String(dir.clone()));
-    } else {
-        dict.remove(Value::String("sync_dir".into()));
-    }
-
-    dict.insert(
-        Value::String("installation_id".into()),
-        Value::String(settings.installation_id),
-    );
-    dict.insert(
-        Value::String("sync_user_dict".into()),
-        Value::Bool(settings.sync_user_dict),
-    );
-    dict.insert(
-        Value::String("sync_config".into()),
-        Value::Bool(settings.sync_config),
-    );
-
-    save_installation_yaml(&dict)
+    svc::save_sync_settings(settings)
 }
 
 #[tauri::command]
 pub fn get_sync_status() -> Result<SyncStatus, RimeError> {
-    let settings = get_sync_settings()?;
-    let sync_dir_exists = settings
-        .sync_dir
-        .as_ref()
-        .map(|d| std::path::Path::new(d).exists())
-        .unwrap_or(false);
-
-    // Check for a recorded last_sync_time first (written by execute_sync)
-    let last_sync_time = settings.sync_dir.as_ref().and_then(|d| {
-        let marker = std::path::Path::new(d)
-            .join(&settings.installation_id)
-            .join(".last_sync");
-        std::fs::read_to_string(&marker).ok().and_then(|s| {
-            let s = s.trim();
-            if s.is_empty() {
-                None
-            } else {
-                Some(s.to_string())
-            }
-        })
-    });
-
-    Ok(SyncStatus {
-        configured: settings.sync_dir.is_some(),
-        last_sync_time,
-        sync_dir_exists,
-        current_id: settings.installation_id,
-    })
+    svc::get_sync_status()
 }
 
 #[tauri::command]
 pub fn list_synced_devices() -> Result<Vec<SyncedDevice>, RimeError> {
-    let settings = get_sync_settings()?;
-    let mut devices = Vec::new();
-
-    let sync_dir = match settings.sync_dir {
-        Some(d) => std::path::PathBuf::from(d),
-        None => return Ok(devices),
-    };
-
-    if !sync_dir.exists() {
-        return Ok(devices);
-    }
-
-    if let Ok(entries) = std::fs::read_dir(&sync_dir) {
-        for entry in entries.flatten() {
-            if entry.path().is_dir() {
-                let id = entry.file_name().to_string_lossy().to_string();
-                if id == settings.installation_id {
-                    continue;
-                }
-
-                let mut synced_dicts = Vec::new();
-                let mut synced_configs = Vec::new();
-
-                if let Ok(files) = std::fs::read_dir(entry.path()) {
-                    for file in files.flatten() {
-                        let name = file.file_name().to_string_lossy().to_string();
-                        if name.ends_with(".userdb.txt") {
-                            synced_dicts.push(name.replace(".userdb.txt", ""));
-                        } else if name.ends_with(".yaml") {
-                            synced_configs.push(name);
-                        }
-                    }
-                }
-
-                let last_sync = std::fs::metadata(entry.path())
-                    .ok()
-                    .and_then(|m| m.modified().ok())
-                    .map(|t| {
-                        chrono::DateTime::<chrono::Local>::from(t)
-                            .format("%Y-%m-%d %H:%M:%S")
-                            .to_string()
-                    })
-                    .unwrap_or_default();
-
-                devices.push(SyncedDevice {
-                    id,
-                    last_sync,
-                    synced_dicts,
-                    synced_configs,
-                });
-            }
-        }
-    }
-
-    devices.sort_by(|a, b| b.last_sync.cmp(&a.last_sync));
-    Ok(devices)
+    svc::list_synced_devices()
 }
-
-/// Minimum interval between sync operations (3 seconds) to prevent
-/// rapid repeated syncs that could overwhelm the input method process.
-static LAST_SYNC: Mutex<Option<Instant>> = Mutex::new(None);
-const SYNC_THROTTLE_SECS: u64 = 3;
 
 #[tauri::command]
 pub async fn execute_sync() -> Result<SyncResult, RimeError> {
-    // Rate limiting: prevent rapid repeated syncs
-    {
-        let mut last = LAST_SYNC.lock();
-        if let Some(t) = *last {
-            if t.elapsed().as_secs() < SYNC_THROTTLE_SECS {
-                return Err(RimeError::RateLimited(format!(
-                    "操作过于频繁，请 {} 秒后再试",
-                    SYNC_THROTTLE_SECS
-                )));
-            }
-        }
-        *last = Some(Instant::now());
-    }
-
-    let settings = get_sync_settings()?;
-
-    // Check if sync directory is configured
-    if settings.sync_dir.is_none() {
-        return Err(RimeError::Config("请先在「同步设置」中配置同步目录".into()));
-    }
-
-    // Trigger Rime native sync via `Squirrel --sync` (DistributedNotificationCenter)
-    let process_found = crate::rime::deployer::sync()?;
-
-    if !process_found {
-        return Ok(SyncResult {
-            success: false,
-            uploaded: vec![],
-            downloaded: vec![],
-            errors: vec![
-                "输入法进程未运行，无法执行同步。请确保 Rime 输入法正在运行。".to_string(),
-            ],
-        });
-    }
-
-    // Wait for Squirrel to complete the sync (minimum 2s)
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-
-    // Record the sync timestamp so get_sync_status can read it
-    if let Some(ref sync_dir) = settings.sync_dir {
-        let device_dir = std::path::Path::new(sync_dir).join(&settings.installation_id);
-        if let Err(e) = std::fs::create_dir_all(&device_dir) {
-            eprintln!("Warning: failed to create sync device dir: {}", e);
-        } else {
-            let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            if let Err(e) = std::fs::write(device_dir.join(".last_sync"), &now) {
-                eprintln!("Warning: failed to write .last_sync: {}", e);
-            } else {
-                eprintln!(
-                    "Recorded sync time: {} at {:?}",
-                    now,
-                    device_dir.join(".last_sync")
-                );
-            }
-        }
-    }
-
-    // Report success - the actual sync was done by Rime/Squirrel
-    Ok(SyncResult {
-        success: true,
-        uploaded: vec!["Rime 原生同步已触发".to_string()],
-        downloaded: vec![],
-        errors: vec![],
-    })
-}
-
-/// Merge all remote device snapshots for a given dict_id into the local user dictionary.
-fn uuid_simple() -> String {
-    uuid::Uuid::new_v4().to_string()
-}
-
-fn validate_installation_id(id: &str) -> Result<(), RimeError> {
-    if id.is_empty() || id.len() > 64 {
-        return Err(RimeError::Config("Invalid installation ID".into()));
-    }
-    if id
-        .chars()
-        .any(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
-    {
-        return Err(RimeError::Config(
-            "Installation ID contains invalid characters".into(),
-        ));
-    }
-    Ok(())
+    // 阻塞等待（≥2s）+ 子进程放到独立线程，与原实现行为一致
+    tauri::async_runtime::spawn_blocking(svc::execute_sync)
+        .await
+        .map_err(|e| RimeError::Unknown(format!("execute_sync task join error: {}", e)))?
 }

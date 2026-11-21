@@ -17,29 +17,12 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
-dirs = "5"
-chrono = "0.4"
-regex = "1"
-anyhow = "1"
-tokio = { version = "1", features = ["time"] }
-uuid = { version = "1", features = ["v4"] }
-parking_lot = "0.12"
-open = "5"
-thiserror = "2"
-ts-rs = "10"
-
-[target.'cfg(windows)'.dependencies]
-winreg = "0.52"
+rime-core = { path = "../crates/rime-core" }
 
 [dev-dependencies]
 tempfile = "3"
-
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = 3
-panic = "abort"
-strip = true
+ts-rs = "10"
+# 集成测试（tests/）直接使用
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"

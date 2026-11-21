@@ -12,9 +12,8 @@ pub enum WriteResult {
 /// Global lock to prevent concurrent writes to the same file.
 ///
 /// This uses `parking_lot::Mutex` (a synchronous lock) because all file I/O
-/// operations it protects are inherently blocking. For Tauri async commands
-/// that need to use these functions, use `tokio::task::spawn_blocking` or
-/// the provided `write_atomic_async` / `write_if_changed_async` wrappers.
+/// operations it protects are inherently blocking. UI shells should run
+/// blocking operations on a background thread.
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 /// Write content to a file atomically (temp + rename) with global lock.
@@ -73,15 +72,6 @@ pub fn write_if_changed(content: &str, path: &Path) -> Result<WriteResult> {
         }
     }
     Ok(WriteResult::Written)
-}
-
-/// Async wrapper for write_if_changed — use this from Tauri async commands
-/// to avoid blocking the Tokio runtime thread.
-#[allow(dead_code)] // Reserved for future async command migration
-pub async fn write_if_changed_async(content: String, path: PathBuf) -> Result<WriteResult> {
-    tokio::task::spawn_blocking(move || write_if_changed(&content, &path))
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking failed: {}", e))?
 }
 
 /// Maximum number of timestamped backup files to retain per original file.

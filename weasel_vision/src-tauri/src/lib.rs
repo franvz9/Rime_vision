@@ -1,6 +1,5 @@
 mod commands;
-pub mod rime;
-
+// 核心逻辑在 rime-core（workspace 成员）：commands/* 仅是 #[tauri::command] 委托薄壳。
 use commands::{backup, dict, grammar, keybinding, page_size, punctuation, schema, settings, style, sync, translator};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -77,60 +76,60 @@ mod export_tests {
 
     #[test]
     fn export_all_bindings() {
-        // commands::backup
-        crate::commands::backup::BackupInfo::export().unwrap();
-        crate::commands::backup::BackupDetail::export().unwrap();
-        crate::commands::backup::BackupFile::export().unwrap();
-        crate::commands::backup::FileDiff::export().unwrap();
+        // service::backup
+        rime_core::service::backup::BackupInfo::export().unwrap();
+        rime_core::service::backup::BackupDetail::export().unwrap();
+        rime_core::service::backup::BackupFile::export().unwrap();
+        rime_core::service::backup::FileDiff::export().unwrap();
 
-        // commands::dict
-        crate::commands::dict::UserDictInfo::export().unwrap();
-        crate::commands::dict::DictEntry::export().unwrap();
-        crate::commands::dict::DictEntriesResult::export().unwrap();
-        crate::commands::dict::SnapshotInfo::export().unwrap();
-        crate::commands::dict::NewDictEntry::export().unwrap();
+        // service::dict
+        rime_core::service::dict::UserDictInfo::export().unwrap();
+        rime_core::service::dict::DictEntry::export().unwrap();
+        rime_core::service::dict::DictEntriesResult::export().unwrap();
+        rime_core::service::dict::SnapshotInfo::export().unwrap();
+        rime_core::service::dict::NewDictEntry::export().unwrap();
 
-        // commands::sync
-        crate::commands::sync::SyncSettings::export().unwrap();
-        crate::commands::sync::SyncStatus::export().unwrap();
-        crate::commands::sync::SyncedDevice::export().unwrap();
-        crate::commands::sync::SyncResult::export().unwrap();
+        // service::sync
+        rime_core::service::sync::SyncSettings::export().unwrap();
+        rime_core::service::sync::SyncStatus::export().unwrap();
+        rime_core::service::sync::SyncedDevice::export().unwrap();
+        rime_core::service::sync::SyncResult::export().unwrap();
 
-        // commands::translator
-        crate::commands::translator::TranslatorSettings::export().unwrap();
-        crate::commands::translator::TranslatorProfile::export().unwrap();
-        crate::commands::translator::TranslatorPatch::export().unwrap();
+        // service::translator
+        rime_core::service::translator::TranslatorSettings::export().unwrap();
+        rime_core::service::translator::TranslatorProfile::export().unwrap();
+        rime_core::service::translator::TranslatorPatch::export().unwrap();
 
-        // commands::keybinding
-        crate::commands::keybinding::KeyBinding::export().unwrap();
+        // service::keybinding
+        rime_core::service::keybinding::KeyBinding::export().unwrap();
 
-        // commands::punctuation
-        crate::commands::punctuation::PunctRule::export().unwrap();
-        crate::commands::punctuation::PunctuationData::export().unwrap();
-        crate::commands::punctuation::PunctuationProfile::export().unwrap();
+        // service::punctuation
+        rime_core::service::punctuation::PunctRule::export().unwrap();
+        rime_core::service::punctuation::PunctuationData::export().unwrap();
+        rime_core::service::punctuation::PunctuationProfile::export().unwrap();
 
-        // commands::page_size
-        crate::commands::page_size::PageSizeDetail::export().unwrap();
+        // service::page_size
+        rime_core::service::page_size::PageSizeDetail::export().unwrap();
 
-        // commands::schema
-        crate::commands::schema::SchemaListData::export().unwrap();
+        // service::schema
+        rime_core::service::schema::SchemaListData::export().unwrap();
 
-        // commands::settings
-        crate::commands::settings::GeneralSettings::export().unwrap();
-        crate::commands::settings::ConfigFileInfo::export().unwrap();
+        // service::settings
+        rime_core::service::settings::GeneralSettings::export().unwrap();
+        rime_core::service::settings::ConfigFileInfo::export().unwrap();
 
-        // commands::grammar
-        crate::commands::grammar::GrammarData::export().unwrap();
+        // service::grammar
+        rime_core::service::grammar::GrammarData::export().unwrap();
 
-        // commands::style
-        crate::commands::style::StyleData::export().unwrap();
+        // service::style
+        rime_core::service::style::StyleData::export().unwrap();
 
         // rime modules
-        crate::rime::color::RimeColor::export().unwrap();
-        crate::rime::color_scheme::RimeColorScheme::export().unwrap();
-        crate::rime::style::RimeStyle::export().unwrap();
-        crate::rime::schema::RimeSchema::export().unwrap();
-        crate::rime::grammar::GrammarModel::export().unwrap();
-        crate::rime::grammar::SchemaGrammarConfig::export().unwrap();
+        rime_core::rime::color::RimeColor::export().unwrap();
+        rime_core::rime::color_scheme::RimeColorScheme::export().unwrap();
+        rime_core::rime::style::RimeStyle::export().unwrap();
+        rime_core::rime::schema::RimeSchema::export().unwrap();
+        rime_core::rime::grammar::GrammarModel::export().unwrap();
+        rime_core::rime::grammar::SchemaGrammarConfig::export().unwrap();
     }
 }

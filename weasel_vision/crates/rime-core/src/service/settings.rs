@@ -1,0 +1,512 @@
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
+use serde_yaml::Value;
+use std::time::Instant;
+use ts_rs::TS;
+
+use crate::rime::config::{self, RimeConfig};
+use crate::rime::error::RimeError;
+
+fn set_patch_value(patch: &mut serde_yaml::Mapping, path: &str, value: Value) {
+    patch.insert(Value::String(path.into()), value);
+}
+
+fn remove_nested_patch_value(patch: &mut serde_yaml::Mapping, section: &str, key: &str) {
+    if let Some(value) = patch.get_mut(Value::String(section.into())) {
+        if let Some(map) = value.as_mapping_mut() {
+            map.remove(Value::String(key.into()));
+            if map.is_empty() {
+                patch.remove(Value::String(section.into()));
+            }
+        }
+    }
+}
+
+fn remove_nested_switch_key(patch: &mut serde_yaml::Mapping, key: &str) {
+    if let Some(value) = patch.get_mut(Value::String("ascii_composer".into())) {
+        if let Some(map) = value.as_mapping_mut() {
+            if let Some(switch_key) = map.get_mut(Value::String("switch_key".into())) {
+                if let Some(switch_key_map) = switch_key.as_mapping_mut() {
+                    switch_key_map.remove(Value::String(key.into()));
+                    if switch_key_map.is_empty() {
+                        map.remove(Value::String("switch_key".into()));
+                    }
+                }
+            }
+            if map.is_empty() {
+                patch.remove(Value::String("ascii_composer".into()));
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+pub struct GeneralSettings {
+    pub switcher_caption: String,
+    pub switcher_hotkeys: String,
+    pub switcher_fold_options: bool,
+    pub switcher_abbreviate_options: bool,
+    pub caps_lock_action: String,
+    pub shift_left_action: String,
+    pub shift_right_action: String,
+    pub good_old_caps_lock: bool,
+}
+
+impl Default for GeneralSettings {
+    fn default() -> Self {
+        Self {
+            switcher_caption: "〔方案切换〕".to_string(),
+            switcher_hotkeys: "Control+grave,Control+Shift+grave".to_string(),
+            switcher_fold_options: true,
+            switcher_abbreviate_options: true,
+            caps_lock_action: "commit_code".to_string(),
+            shift_left_action: "commit_code".to_string(),
+            shift_right_action: "inline_ascii".to_string(),
+            good_old_caps_lock: true,
+        }
+    }
+}
+
+pub fn get_general_settings() -> Result<GeneralSettings, RimeError> {
+    let cfg = RimeConfig::detect();
+    let dict_value = cfg.load_effective(&cfg.default_path(), &cfg.default_custom_path())?;
+    let dict = config::value_as_mapping(&dict_value);
+
+    let mut settings = GeneralSettings::default();
+
+    if let Some(switcher) = dict.get(Value::String("switcher".into())) {
+        if let Some(s_map) = switcher.as_mapping() {
+            settings.switcher_caption =
+                config::get_string(s_map, "caption").unwrap_or_else(|| "〔方案切换〕".into());
+            let hotkeys = config::get_sequence(s_map, "hotkeys");
+            settings.switcher_hotkeys = hotkeys
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            settings.switcher_fold_options =
+                config::get_bool(s_map, "fold_options").unwrap_or(true);
+            settings.switcher_abbreviate_options =
+                config::get_bool(s_map, "abbreviate_options").unwrap_or(true);
+        }
+    }
+
+    if let Some(composer) = dict.get(Value::String("ascii_composer".into())) {
+        if let Some(c_map) = composer.as_mapping() {
+            settings.good_old_caps_lock =
+                config::get_bool(c_map, "good_old_caps_lock").unwrap_or(true);
+            let switch_key = config::get_mapping(c_map, "switch_key");
+            settings.caps_lock_action =
+                config::get_string(switch_key, "Caps_Lock").unwrap_or_else(|| "commit_code".into());
+            settings.shift_left_action =
+                config::get_string(switch_key, "Shift_L").unwrap_or_else(|| "commit_code".into());
+            settings.shift_right_action =
+                config::get_string(switch_key, "Shift_R").unwrap_or_else(|| "inline_ascii".into());
+        }
+    }
+
+    Ok(settings)
+}
+
+pub fn save_general_settings(settings: GeneralSettings) -> Result<(), RimeError> {
+    let cfg = RimeConfig::detect();
+    cfg.save_patch(&cfg.default_custom_path(), |patch| {
+        remove_nested_patch_value(patch, "switcher", "caption");
+        remove_nested_patch_value(patch, "switcher", "hotkeys");
+        remove_nested_patch_value(patch, "switcher", "fold_options");
+        remove_nested_patch_value(patch, "switcher", "abbreviate_options");
+        remove_nested_patch_value(patch, "ascii_composer", "good_old_caps_lock");
+        remove_nested_switch_key(patch, "Caps_Lock");
+        remove_nested_switch_key(patch, "Shift_L");
+        remove_nested_switch_key(patch, "Shift_R");
+
+        let hotkeys: Vec<Value> = settings
+            .switcher_hotkeys
+            .split(',')
+            .filter_map(|s| {
+                let hotkey = s.trim();
+                if hotkey.is_empty() {
+                    None
+                } else {
+                    Some(Value::String(hotkey.to_string()))
+                }
+            })
+            .collect();
+        set_patch_value(
+            patch,
+            "switcher/caption",
+            Value::String(settings.switcher_caption),
+        );
+        set_patch_value(patch, "switcher/hotkeys", Value::Sequence(hotkeys));
+        set_patch_value(
+            patch,
+            "switcher/fold_options",
+            Value::Bool(settings.switcher_fold_options),
+        );
+        set_patch_value(
+            patch,
+            "switcher/abbreviate_options",
+            Value::Bool(settings.switcher_abbreviate_options),
+        );
+
+        set_patch_value(
+            patch,
+            "ascii_composer/good_old_caps_lock",
+            Value::Bool(settings.good_old_caps_lock),
+        );
+        set_patch_value(
+            patch,
+            "ascii_composer/switch_key/Caps_Lock",
+            Value::String(settings.caps_lock_action),
+        );
+        set_patch_value(
+            patch,
+            "ascii_composer/switch_key/Shift_L",
+            Value::String(settings.shift_left_action),
+        );
+        set_patch_value(
+            patch,
+            "ascii_composer/switch_key/Shift_R",
+            Value::String(settings.shift_right_action),
+        );
+
+        Ok(())
+    })?;
+    Ok(())
+}
+
+pub fn get_rime_user_dir() -> Result<String, RimeError> {
+    let cfg = RimeConfig::detect();
+    Ok(cfg.user_dir.to_string_lossy().to_string())
+}
+
+#[derive(Serialize, TS)]
+pub struct ConfigFileInfo {
+    pub name: String,
+    pub path: String,
+    pub exists: bool,
+    pub is_main: bool,
+}
+
+pub fn get_config_files() -> Result<Vec<ConfigFileInfo>, RimeError> {
+    let cfg = RimeConfig::detect();
+    let files = vec![
+        ConfigFileInfo {
+            name: cfg.style_file.clone(),
+            path: cfg.style_path().to_string_lossy().to_string(),
+            exists: cfg.style_path().exists(),
+            is_main: true,
+        },
+        ConfigFileInfo {
+            name: cfg.style_custom.clone(),
+            path: cfg.style_custom_path().to_string_lossy().to_string(),
+            exists: cfg.style_custom_path().exists(),
+            is_main: false,
+        },
+        ConfigFileInfo {
+            name: cfg.default_yaml.clone(),
+            path: cfg.default_path().to_string_lossy().to_string(),
+            exists: cfg.default_path().exists(),
+            is_main: true,
+        },
+        ConfigFileInfo {
+            name: cfg.default_custom.clone(),
+            path: cfg.default_custom_path().to_string_lossy().to_string(),
+            exists: cfg.default_custom_path().exists(),
+            is_main: false,
+        },
+    ];
+    Ok(files)
+}
+
+pub fn sync_build_dir() -> Result<(), RimeError> {
+    crate::rime::deployer::sync()
+        .map(|_| ())
+        .map_err(RimeError::from)
+}
+
+pub fn open_dir(path: String) -> Result<(), RimeError> {
+    // Validate path to prevent command injection and path traversal
+    if path.is_empty() {
+        return Err(RimeError::InvalidPath("路径不能为空".into()));
+    }
+    // Reject paths starting with '-' (could be interpreted as command flags)
+    if path.starts_with('-') {
+        return Err(RimeError::InvalidPath("无效的路径格式".into()));
+    }
+    // Block path traversal and shell metacharacters
+    if path.contains("..") {
+        return Err(RimeError::InvalidPath("路径包含无效字符".into()));
+    }
+    // Validate path contains only safe characters (no shell metacharacters)
+    // Note: parentheses are valid in macOS paths, so they are allowed
+    if path.contains('\0')
+        || path.contains('\n')
+        || path.contains('\r')
+        || path.contains('\t')
+        || path.contains(';')
+        || path.contains('|')
+        || path.contains('&')
+        || path.contains('$')
+        || path.contains('`')
+        || path.contains('<')
+        || path.contains('>')
+    {
+        return Err(RimeError::InvalidPath("路径包含无效字符".into()));
+    }
+
+    let path_obj = std::path::Path::new(&path);
+    if !path_obj.exists() {
+        return Err(RimeError::NotFound(format!("目录不存在: {}", path)));
+    }
+    if !path_obj.is_dir() {
+        return Err(RimeError::InvalidPath("路径不是目录".into()));
+    }
+
+    // 白名单检查：只允许打开 Rime 相关目录
+    let cfg = RimeConfig::detect();
+    let target_canonical = path_obj
+        .canonicalize()
+        .unwrap_or_else(|_| path_obj.to_path_buf());
+    let user_dir_canonical = cfg
+        .user_dir
+        .canonicalize()
+        .unwrap_or_else(|_| cfg.user_dir.clone());
+
+    let mut allowed = false;
+
+    // 1. Rime 用户目录及其子目录
+    if target_canonical.starts_with(&user_dir_canonical) {
+        allowed = true;
+    }
+
+    // 2. 同步目录（从 installation.yaml 读取）
+    if !allowed {
+        if let Ok(content) = std::fs::read_to_string(cfg.user_dir.join("installation.yaml")) {
+            if let Ok(installation) = serde_yaml::from_str::<serde_yaml::Value>(&content) {
+                if let Some(sync_dir) = installation.get("sync_dir").and_then(|v| v.as_str()) {
+                    let sync_path = std::path::Path::new(sync_dir);
+                    if let Ok(sync_canonical) = sync_path.canonicalize() {
+                        if target_canonical.starts_with(&sync_canonical) {
+                            allowed = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if !allowed {
+        return Err(RimeError::InvalidPath(format!(
+            "目录不在允许范围内: {}",
+            path
+        )));
+    }
+
+    open::that(&path)?;
+    Ok(())
+}
+
+pub fn open_rime_dir() -> Result<(), RimeError> {
+    let cfg = RimeConfig::detect();
+    let dir = cfg.user_dir.to_string_lossy().to_string();
+    open_dir(dir)
+}
+
+/// 在系统文件管理器中定位（reveal）指定文件：
+/// macOS `open -R`；Windows `explorer /select`。
+pub fn open_file_in_manager(path: String) -> Result<(), RimeError> {
+    let p = std::path::PathBuf::from(&path);
+    if !p.exists() {
+        return Err(RimeError::NotFound(format!("文件不存在：{}", path)));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&p)
+            .spawn()
+            .map_err(|e| RimeError::Unknown(format!("打开文件位置失败：{}", e)))?;
+        Ok(())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(format!("/select,{}", p.display()))
+            .spawn()
+            .map_err(|e| RimeError::Unknown(format!("打开文件位置失败：{}", e)))?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = &p;
+        Err(RimeError::Unknown("当前平台不支持定位文件".into()))
+    }
+}
+
+pub fn reset_config() -> Result<(), RimeError> {
+    let cfg = RimeConfig::detect();
+    let style_custom = cfg.style_custom_path();
+    let default_custom = cfg.default_custom_path();
+
+    // Backup before deleting, so user can recover
+    if style_custom.exists() || default_custom.exists() {
+        if let Err(e) = super::backup::create_deploy_backup(false) {
+            eprintln!("Warning: backup before reset failed: {}", e);
+        }
+    }
+
+    if style_custom.exists() {
+        std::fs::remove_file(&style_custom)?;
+    }
+    if default_custom.exists() {
+        std::fs::remove_file(&default_custom)?;
+    }
+
+    // Trigger deploy so Rime picks up the changes
+    if let Err(e) = crate::rime::deployer::deploy() {
+        eprintln!("Warning: deploy after reset failed: {}", e);
+    }
+
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+pub struct PendingDelete {
+    pub delete_type: String, // "theme", "schema", "model"
+    pub identifier: String,  // theme name, schema file name, or model filename
+}
+
+/// Minimum interval between deploy operations (2 seconds) to prevent
+/// rapid repeated deploys that could overwhelm the input method process.
+static LAST_DEPLOY: Mutex<Option<Instant>> = Mutex::new(None);
+const DEPLOY_THROTTLE_SECS: u64 = 2;
+
+pub fn deploy(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeError> {
+    // Rate limiting: prevent rapid repeated deploys
+    {
+        let mut last = LAST_DEPLOY.lock();
+        if let Some(t) = *last {
+            if t.elapsed().as_secs() < DEPLOY_THROTTLE_SECS {
+                return Err(RimeError::RateLimited(format!(
+                    "操作过于频繁，请 {} 秒后再试",
+                    DEPLOY_THROTTLE_SECS
+                )));
+            }
+        }
+        *last = Some(Instant::now());
+    }
+
+    deploy_blocking(pending_deletes)
+}
+
+fn deploy_blocking(pending_deletes: Option<Vec<PendingDelete>>) -> Result<(), RimeError> {
+    // Determine if any model deletion is planned
+    let has_model_delete = pending_deletes
+        .as_ref()
+        .is_some_and(|deletes| deletes.iter().any(|d| d.delete_type == "model"));
+
+    // Backup before deploy: include models only if model deletion is planned
+    if let Err(e) = super::backup::create_deploy_backup(has_model_delete) {
+        eprintln!("Warning: deploy backup failed: {}", e);
+    }
+
+    // Execute pending deletes after backup
+    if let Some(deletes) = pending_deletes {
+        let cfg = RimeConfig::detect();
+        for delete in &deletes {
+            // Validate identifier to prevent path traversal (aligned with validate_safe_path)
+            // Defense in depth: explicitly check control chars + call validate_safe_path
+            if delete.identifier.contains('/')
+                || delete.identifier.contains('\\')
+                || delete.identifier.contains('\0')
+                || delete.identifier.contains('\n')
+                || delete.identifier.contains('\r')
+                || delete.identifier.contains('\t')
+                || crate::rime::utils::validate_safe_path(&delete.identifier).is_err()
+            {
+                eprintln!(
+                    "Warning: skipping delete with invalid identifier: {}",
+                    delete.identifier
+                );
+                continue;
+            }
+            match delete.delete_type.as_str() {
+                "theme" => {
+                    // Remove theme from squirrel.custom.yaml
+                    if let Err(e) = super::style::delete_color_scheme(delete.identifier.clone()) {
+                        eprintln!(
+                            "Warning: failed to delete color scheme '{}': {}",
+                            delete.identifier, e
+                        );
+                    }
+                }
+                "schema" => {
+                    // Delete schema file from user directory
+                    let file_path = cfg.user_dir.join(&delete.identifier);
+                    if file_path.exists() {
+                        if let Err(e) = std::fs::remove_file(&file_path) {
+                            eprintln!(
+                                "Warning: failed to delete schema {}: {}",
+                                delete.identifier, e
+                            );
+                        }
+                    }
+                    // Also remove from schema_list in default.custom.yaml
+                    if let Err(e) = remove_schema_from_list(&cfg, &delete.identifier) {
+                        eprintln!(
+                            "Warning: failed to remove schema '{}': {}",
+                            delete.identifier, e
+                        );
+                    }
+                }
+                "model" => {
+                    // Delete grammar model file from user directory
+                    let file_path = cfg.user_dir.join(&delete.identifier);
+                    if file_path.exists() {
+                        if let Err(e) = std::fs::remove_file(&file_path) {
+                            eprintln!(
+                                "Warning: failed to delete model {}: {}",
+                                delete.identifier, e
+                            );
+                        }
+                    }
+                }
+                _ => {
+                    eprintln!("Warning: unknown delete type: {}", delete.delete_type);
+                }
+            }
+        }
+    }
+
+    crate::rime::deployer::deploy()?;
+    Ok(())
+}
+
+fn remove_schema_from_list(cfg: &RimeConfig, schema_filename: &str) -> Result<(), RimeError> {
+    // Extract schema_id from filename (e.g., "my_schema.schema.yaml" -> "my_schema")
+    let schema_id = schema_filename
+        .strip_suffix(".schema.yaml")
+        .or_else(|| schema_filename.strip_suffix(".schema.yml"))
+        .unwrap_or(schema_filename);
+
+    cfg.save_patch(&cfg.default_custom_path(), |patch| {
+        if let Some(schema_list) = patch.get_mut(Value::String("schema_list".into())) {
+            if let Some(list) = schema_list.as_sequence_mut() {
+                list.retain(|item| {
+                    if let Some(map) = item.as_mapping() {
+                        let id = map
+                            .get(Value::String("schema".into()))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        id != schema_id
+                    } else {
+                        true
+                    }
+                });
+            }
+        }
+        Ok(())
+    })?;
+    Ok(())
+}
