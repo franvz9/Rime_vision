@@ -1,0 +1,6 @@
+# 本项目固定 Rust 1.100：gpui-pre（gpui-kit 0.10 依赖）使用了
+# Option/Result::map_or_default（issue #138099，2026 年内 stable），
+# 本机默认 stable 1.95 尚未包含，故项目级固定到最新 stable。
+# 仅对本项目目录生效，不影响机器默认工具链。
+[toolchain]
+channel = "1.100"

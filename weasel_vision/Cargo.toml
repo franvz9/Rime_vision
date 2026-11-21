@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crates/rime-core", "crates/weasel-gpui", "src-tauri"]
+
+# 说明：gpui-pre 0.3.12（gpui-kit 0.10 依赖）使用 unstable `map_or_default`，
+# 本机默认 stable 1.95 编译不过；crates.io 禁同源 patch、vendor 改 pin 不可行，
+# 最终方案见 rust-toolchain.toml——项目级固定 Rust 1.100（仅本目录生效）。
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

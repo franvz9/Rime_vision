@@ -1,0 +1,15 @@
+[package]
+name = "weasel-gpui"
+version = "0.4.0"
+description = "WeaselVision GPUI 前端（Rime 配置工具原生 UI）"
+authors = ["franvz9"]
+edition = "2021"
+
+[[bin]]
+name = "weasel-gpui"
+path = "src/main.rs"
+
+[dependencies]
+rime-core = { path = "../rime-core" }
+gpui-kit = "0.10"
+rfd = "0.15"
