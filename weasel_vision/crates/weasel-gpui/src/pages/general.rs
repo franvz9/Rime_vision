@@ -4,17 +4,15 @@
 //! 每段独立保存，保存成功后节内显示「已保存」2 秒。
 
 use gpui_kit::component::{
-    ActiveTheme,
-    scroll::ScrollableElement as _,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
     form::{Field, Form},
+    h_flex,
     input::{Input, InputEvent, InputState},
+    scroll::ScrollableElement as _,
     select::{Select, SelectEvent, SelectState},
-    IndexPath,
     switch::Switch,
-    WindowExt as _,
-    h_flex, v_flex,
+    v_flex, ActiveTheme, IndexPath, WindowExt as _,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -234,15 +232,10 @@ impl GeneralPage {
             Ok(()) => {
                 self.show_saved_switcher = true;
                 cx.notify();
-                Self::clear_saved_after_delay(
-                    window,
-                    cx,
-                    cx.weak_entity(),
-                    |this, cx| {
-                        this.show_saved_switcher = false;
-                        cx.notify();
-                    },
-                );
+                Self::clear_saved_after_delay(window, cx, cx.weak_entity(), |this, cx| {
+                    this.show_saved_switcher = false;
+                    cx.notify();
+                });
             }
             Err(e) => window.push_notification(format!("保存失败：{}", e), cx),
         }
@@ -255,15 +248,10 @@ impl GeneralPage {
             Ok(()) => {
                 self.show_saved_ascii = true;
                 cx.notify();
-                Self::clear_saved_after_delay(
-                    window,
-                    cx,
-                    cx.weak_entity(),
-                    |this, cx| {
-                        this.show_saved_ascii = false;
-                        cx.notify();
-                    },
-                );
+                Self::clear_saved_after_delay(window, cx, cx.weak_entity(), |this, cx| {
+                    this.show_saved_ascii = false;
+                    cx.notify();
+                });
             }
             Err(e) => window.push_notification(format!("保存失败：{}", e), cx),
         }
@@ -300,51 +288,53 @@ impl Render for GeneralPage {
         let cx_theme = cx.theme();
         let _danger = cx_theme.danger;
 
-        let switcher_body = Form::horizontal()
-            .label_width(px(170.))
-            .child(
-                Field::new()
-                    .label("切换标题")
-                    .description("切出输入方案菜单时显示的标题文字")
-                    .child(Input::new(&self.caption_input).w(px(320.))),
-            )
-            .child(
-                Field::new()
-                    .label("快捷键")
-                    .description("多个快捷键用英文逗号分隔")
-                    .child(
-                        v_flex()
-                            .gap_1()
-                            .child(Input::new(&self.hotkeys_input).w(px(320.)))
-                            .child(hint(cx, format!("按键显示：{}", format_key_display(&self.hotkeys)))),
-                    ),
-            )
-            .child(
-                Field::new()
-                    .label("折叠选项")
-                    .description("菜单中折叠选择列表选项")
-                    .child(
-                        Checkbox::new("fold")
-                            .checked(self.fold_options)
-                            .on_click(cx.listener(|this, checked: &bool, _, cx| {
+        let switcher_body =
+            Form::horizontal()
+                .label_width(px(170.))
+                .child(
+                    Field::new()
+                        .label("切换标题")
+                        .description("切出输入方案菜单时显示的标题文字")
+                        .child(Input::new(&self.caption_input).w(px(320.))),
+                )
+                .child(
+                    Field::new()
+                        .label("快捷键")
+                        .description("多个快捷键用英文逗号分隔")
+                        .child(
+                            v_flex()
+                                .gap_1()
+                                .child(Input::new(&self.hotkeys_input).w(px(320.)))
+                                .child(hint(
+                                    cx,
+                                    format!("按键显示：{}", format_key_display(&self.hotkeys)),
+                                )),
+                        ),
+                )
+                .child(
+                    Field::new()
+                        .label("折叠选项")
+                        .description("菜单中折叠选择列表选项")
+                        .child(Checkbox::new("fold").checked(self.fold_options).on_click(
+                            cx.listener(|this, checked: &bool, _, cx| {
                                 this.fold_options = *checked;
                                 cx.notify();
-                            })),
-                    ),
-            )
-            .child(
-                Field::new()
-                    .label("缩写选项")
-                    .description("菜单中缩写长名称选项")
-                    .child(
-                        Checkbox::new("abbreviate")
-                            .checked(self.abbreviate_options)
-                            .on_click(cx.listener(|this, checked: &bool, _, cx| {
-                                this.abbreviate_options = *checked;
-                                cx.notify();
-                            })),
-                    ),
-            );
+                            }),
+                        )),
+                )
+                .child(
+                    Field::new()
+                        .label("缩写选项")
+                        .description("菜单中缩写长名称选项")
+                        .child(
+                            Checkbox::new("abbreviate")
+                                .checked(self.abbreviate_options)
+                                .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                                    this.abbreviate_options = *checked;
+                                    cx.notify();
+                                })),
+                        ),
+                );
 
         let ascii_body = Form::horizontal()
             .label_width(px(170.))
@@ -377,54 +367,48 @@ impl Render for GeneralPage {
                     .child(Select::new(&self.shift_right_select).w(px(320.))),
             );
 
-        v_flex()
-            .size_full()
-            .overflow_y_scrollbar()
-            .child(
-                v_flex()
-                    .max_w(px(720.))
-                    .gap_4()
-                    .child(deploy_notice(cx))
-                    .child(section_card(
-                        cx,
-                        "方案切换器 (switcher)",
-                        Some(
-                            h_flex()
-                                .gap_2()
-                                .items_center()
-                                .child(saved_badge(self.show_saved_switcher))
-                                .child(
-                                    Button::new("save-switcher")
-                                        .primary()
-                                        .label("保存")
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.save_switcher(window, cx);
-                                        })),
-                                )
-                                .into_any_element(),
-                        ),
-                        switcher_body.into_any_element(),
-                    ))
-                    .child(section_card(
-                        cx,
-                        "中英文切换 (ascii_composer)",
-                        Some(
-                            h_flex()
-                                .gap_2()
-                                .items_center()
-                                .child(saved_badge(self.show_saved_ascii))
-                                .child(
-                                    Button::new("save-ascii")
-                                        .primary()
-                                        .label("保存")
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.save_ascii(window, cx);
-                                        })),
-                                )
-                                .into_any_element(),
-                        ),
-                        ascii_body.into_any_element(),
-                    )),
-            )
+        v_flex().size_full().overflow_y_scrollbar().child(
+            v_flex()
+                .max_w(px(720.))
+                .gap_4()
+                .child(deploy_notice(cx))
+                .child(section_card(
+                    cx,
+                    "方案切换器 (switcher)",
+                    Some(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(saved_badge(self.show_saved_switcher))
+                            .child(
+                                Button::new("save-switcher")
+                                    .primary()
+                                    .label("保存")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.save_switcher(window, cx);
+                                    })),
+                            )
+                            .into_any_element(),
+                    ),
+                    switcher_body.into_any_element(),
+                ))
+                .child(section_card(
+                    cx,
+                    "中英文切换 (ascii_composer)",
+                    Some(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(saved_badge(self.show_saved_ascii))
+                            .child(Button::new("save-ascii").primary().label("保存").on_click(
+                                cx.listener(|this, _, window, cx| {
+                                    this.save_ascii(window, cx);
+                                }),
+                            ))
+                            .into_any_element(),
+                    ),
+                    ascii_body.into_any_element(),
+                )),
+        )
     }
 }

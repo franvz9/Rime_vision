@@ -1,17 +1,16 @@
 //! 同步管理页（对应 SyncManager.vue）。
 //!
 //! 状态卡 + 立即同步（后台线程执行）+ 修改设置模态（含目录选择对话框）+ 设备列表。
+use gpui_kit::assets::IconName;
 use gpui_kit::component::{
-    ActiveTheme,
-    scroll::ScrollableElement as _,
     button::{Button, ButtonVariants as _},
-    Disableable as _,
     dialog::DialogButtonProps,
     form::{Field, Form},
+    h_flex,
     input::{Input, InputState},
-    WindowExt as _, h_flex, v_flex,
+    scroll::ScrollableElement as _,
+    v_flex, ActiveTheme, Disableable as _, WindowExt as _,
 };
-use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use rime_core::service::sync::{self, SyncResult, SyncSettings, SyncStatus, SyncedDevice};
@@ -206,9 +205,7 @@ fn pick_sync_dir(dir_input: &Entity<InputState>, window: &mut Window, cx: &mut A
     let handle = window.window_handle();
     cx.spawn(async move |cx| {
         let picked = cx
-            .background_spawn(async move {
-                rfd::AsyncFileDialog::new().pick_folder().await
-            })
+            .background_spawn(async move { rfd::AsyncFileDialog::new().pick_folder().await })
             .await;
         let Some(file) = picked else { return };
         let path = file.path().display().to_string();
@@ -235,7 +232,11 @@ impl Render for SyncPage {
             .unwrap_or_else(|| "从未同步".to_string());
 
         let result_card = self.last_result.clone().map(|r| {
-            let title = if r.success { "同步完成" } else { "同步部分完成" };
+            let title = if r.success {
+                "同步完成"
+            } else {
+                "同步部分完成"
+            };
             v_flex()
                 .gap_2()
                 .p_4()
@@ -244,14 +245,24 @@ impl Render for SyncPage {
                 .border_color(border)
                 .child(div().font_weight(FontWeight::MEDIUM).child(title))
                 .when(!r.uploaded.is_empty(), |el| {
-                    el.child(div().text_sm().child(format!("上传：{}", r.uploaded.join("、"))))
+                    el.child(
+                        div()
+                            .text_sm()
+                            .child(format!("上传：{}", r.uploaded.join("、"))),
+                    )
                 })
                 .when(!r.downloaded.is_empty(), |el| {
-                    el.child(div().text_sm().child(format!("下载：{}", r.downloaded.join("、"))))
+                    el.child(
+                        div()
+                            .text_sm()
+                            .child(format!("下载：{}", r.downloaded.join("、"))),
+                    )
                 })
-                .children(r.errors.iter().map(|e| {
-                    div().text_sm().text_color(cx_theme.danger).child(e.clone())
-                }))
+                .children(
+                    r.errors
+                        .iter()
+                        .map(|e| div().text_sm().text_color(cx_theme.danger).child(e.clone())),
+                )
                 .into_any_element()
         });
 
@@ -291,7 +302,8 @@ impl Render for SyncPage {
         };
 
         v_flex()
-            .size_full().overflow_y_scrollbar()
+            .size_full()
+            .overflow_y_scrollbar()
             .gap_4()
             .max_w(px(600.))
             .child(
@@ -303,7 +315,10 @@ impl Render for SyncPage {
                     .border_color(border)
                     .child(status_row(
                         "设备标识",
-                        div().text_sm().child(self.status.current_id.clone()).into_any_element(),
+                        div()
+                            .text_sm()
+                            .child(self.status.current_id.clone())
+                            .into_any_element(),
                     ))
                     .child(status_row(
                         "同步目录",
@@ -317,7 +332,9 @@ impl Render for SyncPage {
                                     .cursor_pointer()
                                     .hover(|s| s.underline())
                                     .when_some(self.settings.sync_dir.clone(), |el, d| {
-                                        el.text_color(cx_theme.primary).font_weight(FontWeight::MEDIUM).child(d)
+                                        el.text_color(cx_theme.primary)
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .child(d)
                                     })
                                     .when(self.settings.sync_dir.is_none(), |el| {
                                         el.text_color(muted).child("未配置")
@@ -348,10 +365,14 @@ impl Render for SyncPage {
                             .py_0p5()
                             .rounded_md()
                             .when(ready, |el| {
-                                el.bg(cx_theme.accent).text_color(cx_theme.accent_foreground).child("已配置")
+                                el.bg(cx_theme.accent)
+                                    .text_color(cx_theme.accent_foreground)
+                                    .child("已配置")
                             })
                             .when(!ready, |el| {
-                                el.bg(cx_theme.danger).text_color(cx_theme.danger_foreground).child("未就绪")
+                                el.bg(cx_theme.danger)
+                                    .text_color(cx_theme.danger_foreground)
+                                    .child("未就绪")
                             })
                             .into_any_element(),
                     ))
@@ -372,7 +393,11 @@ impl Render for SyncPage {
                                 Button::new("sync-run")
                                     .primary()
                                     .disabled(self.syncing || !ready)
-                                    .label(if self.syncing { "同步中…" } else { "立即同步" })
+                                    .label(if self.syncing {
+                                        "同步中…"
+                                    } else {
+                                        "立即同步"
+                                    })
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.run_sync(window, cx);
                                     })),
@@ -397,7 +422,12 @@ fn section_card_devices(cx: &App, rows: Vec<AnyElement>) -> AnyElement {
                 .child("已同步设备"),
         )
         .when(rows.is_empty(), |el| {
-            el.child(div().text_sm().text_color(cx.theme().muted_foreground).child("暂无同步设备记录"))
+            el.child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("暂无同步设备记录"),
+            )
         })
         .children(rows)
         .into_any_element()

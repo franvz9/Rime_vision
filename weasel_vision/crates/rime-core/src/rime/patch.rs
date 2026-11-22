@@ -264,7 +264,9 @@ mod tests {
             .and_then(|v| v.as_mapping())
             .unwrap();
         assert_eq!(
-            half_shape.get(Value::String("/".into())).and_then(|v| v.as_str()),
+            half_shape
+                .get(Value::String("/".into()))
+                .and_then(|v| v.as_str()),
             Some("/")
         );
     }

@@ -44,7 +44,10 @@ pub fn get_page_size_detail(scope: Option<String>) -> Result<PageSizeDetail, Rim
     let custom = cfg.load_yaml(&custom_path)?;
     let is_custom = is_patch_path_custom(&custom, "menu/page_size");
 
-    Ok(PageSizeDetail { page_size, is_custom })
+    Ok(PageSizeDetail {
+        page_size,
+        is_custom,
+    })
 }
 
 pub fn save_page_size(scope: Option<String>, page_size: i64) -> Result<(), RimeError> {
@@ -154,7 +157,10 @@ mod tests {
         .unwrap();
         let detail = get_page_size_detail_inner(&cfg, Some("ps_nd".to_string())).unwrap();
         assert_eq!(detail.page_size, 9);
-        assert!(detail.is_custom, "nested-form menu/page_size 应识别为自定义");
+        assert!(
+            detail.is_custom,
+            "nested-form menu/page_size 应识别为自定义"
+        );
     }
 
     /// 测试用内部封装（避免 Tauri command 的注入依赖）
@@ -179,6 +185,9 @@ mod tests {
         let custom = cfg.load_yaml(&custom_path)?;
         let is_custom = is_patch_path_custom(&custom, "menu/page_size");
 
-        Ok(PageSizeDetail { page_size, is_custom })
+        Ok(PageSizeDetail {
+            page_size,
+            is_custom,
+        })
     }
 }

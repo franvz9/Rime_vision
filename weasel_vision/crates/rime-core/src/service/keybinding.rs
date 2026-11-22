@@ -69,10 +69,7 @@ pub fn get_keybindings(scope: Option<String>) -> Result<Vec<KeyBinding>, RimeErr
     Ok(bindings)
 }
 
-pub fn save_keybindings(
-    scope: Option<String>,
-    bindings: Vec<KeyBinding>,
-) -> Result<(), RimeError> {
+pub fn save_keybindings(scope: Option<String>, bindings: Vec<KeyBinding>) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     let target_path = match scope.as_deref() {
         None => cfg.default_custom_path(),

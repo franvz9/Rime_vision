@@ -1,6 +1,6 @@
 [package]
 name = "weasel-gpui"
-version = "0.4.0"
+version = "0.5.0"
 description = "WeaselVision GPUI 前端（Rime 配置工具原生 UI）"
 authors = ["franvz9"]
 edition = "2021"
@@ -8,6 +8,20 @@ edition = "2021"
 [[bin]]
 name = "weasel-gpui"
 path = "src/main.rs"
+
+# cargo-packager 打包配置（Windows NSIS 安装器；macOS 用手工 .app + hdiutil 流程）
+# CI：cargo install cargo-packager && cargo packager -p weasel-gpui --release --bundles nsis
+[package.metadata.packager]
+name = "WeaselVision"
+product-name = "WeaselVision"
+version = "0.5.0"
+identifier = "com.rime.weasel-vision"
+icons = ["../../assets/icons/icon.ico"]
+out-dir = "bundle"
+
+[package.metadata.packager.nsis]
+languages = ["SimpChinese", "English"]
+display-language-selector = false
 
 [dependencies]
 rime-core = { path = "../rime-core" }

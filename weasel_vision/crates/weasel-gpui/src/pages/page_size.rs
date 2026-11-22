@@ -1,10 +1,9 @@
 //! 候选词数子面板（对应 PageSizeSettings.vue，SchemeProfile 内嵌）。
 use gpui_kit::component::{
-    WindowExt as _,
-    ActiveTheme,
     form::{Field, Form},
+    h_flex,
     input::{Input, InputEvent, InputState},
-    h_flex, v_flex,
+    v_flex, ActiveTheme, WindowExt as _,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -27,26 +26,27 @@ impl PageSizePanel {
             is_custom: false,
             dirty: false,
             input: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("1–20").default_value("5")
+                InputState::new(window, cx)
+                    .placeholder("1–20")
+                    .default_value("5")
             }),
             _subscription: None,
         };
         this.reload(None, window, cx);
         let input = this.input.clone();
-        this._subscription = Some(cx.subscribe_in(
-            &input,
-            window,
-            |this, input, ev: &InputEvent, _, cx| {
-                if let InputEvent::Change = ev {
-                    let raw = input.read(cx).value().to_string();
-                    this.dirty = true;
-                    if let Ok(v) = raw.trim().parse::<i64>() {
-                        this.page_size = v.clamp(1, 20);
+        this._subscription =
+            Some(
+                cx.subscribe_in(&input, window, |this, input, ev: &InputEvent, _, cx| {
+                    if let InputEvent::Change = ev {
+                        let raw = input.read(cx).value().to_string();
+                        this.dirty = true;
+                        if let Ok(v) = raw.trim().parse::<i64>() {
+                            this.page_size = v.clamp(1, 20);
+                        }
+                        cx.notify();
                     }
-                    cx.notify();
-                }
-            },
-        ));
+                }),
+            );
         this
     }
 
@@ -57,7 +57,8 @@ impl PageSizePanel {
                 self.page_size = d.page_size;
                 self.is_custom = d.is_custom;
                 let v = d.page_size.to_string();
-                self.input.update(cx, |s, cx| s.set_value(v.as_str(), window, cx));
+                self.input
+                    .update(cx, |s, cx| s.set_value(v.as_str(), window, cx));
             }
             Err(e) => eprintln!("Warning: load page size failed: {}", e),
         }
@@ -82,30 +83,28 @@ impl Render for PageSizePanel {
         let badge_bg = cx_theme.secondary;
         let badge_fg = cx_theme.secondary_foreground;
 
-        let body = Form::horizontal()
-            .label_width(px(120.))
-            .child(
-                Field::new()
-                    .label("候选词数")
-                    .description("候选菜单每页显示的候选数量（1–20）")
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(Input::new(&self.input).w(px(100.)))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .px_2()
-                                    .py_0p5()
-                                    .rounded_md()
-                                    .bg(badge_bg)
-                                    .text_color(badge_fg)
-                                    .when(self.is_custom || self.dirty, |el| el.child("自定义"))
-                                    .when(!(self.is_custom || self.dirty), |el| el.child("默认")),
-                            ),
-                    ),
-            );
+        let body = Form::horizontal().label_width(px(120.)).child(
+            Field::new()
+                .label("候选词数")
+                .description("候选菜单每页显示的候选数量（1–20）")
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(Input::new(&self.input).w(px(100.)))
+                        .child(
+                            div()
+                                .text_xs()
+                                .px_2()
+                                .py_0p5()
+                                .rounded_md()
+                                .bg(badge_bg)
+                                .text_color(badge_fg)
+                                .when(self.is_custom || self.dirty, |el| el.child("自定义"))
+                                .when(!(self.is_custom || self.dirty), |el| el.child("默认")),
+                        ),
+                ),
+        );
 
         v_flex().gap_3().child(body)
     }

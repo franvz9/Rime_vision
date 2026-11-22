@@ -32,17 +32,8 @@ build/
 *.zip
 *.exe
 
-# Swift build artifacts
-RimeVision/.build/
-RimeVision/*.d
-RimeVision/*.o
-RimeVision/*.swiftdeps
-RimeVision/*.swiftdeps~
-RimeVision/.DS_Store
-archive/
 
 # Local Rime configs (not to be pushed)
-squirrel/
 rime_setting/
 
 # Docs / Design (not pushed)
@@ -53,15 +44,12 @@ docs/superpowers/
 weasel_vision/DESIGN.md
 weasel_vision/docs/
 weasel_vision/weasel/
-weasel_vision/app/
 
 # Tests (not pushed)
 **/__tests__/
-**/src-tauri/tests/
 
 # Other agent-generated configs
 .codegraph/
-.github/
 .reasonix/
 reasonix.toml
 

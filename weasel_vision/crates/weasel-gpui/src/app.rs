@@ -5,13 +5,14 @@
 //! - 「待删除」项由三个管理页（方案/模型/主题）汇聚到顶栏，点部署统一删除
 //! - 部署在后台线程执行，成功后清空待删除并通知相关页刷新
 
+use gpui_kit::canvas;
 use gpui_kit::component::{
     button::{Button, ButtonVariants as _},
+    h_flex,
     sidebar::{Sidebar, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem},
-    ActiveTheme, Disableable as _, IconName, WindowExt as _, v_flex, h_flex,
+    v_flex, ActiveTheme, Disableable as _, IconName, WindowExt as _,
 };
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::canvas;
 use gpui_kit::*;
 use rime_core::service::settings::PendingDelete;
 
@@ -46,7 +47,10 @@ impl WeaselApp {
             deploying: false,
         };
         if !cx.has_global::<SidebarResizeState>() {
-            cx.set_global(SidebarResizeState { width: SIDEBAR_DEFAULT_W, ..Default::default() });
+            cx.set_global(SidebarResizeState {
+                width: SIDEBAR_DEFAULT_W,
+                ..Default::default()
+            });
         }
         this.ensure_page(Page::General, window, cx);
         this
@@ -108,9 +112,9 @@ impl WeaselApp {
 
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
-                .background_spawn(async move {
-                    rime_core::service::settings::deploy(Some(pending))
-                })
+                .background_spawn(
+                    async move { rime_core::service::settings::deploy(Some(pending)) },
+                )
                 .await;
             this.update_in(cx, |this, window, cx| {
                 this.deploying = false;
@@ -264,32 +268,38 @@ impl Render for WeaselApp {
                             .px_4()
                             .border_b_1()
                             .border_color(cx.theme().border)
-                            .child(div().font_weight(FontWeight::MEDIUM).text_lg().child(page.title()))
+                            .child(
+                                div()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_lg()
+                                    .child(page.title()),
+                            )
                             .child(
                                 h_flex()
                                     .gap_3()
                                     .items_center()
                                     .when(!pending.is_empty(), |bar| {
-                                        let labels: Vec<String> = pending
-                                            .iter()
-                                            .map(|p| p.identifier.clone())
-                                            .collect();
+                                        let labels: Vec<String> =
+                                            pending.iter().map(|p| p.identifier.clone()).collect();
                                         bar.child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(cx.theme().danger)
-                                                .child(format!(
+                                            div().text_sm().text_color(cx.theme().danger).child(
+                                                format!(
                                                     "{} 项待删除：{}",
                                                     pending.len(),
                                                     labels.join("、")
-                                                )),
+                                                ),
+                                            ),
                                         )
                                     })
                                     .child(
                                         Button::new("deploy")
                                             .primary()
                                             .disabled(deploying)
-                                            .label(if deploying { "部署中…" } else { "重新部署" })
+                                            .label(if deploying {
+                                                "部署中…"
+                                            } else {
+                                                "重新部署"
+                                            })
                                             .on_click(cx.listener(|this, _, window, cx| {
                                                 this.deploy(window, cx);
                                             })),

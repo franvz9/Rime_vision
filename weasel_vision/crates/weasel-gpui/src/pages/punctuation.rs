@@ -1,12 +1,12 @@
 //! 标点符号子面板（对应 PunctuationSettings.vue，SchemeProfile 内嵌）。
 use gpui_kit::component::{
-    ActiveTheme,
     button::{Button, ButtonVariants as _},
     dialog::DialogButtonProps,
+    h_flex,
     input::{Input, InputState},
     radio::{Radio, RadioGroup},
     tab::{Tab, TabBar},
-    WindowExt as _, h_flex, v_flex,
+    v_flex, ActiveTheme, WindowExt as _,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -45,8 +45,16 @@ impl PunctPanel {
         self.scope = scope.clone();
         match punctuation::get_punctuation_profile(scope) {
             Ok(p) => {
-                self.half = p.half_shape.into_iter().filter(|r| !r.key.is_empty()).collect();
-                self.full = p.full_shape.into_iter().filter(|r| !r.key.is_empty()).collect();
+                self.half = p
+                    .half_shape
+                    .into_iter()
+                    .filter(|r| !r.key.is_empty())
+                    .collect();
+                self.full = p
+                    .full_shape
+                    .into_iter()
+                    .filter(|r| !r.key.is_empty())
+                    .collect();
                 self.custom_keys = p.custom_keys.into_iter().collect();
             }
             Err(e) => eprintln!("Warning: load punctuation failed: {}", e),
@@ -111,8 +119,15 @@ impl PunctPanel {
     }
 
     /// 打开编辑/新增模态框。
-    fn open_editor(&mut self, edit_key: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
-        let existing = edit_key.as_ref().and_then(|k| self.rules().iter().find(|r| &r.key == k));
+    fn open_editor(
+        &mut self,
+        edit_key: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let existing = edit_key
+            .as_ref()
+            .and_then(|k| self.rules().iter().find(|r| &r.key == k));
         let (kind, default_value) = match existing {
             Some(r) if !r.pair.is_empty() => (1u8, r.pair.join(",")),
             Some(r) if !r.list.is_empty() => (2u8, r.list.join(",")),
@@ -157,25 +172,23 @@ impl PunctPanel {
                                 .child(Input::new(&key_input)),
                         )
                         .child(
-                            v_flex()
-                                .gap_1()
-                                .child(div().text_sm().child("类型"))
-                                .child(
-                                    RadioGroup::horizontal("punct-kind")
-                                        .child(Radio::new("kind-commit").label("直接上屏"))
-                                        .child(Radio::new("kind-pair").label("配对输入"))
-                                        .child(Radio::new("kind-list").label("候选列表"))
-                                        .selected_index(Some(self_kind.get() as usize))
-                                        .on_click({
-                                            let weak = weak.clone();
-                                            move |ix: &usize, _, cx| {
-                                                weak.update(cx, |this, _| {
-                                                    this.edit_kind.set(*ix as u8);
-                                                }).ok();
-                                                cx.refresh_windows();
-                                            }
-                                        })
-                                ),
+                            v_flex().gap_1().child(div().text_sm().child("类型")).child(
+                                RadioGroup::horizontal("punct-kind")
+                                    .child(Radio::new("kind-commit").label("直接上屏"))
+                                    .child(Radio::new("kind-pair").label("配对输入"))
+                                    .child(Radio::new("kind-list").label("候选列表"))
+                                    .selected_index(Some(self_kind.get() as usize))
+                                    .on_click({
+                                        let weak = weak.clone();
+                                        move |ix: &usize, _, cx| {
+                                            weak.update(cx, |this, _| {
+                                                this.edit_kind.set(*ix as u8);
+                                            })
+                                            .ok();
+                                            cx.refresh_windows();
+                                        }
+                                    }),
+                            ),
                         )
                         .child(
                             v_flex()
@@ -184,20 +197,19 @@ impl PunctPanel {
                                 .child(Input::new(&value_input)),
                         ),
                 )
-                .button_props(
-                    DialogButtonProps::default()
-                        .ok_text("保存")
-                        .on_ok({
-                            let weak = weak.clone();
-                            let key_input = key_input.clone();
-                            let value_input = value_input.clone();
-                            let editing_key = editing_key.clone();
-                            move |_, _, cx| {
-                            let key = key_input.read(cx).value().to_string();
-                            let value = value_input.read(cx).value().to_string();
-                            let is_half = is_half;
-                            let editing_key = editing_key.clone();
-                            let _ = weak.update(cx, |this: &mut PunctPanel, cx: &mut Context<PunctPanel>| {
+                .button_props(DialogButtonProps::default().ok_text("保存").on_ok({
+                    let weak = weak.clone();
+                    let key_input = key_input.clone();
+                    let value_input = value_input.clone();
+                    let editing_key = editing_key.clone();
+                    move |_, _, cx| {
+                        let key = key_input.read(cx).value().to_string();
+                        let value = value_input.read(cx).value().to_string();
+                        let is_half = is_half;
+                        let editing_key = editing_key.clone();
+                        let _ = weak.update(
+                            cx,
+                            |this: &mut PunctPanel, cx: &mut Context<PunctPanel>| {
                                 let kind = this.edit_kind.get();
                                 if key.is_empty() {
                                     return;
@@ -206,14 +218,22 @@ impl PunctPanel {
                                     1 => PunctRule {
                                         key: key.clone(),
                                         commit: String::new(),
-                                        pair: value.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+                                        pair: value
+                                            .split(',')
+                                            .map(|s| s.trim().to_string())
+                                            .filter(|s| !s.is_empty())
+                                            .collect(),
                                         list: Vec::new(),
                                     },
                                     2 => PunctRule {
                                         key: key.clone(),
                                         commit: String::new(),
                                         pair: Vec::new(),
-                                        list: value.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+                                        list: value
+                                            .split(',')
+                                            .map(|s| s.trim().to_string())
+                                            .filter(|s| !s.is_empty())
+                                            .collect(),
                                     },
                                     _ => PunctRule {
                                         key: key.clone(),
@@ -235,11 +255,11 @@ impl PunctPanel {
                                 }
                                 this.upsert_rule(rule);
                                 cx.notify();
-                            });
-                            true
-                            }
-                        }),
-                )
+                            },
+                        );
+                        true
+                    }
+                }))
                 .overlay_closable(true)
         });
     }
@@ -284,10 +304,7 @@ impl Render for PunctPanel {
                         this.active_half = *ix == 0;
                         cx.notify();
                     }))
-                    .children([
-                        Tab::new().label("半角标点"),
-                        Tab::new().label("全角标点"),
-                    ]),
+                    .children([Tab::new().label("半角标点"), Tab::new().label("全角标点")]),
             )
             .child(
                 Button::new("punct-add")
@@ -304,7 +321,8 @@ impl Render for PunctPanel {
             .cloned()
             .enumerate()
             .map(|(ix, r)| {
-                let is_custom = self.custom_keys.contains(&r.key) || self.dirty_keys.contains(&r.key);
+                let is_custom =
+                    self.custom_keys.contains(&r.key) || self.dirty_keys.contains(&r.key);
                 let key_click = r.key.clone();
                 let key_del = r.key.clone();
                 h_flex()
@@ -322,7 +340,13 @@ impl Render for PunctPanel {
                     }))
                     .child(div().w(px(60.)).child(r.key.clone()))
                     .child(div().flex_1().child(rule_value(&r)))
-                    .child(div().w(px(50.)).text_sm().text_color(muted).child(rule_kind(&r)))
+                    .child(
+                        div()
+                            .w(px(50.))
+                            .text_sm()
+                            .text_color(muted)
+                            .child(rule_kind(&r)),
+                    )
                     .child(
                         div()
                             .text_xs()
@@ -350,26 +374,21 @@ impl Render for PunctPanel {
             })
             .collect();
 
-        v_flex()
-            .flex_1()
-            .min_h_0()
-            .gap_3()
-            .child(header)
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(border)
-                    .overflow_hidden()
-                    .child(
-                        div()
-                            .id("punct-list")
-                            .h_full()
-                            .overflow_scroll()
-                            .child(div().min_w(px(700.)).children(rows)),
-                    ),
-            )
+        v_flex().flex_1().min_h_0().gap_3().child(header).child(
+            div()
+                .flex_1()
+                .min_h_0()
+                .rounded_md()
+                .border_1()
+                .border_color(border)
+                .overflow_hidden()
+                .child(
+                    div()
+                        .id("punct-list")
+                        .h_full()
+                        .overflow_scroll()
+                        .child(div().min_w(px(700.)).children(rows)),
+                ),
+        )
     }
 }

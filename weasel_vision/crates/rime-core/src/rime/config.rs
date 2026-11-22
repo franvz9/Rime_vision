@@ -77,7 +77,7 @@ impl RimeConfig {
     fn detect_inner() -> Self {
         #[cfg(target_os = "macos")]
         {
-            return Self {
+            Self {
                 user_dir: dirs::home_dir()
                     .unwrap_or_else(|| {
                         std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
@@ -88,7 +88,7 @@ impl RimeConfig {
                 style_custom: "squirrel.custom.yaml".into(),
                 default_yaml: "default.yaml".into(),
                 default_custom: "default.custom.yaml".into(),
-            };
+            }
         }
 
         #[cfg(target_os = "windows")]
@@ -203,7 +203,10 @@ impl RimeConfig {
     /// Merge <schema>.schema.yaml with <schema>.custom.yaml patch.
     /// Missing schema file -> empty mapping (so callers can distinguish
     /// "no per-schema config" from "error").
-    pub fn load_schema_effective(&self, schema_id: &str) -> Result<Value, crate::rime::error::RimeError> {
+    pub fn load_schema_effective(
+        &self,
+        schema_id: &str,
+    ) -> Result<Value, crate::rime::error::RimeError> {
         let Some(schema_path) = self.schema_path(schema_id) else {
             return Err(crate::rime::error::RimeError::InvalidPath(format!(
                 "Invalid schema_id: {}",
@@ -263,8 +266,8 @@ impl RimeConfig {
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
                     if let Some(preset_name) = preset_name {
-                        if let Some(preset_section) = self
-                            .load_preset_section(&preset_name, &key, &mut preset_cache)?
+                        if let Some(preset_section) =
+                            self.load_preset_section(&preset_name, &key, &mut preset_cache)?
                         {
                             if let Some(pm) = preset_section.as_mapping() {
                                 let mut merged = merge_preset_section(pm, &section, true);
@@ -421,7 +424,10 @@ impl RimeConfig {
         root.insert(Value::String("patch".into()), Value::Mapping(patch_map));
 
         let content = serde_yaml::to_string(&root)?;
-        eprintln!("WeaselVision: YAML serialized successfully, length={}", content.len());
+        eprintln!(
+            "WeaselVision: YAML serialized successfully, length={}",
+            content.len()
+        );
         backup::write_if_changed(&content, custom_path)?;
         eprintln!("WeaselVision: File written successfully");
         Ok(())
@@ -445,7 +451,10 @@ fn merge_preset_section(
     for (k, v) in override_map {
         match (result.get(k), v) {
             (Some(Value::Mapping(pm)), Value::Mapping(om)) => {
-                result.insert(k.clone(), Value::Mapping(merge_preset_section(pm, om, false)));
+                result.insert(
+                    k.clone(),
+                    Value::Mapping(merge_preset_section(pm, om, false)),
+                );
             }
             (Some(Value::Sequence(ps)), Value::Sequence(os)) if top => {
                 let mut merged = ps.clone();
@@ -810,16 +819,19 @@ mod tests {
             .unwrap();
         // preset 的键应被解析进来
         assert_eq!(
-            hs.get(serde_yaml::Value::String("!".into())).and_then(|v| v.as_str()),
+            hs.get(serde_yaml::Value::String("!".into()))
+                .and_then(|v| v.as_str()),
             Some("！")
         );
         assert_eq!(
-            hs.get(serde_yaml::Value::String("?".into())).and_then(|v| v.as_str()),
+            hs.get(serde_yaml::Value::String("?".into()))
+                .and_then(|v| v.as_str()),
             Some("？")
         );
         // schema 内联覆盖的键也应保留
         assert_eq!(
-            hs.get(serde_yaml::Value::String("/".into())).and_then(|v| v.as_str()),
+            hs.get(serde_yaml::Value::String("/".into()))
+                .and_then(|v| v.as_str()),
             Some("/")
         );
         // 嵌套 sequence 键：schema 覆盖 preset，而非追加（避免重复）
@@ -828,7 +840,14 @@ mod tests {
             .and_then(|v| v.as_sequence())
             .unwrap();
         assert_eq!(star.len(), 3, "嵌套 sequence 应为覆盖而非追加");
-        assert_eq!(star, &vec![serde_yaml::Value::String("*".into()), serde_yaml::Value::String("×".into()), serde_yaml::Value::String("※".into())]);
+        assert_eq!(
+            star,
+            &vec![
+                serde_yaml::Value::String("*".into()),
+                serde_yaml::Value::String("×".into()),
+                serde_yaml::Value::String("※".into())
+            ]
+        );
         // full_shape 也从 preset 解析
         let fs = punct
             .get(serde_yaml::Value::String("full_shape".into()))

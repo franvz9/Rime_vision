@@ -1,7 +1,7 @@
 //! 跨页面通用小部件：部署提示条、设置区块卡片、表单行辅助。
 
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
 use gpui_kit::component::Icon;
+use gpui_kit::component::{h_flex, ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -16,7 +16,10 @@ pub fn deploy_notice(cx: &App) -> AnyElement {
         .text_sm()
         .bg(cx.theme().warning)
         .text_color(cx.theme().warning_foreground)
-        .child(Icon::new(gpui_kit::assets::IconName::TriangleAlert).with_size(gpui_kit::component::Size::Small))
+        .child(
+            Icon::new(gpui_kit::assets::IconName::TriangleAlert)
+                .with_size(gpui_kit::component::Size::Small),
+        )
         .child("本页配置修改保存后，需要重新部署才能生效")
         .into_any_element()
 }
@@ -39,11 +42,7 @@ pub fn section_card(
                 .justify_between()
                 .items_center()
                 .mb_3()
-                .child(
-                    div()
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(title.into()),
-                )
+                .child(div().font_weight(FontWeight::MEDIUM).child(title.into()))
                 .when_some(header_right, |this, el| this.child(el)),
         )
         .child(body)

@@ -5,12 +5,11 @@
 use std::collections::HashSet;
 
 use gpui_kit::component::{
-    ActiveTheme,
     button::{Button, ButtonVariants as _},
-    Disableable as _,
+    h_flex,
     scroll::ScrollableElement as _,
     switch::Switch,
-    WindowExt as _, h_flex, v_flex,
+    v_flex, ActiveTheme, Disableable as _, WindowExt as _,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -220,55 +219,53 @@ impl Render for SchemaPage {
             .collect();
 
         // 右侧预览
-        let preview: AnyElement = match self.schemas.get(self.preview) {
-            Some(s) => {
-                let is_current = s.schema_id == self.current;
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .gap_2()
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_lg()
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(s.name.clone()),
-                            )
-                            .when(is_current, |el| {
-                                el.child(
-                                    div()
-                                        .text_xs()
-                                        .px_2()
-                                        .py_0p5()
-                                        .rounded_md()
-                                        .bg(green)
-                                        .text_color(gpui_kit::black())
-                                        .child("使用中"),
-                                )
-                            }),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(muted)
-                            .child(format!("ID：{} · 版本：{}", s.schema_id, s.version)),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(muted)
-                            .child(SharedString::from(format!("作者：{}", s.author))),
-                    )
-                    .child(div().text_sm().flex_wrap().child(s.description.clone()))
-                    .when(!s.dependencies.is_empty(), |el| {
-                        el.child(
+        let preview: AnyElement =
+            match self.schemas.get(self.preview) {
+                Some(s) => {
+                    let is_current = s.schema_id == self.current;
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .gap_2()
+                        .child(
                             h_flex()
-                                .gap_1()
-                                .flex_wrap()
-                                .children(s.dependencies.iter().map(|d| {
+                                .gap_2()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_lg()
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child(s.name.clone()),
+                                )
+                                .when(is_current, |el| {
+                                    el.child(
+                                        div()
+                                            .text_xs()
+                                            .px_2()
+                                            .py_0p5()
+                                            .rounded_md()
+                                            .bg(green)
+                                            .text_color(gpui_kit::black())
+                                            .child("使用中"),
+                                    )
+                                }),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(muted)
+                                .child(format!("ID：{} · 版本：{}", s.schema_id, s.version)),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(muted)
+                                .child(SharedString::from(format!("作者：{}", s.author))),
+                        )
+                        .child(div().text_sm().flex_wrap().child(s.description.clone()))
+                        .when(!s.dependencies.is_empty(), |el| {
+                            el.child(h_flex().gap_1().flex_wrap().children(
+                                s.dependencies.iter().map(|d| {
                                     div()
                                         .text_xs()
                                         .px_2()
@@ -277,26 +274,30 @@ impl Render for SchemaPage {
                                         .bg(cx_theme.secondary)
                                         .text_color(cx_theme.secondary_foreground)
                                         .child(d.clone())
+                                }),
+                            ))
+                        })
+                        .child(
+                            Button::new("schema-switch")
+                                .primary()
+                                .disabled(is_current)
+                                .label(if is_current {
+                                    "当前使用中"
+                                } else {
+                                    "切换到此方案"
+                                })
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.switch_schema(window, cx);
                                 })),
                         )
-                    })
-                    .child(
-                        Button::new("schema-switch")
-                            .primary()
-                            .disabled(is_current)
-                            .label(if is_current { "当前使用中" } else { "切换到此方案" })
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.switch_schema(window, cx);
-                            })),
-                    )
-                    .into_any_element()
-            }
-            None => div()
-                .flex_1()
-                .text_color(muted)
-                .child("暂无方案，点击「导入方案」添加")
-                .into_any_element(),
-        };
+                        .into_any_element()
+                }
+                None => div()
+                    .flex_1()
+                    .text_color(muted)
+                    .child("暂无方案，点击「导入方案」添加")
+                    .into_any_element(),
+            };
 
         v_flex()
             .size_full()
@@ -321,14 +322,17 @@ impl Render for SchemaPage {
                             .child(
                                 Button::new("schema-import")
                                     .outline()
-                                                                        .label("导入方案")
+                                    .label("导入方案")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.import(window, cx);
                                     })),
                             ),
                     ),
             )
-            .child(hint(cx, "点击方案查看详情；开关控制启用；删除标记将在下次「重新部署」时生效"))
+            .child(hint(
+                cx,
+                "点击方案查看详情；开关控制启用；删除标记将在下次「重新部署」时生效",
+            ))
             .child(
                 h_flex()
                     .gap_4()
@@ -346,16 +350,13 @@ impl Render for SchemaPage {
                             .border_color(border)
                             .overflow_hidden()
                             .child(
-                                div().h_full().overflow_y_scrollbar().child(div().children(rows)),
+                                div()
+                                    .h_full()
+                                    .overflow_y_scrollbar()
+                                    .child(div().children(rows)),
                             )
                             .when(self.schemas.is_empty(), |el| {
-                                el.child(
-                                    div()
-                                        .p_3()
-                                        .text_sm()
-                                        .text_color(muted)
-                                        .child("暂无方案"),
-                                )
+                                el.child(div().p_3().text_sm().text_color(muted).child("暂无方案"))
                             }),
                     )
                     .child(preview),

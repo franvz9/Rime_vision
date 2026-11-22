@@ -63,7 +63,10 @@ fn is_translator_key_custom(custom: &Value, key: &str) -> bool {
 }
 
 /// 计算 scope 的翻译器生效值与自定义标记（命令与测试共用）。
-fn translator_profile(cfg: &RimeConfig, scope: Option<&str>) -> Result<TranslatorProfile, RimeError> {
+fn translator_profile(
+    cfg: &RimeConfig,
+    scope: Option<&str>,
+) -> Result<TranslatorProfile, RimeError> {
     let dict_value = match scope {
         None => cfg.load_effective(&cfg.default_path(), &cfg.default_custom_path())?,
         Some(id) => cfg.load_schema_effective(id)?,
@@ -74,7 +77,8 @@ fn translator_profile(cfg: &RimeConfig, scope: Option<&str>) -> Result<Translato
         enable_encoder: config::get_bool(translator, "enable_encoder").unwrap_or(true),
         enable_sentence: config::get_bool(translator, "enable_sentence").unwrap_or(true),
         enable_user_dict: config::get_bool(translator, "enable_user_dict").unwrap_or(true),
-        encode_commit_history: config::get_bool(translator, "encode_commit_history").unwrap_or(true),
+        encode_commit_history: config::get_bool(translator, "encode_commit_history")
+            .unwrap_or(true),
     };
 
     let custom_path = match scope {
@@ -84,11 +88,19 @@ fn translator_profile(cfg: &RimeConfig, scope: Option<&str>) -> Result<Translato
             .ok_or_else(|| RimeError::InvalidPath(format!("Invalid schema_id: {}", id)))?,
     };
     let custom = cfg.load_yaml(&custom_path).unwrap_or_default();
-    let is_custom = ["enable_encoder", "enable_sentence", "enable_user_dict", "encode_commit_history"]
-        .iter()
-        .any(|k| is_translator_key_custom(&custom, k));
+    let is_custom = [
+        "enable_encoder",
+        "enable_sentence",
+        "enable_user_dict",
+        "encode_commit_history",
+    ]
+    .iter()
+    .any(|k| is_translator_key_custom(&custom, k));
 
-    Ok(TranslatorProfile { settings, is_custom })
+    Ok(TranslatorProfile {
+        settings,
+        is_custom,
+    })
 }
 
 /// 获取 scope 的翻译器 Profile（生效值 + 是否自定义）。
@@ -101,10 +113,7 @@ pub fn get_translator_profile(scope: Option<String>) -> Result<TranslatorProfile
 }
 
 /// 保存 scope 的翻译器设置（差异写入：仅写入 patch 中 Some 的键）。
-pub fn save_translator(
-    scope: Option<String>,
-    patch: TranslatorPatch,
-) -> Result<(), RimeError> {
+pub fn save_translator(scope: Option<String>, patch: TranslatorPatch) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     let target_path = match scope.as_deref() {
         None => cfg.default_custom_path(),
@@ -121,7 +130,10 @@ pub fn save_translator(
         insert_if_some("translator/enable_encoder", patch.enable_encoder);
         insert_if_some("translator/enable_sentence", patch.enable_sentence);
         insert_if_some("translator/enable_user_dict", patch.enable_user_dict);
-        insert_if_some("translator/encode_commit_history", patch.encode_commit_history);
+        insert_if_some(
+            "translator/encode_commit_history",
+            patch.encode_commit_history,
+        );
         Ok(())
     })?;
     Ok(())
@@ -213,7 +225,10 @@ mod tests {
         )
         .unwrap();
         let profile = translator_profile(&cfg, None).unwrap();
-        assert!(!profile.settings.enable_encoder, "custom 覆盖 enable_encoder");
+        assert!(
+            !profile.settings.enable_encoder,
+            "custom 覆盖 enable_encoder"
+        );
         assert!(profile.settings.enable_sentence);
         assert!(!profile.settings.enable_user_dict);
         assert!(profile.settings.encode_commit_history);
@@ -256,7 +271,10 @@ mod tests {
         assert!(content.contains("enable_encoder"));
         assert!(!content.contains("enable_sentence"), "未改动字段不应写入");
         assert!(!content.contains("enable_user_dict"), "未改动字段不应写入");
-        assert!(!content.contains("encode_commit_history"), "未改动字段不应写入");
+        assert!(
+            !content.contains("encode_commit_history"),
+            "未改动字段不应写入"
+        );
     }
 
     #[test]
@@ -274,10 +292,7 @@ mod tests {
                 Value::Bool(false),
             );
             let mut nested = serde_yaml::Mapping::new();
-            nested.insert(
-                Value::String("enable_user_dict".into()),
-                Value::Bool(false),
-            );
+            nested.insert(Value::String("enable_user_dict".into()), Value::Bool(false));
             m.insert(Value::String("translator".into()), Value::Mapping(nested));
             Ok(())
         })
@@ -288,6 +303,9 @@ mod tests {
         let content = std::fs::read_to_string(&custom_path).unwrap();
         assert!(!content.contains("enable_encoder"), "slash-form 键应删除");
         assert!(!content.contains("enable_sentence"), "slash-form 键应删除");
-        assert!(!content.contains("enable_user_dict"), "nested-form 键应删除");
+        assert!(
+            !content.contains("enable_user_dict"),
+            "nested-form 键应删除"
+        );
     }
 }

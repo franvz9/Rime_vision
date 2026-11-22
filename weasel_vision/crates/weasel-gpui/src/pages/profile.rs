@@ -3,11 +3,11 @@
 //! 「配置范围」下拉 + 4 个子面板 Tab（标点/快捷键/翻译器/候选词数）。
 //! 面板常驻（切 Tab/scope 不销毁，仅重载数据）；「保存当前配置」调当前面板的 save。
 use gpui_kit::component::{
-    ActiveTheme,
     button::{Button, ButtonVariants as _},
+    h_flex,
     select::{Select, SelectEvent, SelectState},
-    IndexPath,
-    tab::{Tab, TabBar}, h_flex, v_flex,
+    tab::{Tab, TabBar},
+    v_flex, ActiveTheme, IndexPath,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -47,15 +47,23 @@ impl ProfilePage {
         let scope_select: StringSelect =
             cx.new(|cx| SelectState::new(labels, Some(IndexPath::default().row(0)), window, cx));
 
-        let sub = cx.subscribe_in(&scope_select, window, |this, _, ev: &SelectEvent<_>, window, cx| {
-            if let SelectEvent::Confirm(Some(label)) = ev {
-                let scope = (label != "全局默认").then(|| label.clone());
-                this.punct.update(cx, |p, cx| p.reload(scope.clone(), window, cx));
-                this.keybinding.update(cx, |p, cx| p.reload(scope.clone(), window, cx));
-                this.translator.update(cx, |p, cx| p.reload(scope.clone(), window, cx));
-                this.page_size.update(cx, |p, cx| p.reload(scope.clone(), window, cx));
-            }
-        });
+        let sub = cx.subscribe_in(
+            &scope_select,
+            window,
+            |this, _, ev: &SelectEvent<_>, window, cx| {
+                if let SelectEvent::Confirm(Some(label)) = ev {
+                    let scope = (label != "全局默认").then(|| label.clone());
+                    this.punct
+                        .update(cx, |p, cx| p.reload(scope.clone(), window, cx));
+                    this.keybinding
+                        .update(cx, |p, cx| p.reload(scope.clone(), window, cx));
+                    this.translator
+                        .update(cx, |p, cx| p.reload(scope.clone(), window, cx));
+                    this.page_size
+                        .update(cx, |p, cx| p.reload(scope.clone(), window, cx));
+                }
+            },
+        );
 
         Self {
             scope_select,
@@ -92,7 +100,11 @@ impl Render for ProfilePage {
             .map(|ix| ix.row == 0)
             .unwrap_or(true);
 
-        let scope_row = self.scope_select.read(cx).selected_index(cx).map(|ix| ix.row);
+        let scope_row = self
+            .scope_select
+            .read(cx)
+            .selected_index(cx)
+            .map(|ix| ix.row);
         let scope_file = match scope_row {
             None | Some(0) => "default.custom.yaml".to_string(),
             Some(row) => {

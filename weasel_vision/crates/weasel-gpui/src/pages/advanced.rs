@@ -4,10 +4,10 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
 use gpui_kit::component::{
-    ActiveTheme,
-    scroll::ScrollableElement as _,
     button::{Button, ButtonVariants as _},
-    WindowExt as _, h_flex, v_flex,
+    h_flex,
+    scroll::ScrollableElement as _,
+    v_flex, ActiveTheme, WindowExt as _,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -102,7 +102,11 @@ impl Render for AdvancedPage {
             .iter()
             .map(|f| {
                 let name = f.name.clone();
-                let desc = if f.is_main { "主配置文件" } else { "自定义配置 (patch)" };
+                let desc = if f.is_main {
+                    "主配置文件"
+                } else {
+                    "自定义配置 (patch)"
+                };
                 h_flex()
                     .gap_3()
                     .items_center()
@@ -126,19 +130,19 @@ impl Render for AdvancedPage {
                                         el.on_click({
                                             let name = name.clone();
                                             cx.listener(move |this, _, window, cx| {
-                                            let path = std::path::Path::new(&this.user_dir)
-                                                .join(&name)
-                                                .display()
-                                                .to_string();
-                                            match settings::open_file_in_manager(path) {
-                                                Ok(()) => {}
-                                                Err(e) => {
-                                                    window.push_notification(
-                                                        format!("打开文件位置失败：{}", e),
-                                                        cx,
-                                                    );
+                                                let path = std::path::Path::new(&this.user_dir)
+                                                    .join(&name)
+                                                    .display()
+                                                    .to_string();
+                                                match settings::open_file_in_manager(path) {
+                                                    Ok(()) => {}
+                                                    Err(e) => {
+                                                        window.push_notification(
+                                                            format!("打开文件位置失败：{}", e),
+                                                            cx,
+                                                        );
+                                                    }
                                                 }
-                                            }
                                             })
                                         })
                                     })
@@ -147,82 +151,95 @@ impl Render for AdvancedPage {
                             .child(div().text_sm().text_color(muted).child(desc)),
                     )
                     .when(!f.exists, |el| {
-                        el.child(div().flex_1().text_right().text_sm().text_color(muted).child("保存设置后自动生成"))
+                        el.child(
+                            div()
+                                .flex_1()
+                                .text_right()
+                                .text_sm()
+                                .text_color(muted)
+                                .child("保存设置后自动生成"),
+                        )
                     })
                     .when(!f.exists, |el| el.opacity(0.5))
                     .into_any_element()
             })
             .collect();
 
-        v_flex()
-            .size_full()
-            .overflow_y_scrollbar()
-            .child(
-                v_flex()
-                    .max_w(px(720.))
-                    .gap_4()
-                    .child(section_card(
-                        cx,
-                        "Rime 目录",
-                Some(
-                    Button::new("adv-open")
-                        .outline()
-                        .label("打开")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_dir(window, cx);
-                        }))
-                        .into_any_element(),
-                ),
-                v_flex()
-                    .child(
-                        // 可点击的目录路径
-                        div()
-                            .id("user-dir")
-                            .text_sm()
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(cx_theme.primary)
-                            .cursor_pointer()
-                            .hover(|s| s.underline())
-                            .child(self.user_dir.clone())
+        v_flex().size_full().overflow_y_scrollbar().child(
+            v_flex()
+                .max_w(px(720.))
+                .gap_4()
+                .child(section_card(
+                    cx,
+                    "Rime 目录",
+                    Some(
+                        Button::new("adv-open")
+                            .outline()
+                            .label("打开")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_dir(window, cx);
-                            })),
-                    )
-                    .child(hint(cx, "点击路径或按钮可在文件管理器中打开 Rime 用户目录"))
-                    .into_any_element(),
-            ))
-            .child(section_card(
-                cx,
-                "配置文件",
-                None,
-                div().children(file_rows).into_any_element(),
-            ))
-            .child(section_card(
-                cx,
-                "操作",
-                None,
-                v_flex()
-                    .gap_2()
-                    .child(
-                        Button::new("adv-reset")
-                            .danger()
-                            .label("重置自定义配置")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.confirm_reset(window, cx);
-                            })),
-                    )
-                    .into_any_element(),
-            ))
-            .child(section_card(
-                cx,
-                "关于",
-                None,
-                v_flex()
-                    .gap_1()
-                        .child(div().text_sm().child("WeaselVision — Rime 输入法可视化配置工具"))
-                        .child(div().text_sm().text_color(muted).child("GPUI 原生版 · 本工具不参与输入法核心分发"))
+                            }))
+                            .into_any_element(),
+                    ),
+                    v_flex()
+                        .child(
+                            // 可点击的目录路径
+                            div()
+                                .id("user-dir")
+                                .text_sm()
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(cx_theme.primary)
+                                .cursor_pointer()
+                                .hover(|s| s.underline())
+                                .child(self.user_dir.clone())
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.open_dir(window, cx);
+                                })),
+                        )
+                        .child(hint(cx, "点击路径或按钮可在文件管理器中打开 Rime 用户目录"))
                         .into_any_element(),
-                    ))
-            )
+                ))
+                .child(section_card(
+                    cx,
+                    "配置文件",
+                    None,
+                    div().children(file_rows).into_any_element(),
+                ))
+                .child(section_card(
+                    cx,
+                    "操作",
+                    None,
+                    v_flex()
+                        .gap_2()
+                        .child(
+                            Button::new("adv-reset")
+                                .danger()
+                                .label("重置自定义配置")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.confirm_reset(window, cx);
+                                })),
+                        )
+                        .into_any_element(),
+                ))
+                .child(section_card(
+                    cx,
+                    "关于",
+                    None,
+                    v_flex()
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_sm()
+                                .child("WeaselVision — Rime 输入法可视化配置工具"),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(muted)
+                                .child("GPUI 原生版 · 本工具不参与输入法核心分发"),
+                        )
+                        .into_any_element(),
+                )),
+        )
     }
 }

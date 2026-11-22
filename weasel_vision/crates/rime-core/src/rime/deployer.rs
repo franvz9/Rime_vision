@@ -78,7 +78,11 @@ pub fn deploy() -> Result<()> {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            eprintln!("WeaselVision: Squirrel --reload error - exit code {:?}, stderr: {}", output.status.code(), stderr);
+            eprintln!(
+                "WeaselVision: Squirrel --reload error - exit code {:?}, stderr: {}",
+                output.status.code(),
+                stderr
+            );
             anyhow::bail!(
                 "Squirrel --reload failed (exit code {:?}): {}",
                 output.status.code(),
@@ -102,9 +106,9 @@ pub fn deploy() -> Result<()> {
             anyhow::bail!("WeaselDeployer /deploy failed: {}", stderr);
         }
 
-        let install_dir = deployer_path.parent().ok_or_else(|| {
-            anyhow::anyhow!("Unable to locate Weasel install directory")
-        })?;
+        let install_dir = deployer_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Unable to locate Weasel install directory"))?;
         let server_path = install_dir.join("WeaselServer.exe");
         if server_path.exists() {
             let _ = std::process::Command::new(&server_path).arg("/q").output();
@@ -169,7 +173,11 @@ pub fn sync() -> Result<bool> {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            eprintln!("WeaselVision: Squirrel --sync error - exit code {:?}, stderr: {}", output.status.code(), stderr);
+            eprintln!(
+                "WeaselVision: Squirrel --sync error - exit code {:?}, stderr: {}",
+                output.status.code(),
+                stderr
+            );
             anyhow::bail!(
                 "Squirrel --sync failed (exit code {:?}): {}",
                 output.status.code(),

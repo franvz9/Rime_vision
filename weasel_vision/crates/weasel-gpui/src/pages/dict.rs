@@ -3,18 +3,16 @@
 //! 左：用户词典列表；右：词条/快照双 Tab。
 //! 词条：搜索 + 排序 + 分页表格 + 行内词频编辑 + 新增/批量删除低频/导出/清空。
 //! 快照：快照卡片 + 应用修改（触发 Rime 重新部署）。
-use gpui_kit::component::{
-    ActiveTheme,
-    button::{Button, ButtonVariants as _},
-    Disableable as _,
-    scroll::ScrollableElement as _,
-    dialog::DialogButtonProps,
-    input::{Input, InputEvent, InputState},
-    select::{Select, SelectEvent, SelectState},
-    IndexPath,
-    WindowExt as _, h_flex, v_flex,
-};
 use gpui_kit::assets::IconName;
+use gpui_kit::component::{
+    button::{Button, ButtonVariants as _},
+    dialog::DialogButtonProps,
+    h_flex,
+    input::{Input, InputEvent, InputState},
+    scroll::ScrollableElement as _,
+    select::{Select, SelectEvent, SelectState},
+    v_flex, ActiveTheme, Disableable as _, IndexPath, WindowExt as _,
+};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use rime_core::service::dict::{self, DictEntry, SnapshotInfo, UserDictInfo};
@@ -61,9 +59,8 @@ impl DictPage {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("搜索编码或文字"));
         let sort_labels: Vec<String> = SORT_OPTIONS.iter().map(|(_, l)| l.to_string()).collect();
-        let sort_select: Entity<SelectState<Vec<String>>> = cx.new(|cx| {
-            SelectState::new(sort_labels, Some(IndexPath::default().row(0)), window, cx)
-        });
+        let sort_select: Entity<SelectState<Vec<String>>> = cx
+            .new(|cx| SelectState::new(sort_labels, Some(IndexPath::default().row(0)), window, cx));
         let mut this = Self {
             dicts: Vec::new(),
             selected: None,
@@ -82,18 +79,17 @@ impl DictPage {
             _search_sub: None,
         };
         let input = this.search_input.clone();
-        this._search_sub = Some(cx.subscribe_in(
-            &input,
-            window,
-            |this, input, ev: &InputEvent, _, cx| {
-                if let InputEvent::Change = ev {
-                    this.search = input.read(cx).value().to_string();
-                    this.page = 0;
-                    let selected = this.selected.clone();
-                    this.load_entries(selected, cx);
-                }
-            },
-        ));
+        this._search_sub =
+            Some(
+                cx.subscribe_in(&input, window, |this, input, ev: &InputEvent, _, cx| {
+                    if let InputEvent::Change = ev {
+                        this.search = input.read(cx).value().to_string();
+                        this.page = 0;
+                        let selected = this.selected.clone();
+                        this.load_entries(selected, cx);
+                    }
+                }),
+            );
         let sort_sub = cx.subscribe_in(
             &sort_select.clone(),
             window,
@@ -150,7 +146,7 @@ impl DictPage {
         let max_page = if self.total == 0 {
             0
         } else {
-            (self.total + self.per_page - 1) / self.per_page - 1
+            self.total.div_ceil(self.per_page) - 1
         };
         let next = (self.page as i64 + delta).clamp(0, max_page as i64) as usize;
         if next != self.page {
@@ -169,7 +165,9 @@ impl DictPage {
 
     /// 创建快照：阻塞轮询（最长 10s）放后台线程，完成后刷新。
     fn create_snapshot(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(dict_id) = self.selected.clone() else { return };
+        let Some(dict_id) = self.selected.clone() else {
+            return;
+        };
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_spawn(async move { dict::create_snapshot(dict_id.clone()) })
@@ -180,7 +178,10 @@ impl DictPage {
                     Err(e) => {
                         let msg = e.to_string();
                         if msg.contains("SYNC_NOT_CONFIGURED") {
-                            window.push_notification("需要先在「同步管理」中配置同步目录才能生成快照", cx);
+                            window.push_notification(
+                                "需要先在「同步管理」中配置同步目录才能生成快照",
+                                cx,
+                            );
                         } else {
                             window.push_notification(format!("生成快照失败：{}", msg), cx);
                         }
@@ -199,7 +200,9 @@ impl DictPage {
     }
 
     fn open_add_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(dict_id) = self.selected.clone() else { return };
+        let Some(dict_id) = self.selected.clone() else {
+            return;
+        };
         let word_input = cx.new(|cx| InputState::new(window, cx).placeholder("文字"));
         let code_input = cx.new(|cx| InputState::new(window, cx).placeholder("编码"));
         let freq_input = cx.new(|cx| InputState::new(window, cx).placeholder("初始词频（≥1）"));
@@ -223,56 +226,57 @@ impl DictPage {
                         .child(Input::new(&code_input))
                         .child(Input::new(&freq_input)),
                 )
-                .button_props(
-                    DialogButtonProps::default().ok_text("添加").on_ok({
-                        let weak = weak.clone();
-                        let word_input = word_input.clone();
-                        let code_input = code_input.clone();
-                        let freq_input = freq_input.clone();
-                        let dict_id = dict_id.clone();
-                        move |_, window, cx| {
-                            let word = word_input.read(cx).value().trim().to_string();
-                            let code = code_input.read(cx).value().trim().to_string();
-                            let freq = freq_input
-                                .read(cx)
-                                .value()
-                                .trim()
-                                .parse::<i64>()
-                                .unwrap_or(1)
-                                .max(1);
-                            let _ = weak.update(cx, |this, cx| {
-                                if word.is_empty() || code.is_empty() {
-                                    return;
-                                }
-                                if dict::add_dict_entry(
-                                    dict_id.clone(),
-                                    rime_core::service::dict::NewDictEntry {
-                                        word,
-                                        code,
-                                        frequency: freq,
-                                    },
-                                )
-                                .is_ok()
-                                {
-                                    let selected = this.selected.clone();
-                                    this.load_entries(selected, cx);
-                                    this.reload_dicts(cx);
-                                    window.push_notification("词条已添加", cx);
-                                } else {
-                                    window.push_notification("添加词条失败", cx);
-                                }
-                            });
-                            true
-                        }
-                    }),
-                )
+                .button_props(DialogButtonProps::default().ok_text("添加").on_ok({
+                    let weak = weak.clone();
+                    let word_input = word_input.clone();
+                    let code_input = code_input.clone();
+                    let freq_input = freq_input.clone();
+                    let dict_id = dict_id.clone();
+                    move |_, window, cx| {
+                        let word = word_input.read(cx).value().trim().to_string();
+                        let code = code_input.read(cx).value().trim().to_string();
+                        let freq = freq_input
+                            .read(cx)
+                            .value()
+                            .trim()
+                            .parse::<i64>()
+                            .unwrap_or(1)
+                            .max(1);
+                        let _ = weak.update(cx, |this, cx| {
+                            if word.is_empty() || code.is_empty() {
+                                return;
+                            }
+                            if dict::add_dict_entry(
+                                dict_id.clone(),
+                                rime_core::service::dict::NewDictEntry {
+                                    word,
+                                    code,
+                                    frequency: freq,
+                                },
+                            )
+                            .is_ok()
+                            {
+                                let selected = this.selected.clone();
+                                this.load_entries(selected, cx);
+                                this.reload_dicts(cx);
+                                window.push_notification("词条已添加", cx);
+                            } else {
+                                window.push_notification("添加词条失败", cx);
+                            }
+                        });
+                        true
+                    }
+                }))
                 .overlay_closable(true)
         });
     }
 
     fn open_threshold_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(dict_id) = self.selected.clone() else { return };
-        let threshold_input = cx.new(|cx| InputState::new(window, cx).placeholder("词频阈值（≥1）"));
+        let Some(dict_id) = self.selected.clone() else {
+            return;
+        };
+        let threshold_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("词频阈值（≥1）"));
         let weak = cx.weak_entity();
         let threshold_input2 = threshold_input.clone();
         let dict_id2 = dict_id.clone();
@@ -282,30 +286,34 @@ impl DictPage {
             let dict_id = dict_id2.clone();
             dialog
                 .title("批量删除低频词条")
-                .child(v_flex().gap_2().child(
-                    v_flex()
-                        .gap_1()
-                        .child(div().text_sm().child("删除词频低于阈值的词条（不可撤销）"))
-                        .child(Input::new(&threshold_input)),
-                ))
-                .button_props(
-                    DialogButtonProps::default().ok_text("删除").on_ok({
-                        let weak = weak.clone();
-                        let threshold_input = threshold_input.clone();
-                        let dict_id = dict_id.clone();
-                        move |_, window, cx| {
-                            let threshold = threshold_input
-                                .read(cx)
-                                .value()
-                                .trim()
-                                .parse::<i64>()
-                                .unwrap_or(0)
-                                .max(1);
-                            let _ = weak.update(cx, |this, cx| {
-                                match dict::batch_delete_low_frequency(dict_id.clone(), threshold)
-                                {
+                .child(
+                    v_flex().gap_2().child(
+                        v_flex()
+                            .gap_1()
+                            .child(div().text_sm().child("删除词频低于阈值的词条（不可撤销）"))
+                            .child(Input::new(&threshold_input)),
+                    ),
+                )
+                .button_props(DialogButtonProps::default().ok_text("删除").on_ok({
+                    let weak = weak.clone();
+                    let threshold_input = threshold_input.clone();
+                    let dict_id = dict_id.clone();
+                    move |_, window, cx| {
+                        let threshold = threshold_input
+                            .read(cx)
+                            .value()
+                            .trim()
+                            .parse::<i64>()
+                            .unwrap_or(0)
+                            .max(1);
+                        let _ =
+                            weak.update(cx, |this, cx| {
+                                match dict::batch_delete_low_frequency(dict_id.clone(), threshold) {
                                     Ok(n) => {
-                                        window.push_notification(format!("已删除 {} 条低频词条", n), cx);
+                                        window.push_notification(
+                                            format!("已删除 {} 条低频词条", n),
+                                            cx,
+                                        );
                                         let selected = this.selected.clone();
                                         this.load_entries(selected, cx);
                                         this.reload_dicts(cx);
@@ -315,16 +323,17 @@ impl DictPage {
                                     }
                                 }
                             });
-                            true
-                        }
-                    }),
-                )
+                        true
+                    }
+                }))
                 .overlay_closable(true)
         });
     }
 
     fn open_clear_confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(dict_id) = self.selected.clone() else { return };
+        let Some(dict_id) = self.selected.clone() else {
+            return;
+        };
         let weak = cx.weak_entity();
         let dict_id2 = dict_id.clone();
         window.open_alert_dialog(cx, move |alert, _, _| {
@@ -350,9 +359,7 @@ impl DictPage {
                                     this.load_entries(selected, cx);
                                     this.reload_dicts(cx);
                                 }
-                                Err(e) => {
-                                    window.push_notification(format!("清空失败：{}", e), cx)
-                                }
+                                Err(e) => window.push_notification(format!("清空失败：{}", e), cx),
                             }
                         });
                         true
@@ -362,8 +369,12 @@ impl DictPage {
     }
 
     fn open_apply_confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(dict_id) = self.selected.clone() else { return };
-        let Some(first) = self.snapshots.first().cloned() else { return };
+        let Some(dict_id) = self.selected.clone() else {
+            return;
+        };
+        let Some(first) = self.snapshots.first().cloned() else {
+            return;
+        };
         let weak = cx.weak_entity();
         let file_name = first.file_name.clone();
         let dict_id2 = dict_id.clone();
@@ -390,9 +401,7 @@ impl DictPage {
                                     this.load_entries(selected, cx);
                                     this.reload_dicts(cx);
                                 }
-                                Err(e) => {
-                                    window.push_notification(format!("应用失败：{}", e), cx)
-                                }
+                                Err(e) => window.push_notification(format!("应用失败：{}", e), cx),
                             }
                         });
                         true
@@ -402,7 +411,9 @@ impl DictPage {
     }
 
     fn export_dict(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(dict_id) = self.selected.clone() else { return };
+        let Some(dict_id) = self.selected.clone() else {
+            return;
+        };
         let default_name = format!("{}_export.txt", dict_id);
         cx.spawn_in(window, async move |this, cx| {
             let picked = cx
@@ -433,16 +444,19 @@ impl DictPage {
     }
 
     fn save_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((word, code, freq_input)) = self.editing.take() else { return };
+        let Some((word, code, freq_input)) = self.editing.take() else {
+            return;
+        };
         let new_freq = freq_input
             .read(cx)
             .value()
             .trim()
             .parse::<i64>()
             .unwrap_or(0);
-        let Some(dict_id) = self.selected.clone() else { return };
-        if let Err(e) =
-            dict::update_entry_frequency(dict_id, word.clone(), code.clone(), new_freq)
+        let Some(dict_id) = self.selected.clone() else {
+            return;
+        };
+        if let Err(e) = dict::update_entry_frequency(dict_id, word.clone(), code.clone(), new_freq)
         {
             window.push_notification(format!("更新词频失败：{}", e), cx);
             return;
@@ -459,10 +473,13 @@ impl DictPage {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(dict_id) = self.selected.clone() else { return };
-        if let Err(e) =
-            dict::delete_entries(dict_id, vec![rime_core::service::dict::DictEntryKey { word, code }])
-        {
+        let Some(dict_id) = self.selected.clone() else {
+            return;
+        };
+        if let Err(e) = dict::delete_entries(
+            dict_id,
+            vec![rime_core::service::dict::DictEntryKey { word, code }],
+        ) {
             window.push_notification(format!("删除词条失败：{}", e), cx);
         }
         let selected = self.selected.clone();
@@ -506,20 +523,11 @@ impl Render for DictPage {
                             .flex_1()
                             .min_w_0()
                             .child(div().text_sm().child(d.display_name.clone()))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(if need_sync {
-                                        "需同步生成快照".to_string()
-                                    } else {
-                                        format!(
-                                            "{} 词条 · {}",
-                                            d.entry_count,
-                                            format_size(d.file_size)
-                                        )
-                                    }),
-                            ),
+                            .child(div().text_xs().text_color(muted).child(if need_sync {
+                                "需同步生成快照".to_string()
+                            } else {
+                                format!("{} 词条 · {}", d.entry_count, format_size(d.file_size))
+                            })),
                     )
                     .into_any_element()
             })
@@ -540,7 +548,13 @@ impl Render for DictPage {
                     .overflow_y_scrollbar()
                     .child(div().children(dict_rows))
                     .when(self.dicts.is_empty(), |el| {
-                        el.child(div().p_3().text_sm().text_color(muted).child("未发现用户词典"))
+                        el.child(
+                            div()
+                                .p_3()
+                                .text_sm()
+                                .text_color(muted)
+                                .child("未发现用户词典"),
+                        )
                     }),
             )
             .child(self.detail_area(cx))
@@ -586,14 +600,19 @@ impl DictPage {
                 .min_w_0()
                 .gap_3()
                 .child(tabs)
-                .child(div().text_sm().text_color(muted).child("从左侧选择一个用户词典"))
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(muted)
+                        .child("从左侧选择一个用户词典"),
+                )
                 .into_any_element();
         };
 
         let max_page = if self.total == 0 {
             0
         } else {
-            (self.total + self.per_page - 1) / self.per_page - 1
+            self.total.div_ceil(self.per_page) - 1
         };
 
         let body: AnyElement = if self.tab_entries {
@@ -704,14 +723,14 @@ impl DictPage {
                         .border_b_1()
                         .border_color(border)
                         .text_sm()
-                        .child(div().w(px(40.)).text_color(muted).child((ix + 1).to_string()))
-                        .child(div().w(px(160.)).child(e.word.clone()))
                         .child(
                             div()
-                                .w(px(200.))
+                                .w(px(40.))
                                 .text_color(muted)
-                                .child(e.code.clone()),
+                                .child((ix + 1).to_string()),
                         )
+                        .child(div().w(px(160.)).child(e.word.clone()))
+                        .child(div().w(px(200.)).text_color(muted).child(e.code.clone()))
                         .child(freq_cell)
                         .child(
                             h_flex()
@@ -740,7 +759,12 @@ impl DictPage {
                                         .ghost()
                                         .label("删除")
                                         .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.delete_entry(word.clone(), code.clone(), window, cx);
+                                            this.delete_entry(
+                                                word.clone(),
+                                                code.clone(),
+                                                window,
+                                                cx,
+                                            );
                                         })),
                                 ),
                         )
@@ -791,12 +815,11 @@ impl DictPage {
                                             this.goto_page(-1, cx);
                                         })),
                                 )
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(muted)
-                                        .child(format!("第 {} / {} 页", self.page + 1, max_page + 1)),
-                                )
+                                .child(div().text_sm().text_color(muted).child(format!(
+                                    "第 {} / {} 页",
+                                    self.page + 1,
+                                    max_page + 1
+                                )))
                                 .child(
                                     Button::new("page-next")
                                         .outline()
@@ -807,16 +830,10 @@ impl DictPage {
                                         })),
                                 ),
                         )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child(format!(
-                                    "共 {} 词条 · 总词频 {}",
-                                    self.total,
-                                    self.total_frequency
-                                )),
-                        ),
+                        .child(div().text_xs().text_color(muted).child(format!(
+                            "共 {} 词条 · 总词频 {}",
+                            self.total, self.total_frequency
+                        ))),
                 )
                 .into_any_element()
         } else {

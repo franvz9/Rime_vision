@@ -1,5 +1,50 @@
 # 更新说明（Changelog）
 
+## v0.5.0 (2026-11-21)
+
+### 🎯 核心特性：GPUI 原生前端（weasel-gpui）
+
+本次版本将前端从 Tauri 2 + Vue 3 全面迁移为 GPUI Rust 原生渲染，并移除旧双轨代码（Tauri 薄壳、Vue 前端、Swift 归档版）。
+
+#### 架构
+
+- **crates/rime-core**：纯逻辑库（rime 配置解析 + 12 个 service 业务模块），零 UI 依赖。
+- **crates/weasel-gpui**：GPUI 原生前端，13 个页面全量迁移（通用/主题外观/语言模型/备份管理/词典管理/同步管理/高级设置/方案列表/方案配置）。
+- **已移除**：src-tauri 委托薄壳、Vue 3 前端、Node 构建链、archive/RimeVision（Swift 版）。
+
+#### 📦 下载
+
+| 平台 | 架构 | 文件 |
+|------|------|------|
+| macOS | Apple Silicon (arm64) | `WeaselVision_0.5.0_arm64.dmg` |
+| macOS | Intel (x64) | `WeaselVision_0.5.0_x64.dmg` |
+| Windows | ARM64 | `WeaselVision_0.5.0_Windows_arm64.zip` |
+| Windows | x64 | `WeaselVision_0.5.0_Windows_x64.zip` |
+
+#### 新增功能 / 体验
+
+- 侧边栏支持自由拖拽（最小 170px，最大窗口 1/3 宽度）。
+- 配置文件名超链接，点击在文件管理器中定位。
+- 各列表页独立滚动体系（词条/标点/快捷键支持上下左右双轴滚动）。
+- 快捷键与标点配置统一为「行摘要 + 点击弹窗编辑 + 新增弹窗」交互。
+- 语言模型批量挂载弹窗所见即所得（已挂载默认勾选，保存按差异同步挂载/卸载）。
+- 全局 12px 基准字号，界面密度更紧凑。
+
+#### 修复
+
+- 同步设置弹窗保存真正落盘（此前仅更新内存，重启丢失）。
+- 词典管理工具条（搜索/排序/新增/导出/清空）正确挂载。
+- 词典排序「词频 ↑」生效（排序键与 service 对齐）。
+- 主题预览半透明颜色通道错位修正。
+- 部署完成后主题页「使用中」标记即时刷新。
+- 文件对话框全部异步化，修复导入主题时偶发崩溃。
+
+#### 构建
+
+- 项目级 rust-toolchain.toml 固定 Rust 1.100（gpui-pre 0.3.12 依赖 unstable `map_or_default`）。
+- 发版 CI（release-gpui.yml）：tag 触发，4 产物矩阵（macos-14 / macos-13 / windows-latest / windows-11-arm）。
+- Windows 为便携版 zip（单 exe 免安装）；macOS 为 dmg（未签名，需 xattr 移除隔离标记）。
+
 ## v0.4.0 (2026-08-31)
 
 ### 🎯 核心特性：方案级（Schema-Scoped）配置

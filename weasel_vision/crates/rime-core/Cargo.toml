@@ -1,6 +1,6 @@
 [package]
 name = "rime-core"
-version = "0.4.0"
+version = "0.5.0"
 description = "Rime 配置核心逻辑（无 UI 框架依赖），供 Tauri 壳与 GPUI 前端共用"
 authors = ["franvz9"]
 edition = "2021"

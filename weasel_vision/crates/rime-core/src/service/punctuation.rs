@@ -332,7 +332,10 @@ mod tests {
         .unwrap();
         let (dict, target) = punct_dict_source(&cfg, None).unwrap();
         assert_eq!(target, cfg.default_custom_path());
-        let hs = config::get_mapping(config::get_mapping(config::value_as_mapping(&dict), "punctuator"), "half_shape");
+        let hs = config::get_mapping(
+            config::get_mapping(config::value_as_mapping(&dict), "punctuator"),
+            "half_shape",
+        );
         let slash = hs
             .get(Value::String("/".into()))
             .and_then(|v| v.as_sequence())
@@ -355,7 +358,10 @@ mod tests {
         .unwrap();
         let (dict, target) = punct_dict_source(&cfg, Some("sc_a".to_string())).unwrap();
         assert_eq!(target, cfg.user_dir.join("sc_a.custom.yaml"));
-        let hs = config::get_mapping(config::get_mapping(config::value_as_mapping(&dict), "punctuator"), "half_shape");
+        let hs = config::get_mapping(
+            config::get_mapping(config::value_as_mapping(&dict), "punctuator"),
+            "half_shape",
+        );
         let slash = hs
             .get(Value::String("/".into()))
             .and_then(|v| v.as_str())
@@ -396,7 +402,10 @@ mod tests {
         .unwrap();
         let keys = custom_punct_keys(&cfg, Some("ck_nested".to_string()));
         assert!(keys.contains(&"/".to_string()), "nested-form 应识别 /");
-        assert!(keys.contains(&".".to_string()), "nested-form 应识别 full_shape 的 .");
+        assert!(
+            keys.contains(&".".to_string()),
+            "nested-form 应识别 full_shape 的 ."
+        );
         assert_eq!(keys.len(), 2);
     }
 

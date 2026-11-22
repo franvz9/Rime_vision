@@ -18,10 +18,14 @@ pub fn validate_import_path(path: &str) -> Result<(), RimeError> {
         return Err(RimeError::InvalidPath("Path too long".into()));
     }
     if path.chars().any(|c| c.is_control()) {
-        return Err(RimeError::InvalidPath("Path contains invalid characters".into()));
+        return Err(RimeError::InvalidPath(
+            "Path contains invalid characters".into(),
+        ));
     }
     if !Path::new(path).is_absolute() {
-        return Err(RimeError::InvalidPath("Import path must be absolute".into()));
+        return Err(RimeError::InvalidPath(
+            "Import path must be absolute".into(),
+        ));
     }
     Ok(())
 }

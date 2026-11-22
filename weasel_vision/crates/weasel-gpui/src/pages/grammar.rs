@@ -5,22 +5,21 @@
 use std::collections::HashMap;
 
 use gpui_kit::component::{
-    ActiveTheme,
     button::{Button, ButtonVariants as _},
-    Disableable as _,
-    scroll::ScrollableElement as _,
-    input::InputState,
     checkbox::Checkbox,
-    WindowExt as _, h_flex, v_flex,
+    h_flex,
+    input::InputState,
+    scroll::ScrollableElement as _,
+    v_flex, ActiveTheme, Disableable as _, WindowExt as _,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::InteractiveElement as _;
 use gpui_kit::StatefulInteractiveElement as _;
 use gpui_kit::*;
+use rime_core::rime::grammar::SchemaGrammarConfig;
 use rime_core::service::grammar::{self};
-use rime_core::rime::grammar::{SchemaGrammarConfig};
-use rime_core::service::settings::PendingDelete;
 use rime_core::service::schema;
+use rime_core::service::settings::PendingDelete;
 
 pub struct GrammarPage {
     models: Vec<rime_core::rime::grammar::GrammarModel>,
@@ -78,8 +77,16 @@ impl GrammarPage {
             Err(e) => eprintln!("Warning: load grammar data failed: {}", e),
         }
         self.schema_ids = schema_ids;
-        if self.selected.map(|ix| ix >= self.models.len()).unwrap_or(true) {
-            self.selected = if self.models.is_empty() { None } else { Some(0) };
+        if self
+            .selected
+            .map(|ix| ix >= self.models.len())
+            .unwrap_or(true)
+        {
+            self.selected = if self.models.is_empty() {
+                None
+            } else {
+                Some(0)
+            };
         }
         cx.notify();
     }
@@ -127,11 +134,15 @@ impl GrammarPage {
 
     fn toggle_pending(&mut self, cx: &mut Context<Self>) {
         let Some(ix) = self.selected else { return };
-        let Some(model) = self.models.get(ix) else { return };
-        let mounted = self
-            .schema_ids
-            .iter()
-            .any(|sid| self.mount_configs.get(sid).map(|c| c.mounted_model.as_deref() == Some(model.filename.as_str())).unwrap_or(false));
+        let Some(model) = self.models.get(ix) else {
+            return;
+        };
+        let mounted = self.schema_ids.iter().any(|sid| {
+            self.mount_configs
+                .get(sid)
+                .map(|c| c.mounted_model.as_deref() == Some(model.filename.as_str()))
+                .unwrap_or(false)
+        });
         if mounted {
             return; // 已挂载模型不可删除（对齐 Vue 版禁用行为）
         }
@@ -208,27 +219,23 @@ impl GrammarPage {
                                 .id("mount-dialog-scroll")
                                 .max_h(px(380.))
                                 .overflow_y_scroll()
-                                .child(
-                                    v_flex().gap_2().children(schema_ids.iter().enumerate().map(
-                                        |(i, sid)| {
-                                            let weak = weak.clone();
-                                            let i = i;
-                                            Checkbox::new(SharedString::from(format!("mount-{i}")))
-                                                .checked(*pick.get(i).unwrap_or(&false))
-                                                .label(sid.clone())
-                                                .on_click(move |checked: &bool, _, cx| {
-                                                    weak.update(cx, |this, _| {
-                                                        if let Some(slot) = this.mount_pick.get_mut(i)
-                                                        {
-                                                            *slot = *checked;
-                                                        }
-                                                    })
-                                                    .ok();
-                                                    cx.refresh_windows();
+                                .child(v_flex().gap_2().children(
+                                    schema_ids.iter().enumerate().map(|(i, sid)| {
+                                        let weak = weak.clone();
+                                        Checkbox::new(SharedString::from(format!("mount-{i}")))
+                                            .checked(*pick.get(i).unwrap_or(&false))
+                                            .label(sid.clone())
+                                            .on_click(move |checked: &bool, _, cx| {
+                                                weak.update(cx, |this, _| {
+                                                    if let Some(slot) = this.mount_pick.get_mut(i) {
+                                                        *slot = *checked;
+                                                    }
                                                 })
-                                        },
-                                    )),
-                                ),
+                                                .ok();
+                                                cx.refresh_windows();
+                                            })
+                                    }),
+                                )),
                         )
                         .child(
                             div()
@@ -272,11 +279,14 @@ impl GrammarPage {
     /// 保存：按勾选差异同步挂载状态——勾选且未挂载 → 挂载；取消勾选但已挂载 → 卸载。
     fn sync_mounts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(ix) = self.selected else { return };
-        let Some(model) = self.models.get(ix) else { return };
-        let Some(inputs) = self.mount_inputs.take() else { return };
-        let read = |e: &Entity<InputState>| -> i64 {
-            e.read(cx).value().trim().parse().unwrap_or(0)
+        let Some(model) = self.models.get(ix) else {
+            return;
         };
+        let Some(inputs) = self.mount_inputs.take() else {
+            return;
+        };
+        let read =
+            |e: &Entity<InputState>| -> i64 { e.read(cx).value().trim().parse().unwrap_or(0) };
         let mut mounted = 0;
         let mut unmounted = 0;
         for (i, sid) in self.schema_ids.iter().enumerate() {
@@ -303,11 +313,10 @@ impl GrammarPage {
                 if grammar::mount_grammar(model.filename.clone(), sid.clone(), config).is_ok() {
                     mounted += 1;
                 }
-            } else if !want && have {
-                if grammar::unmount_grammar(sid.clone()).is_ok() {
+            } else if !want && have
+                && grammar::unmount_grammar(sid.clone()).is_ok() {
                     unmounted += 1;
                 }
-            }
         }
         self.reload(window, cx);
         window.push_notification(
@@ -350,7 +359,8 @@ impl Render for GrammarPage {
                     .rounded_md()
                     .cursor_pointer()
                     .when(selected, |el| {
-                        el.bg(cx_theme.accent).text_color(cx_theme.accent_foreground)
+                        el.bg(cx_theme.accent)
+                            .text_color(cx_theme.accent_foreground)
                     })
                     .hover(|s| s.bg(cx_theme.secondary))
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -363,21 +373,16 @@ impl Render for GrammarPage {
                             .flex_1()
                             .min_w_0()
                             .child(div().child(m.display_name.clone()))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(format!(
-                                        "{} · {} · {}",
-                                        m.formatted_size,
-                                        m.filename,
-                                        if mounted_count > 0 {
-                                            format!("{} 个方案已挂载", mounted_count)
-                                        } else {
-                                            "未挂载".to_string()
-                                        }
-                                    )),
-                            ),
+                            .child(div().text_xs().text_color(muted).child(format!(
+                                "{} · {} · {}",
+                                m.formatted_size,
+                                m.filename,
+                                if mounted_count > 0 {
+                                    format!("{} 个方案已挂载", mounted_count)
+                                } else {
+                                    "未挂载".to_string()
+                                }
+                            ))),
                     )
                     .when(is_pending_del, |el| {
                         el.child(
@@ -396,112 +401,131 @@ impl Render for GrammarPage {
             .collect();
 
         // 右侧详情
-        let detail: AnyElement = match (self.selected, self.models.get(self.selected.unwrap_or(0))) {
-            (Some(_), Some(m)) => {
-                let mounted_rows: Vec<AnyElement> = self
-                    .schema_ids
-                    .iter()
-                    .map(|sid| {
-                        let mounted = self
-                            .mount_configs
-                            .get(sid)
-                            .map(|c| c.mounted_model.as_deref() == Some(m.filename.as_str()))
-                            .unwrap_or(false);
-                        h_flex()
-                            .justify_between()
-                            .px_3()
-                            .py_2()
-                            .border_b_1()
-                            .border_color(border)
-                            .child(div().text_sm().child(sid.clone()))
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .when(mounted, |el| el.text_color(gpui_kit::rgb(0x22c55e)).child("已挂载"))
-                                    .when(!mounted, |el| el.text_color(muted).child("未挂载")),
-                            )
-                            .into_any_element()
-                    })
-                    .collect();
-                let can_delete = self.pending.as_deref() != Some(m.filename.as_str());
-                let mounted_anywhere = self
-                    .schema_ids
-                    .iter()
-                    .any(|sid| {
+        let detail: AnyElement =
+            match (self.selected, self.models.get(self.selected.unwrap_or(0))) {
+                (Some(_), Some(m)) => {
+                    let mounted_rows: Vec<AnyElement> = self
+                        .schema_ids
+                        .iter()
+                        .map(|sid| {
+                            let mounted = self
+                                .mount_configs
+                                .get(sid)
+                                .map(|c| c.mounted_model.as_deref() == Some(m.filename.as_str()))
+                                .unwrap_or(false);
+                            h_flex()
+                                .justify_between()
+                                .px_3()
+                                .py_2()
+                                .border_b_1()
+                                .border_color(border)
+                                .child(div().text_sm().child(sid.clone()))
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .when(mounted, |el| {
+                                            el.text_color(gpui_kit::rgb(0x22c55e)).child("已挂载")
+                                        })
+                                        .when(!mounted, |el| el.text_color(muted).child("未挂载")),
+                                )
+                                .into_any_element()
+                        })
+                        .collect();
+                    let can_delete = self.pending.as_deref() != Some(m.filename.as_str());
+                    let mounted_anywhere = self.schema_ids.iter().any(|sid| {
                         self.mount_configs
                             .get(sid)
                             .map(|c| c.mounted_model.as_deref() == Some(m.filename.as_str()))
                             .unwrap_or(false)
                     });
-                v_flex()
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .min_h_0()
+                        .overflow_y_scrollbar()
+                        .gap_3()
+                        .child(
+                            div()
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(m.display_name.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(muted)
+                                .child(format!("文件：{}（{}）", m.filename, m.formatted_size)),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(muted)
+                                .child(format!("路径：{}", m.file_path)),
+                        )
+                        .child(
+                            v_flex()
+                                .rounded_md()
+                                .border_1()
+                                .border_color(border)
+                                .child(div().p_2().text_sm().text_color(muted).child("挂载状态"))
+                                .children(mounted_rows),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("grammar-mount")
+                                        .primary()
+                                        .label("批量挂载")
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.open_mount_dialog(window, cx);
+                                        })),
+                                )
+                                .child(
+                                    Button::new("grammar-refresh")
+                                        .outline()
+                                        .label("刷新")
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.reload(window, cx);
+                                        })),
+                                )
+                                .child(
+                                    Button::new("grammar-import")
+                                        .outline()
+                                        .label("导入模型")
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.import_model(window, cx);
+                                        })),
+                                )
+                                .child(
+                                    Button::new(SharedString::from(format!(
+                                        "grammar-del-{}",
+                                        self.selected.unwrap_or(0)
+                                    )))
+                                    .when(
+                                        self.pending.is_some()
+                                            && self.pending.as_deref() == Some(m.filename.as_str()),
+                                        |el| el.success().label("取消删除"),
+                                    )
+                                    .when(
+                                        !(self.pending.is_some()
+                                            && self.pending.as_deref()
+                                                == Some(m.filename.as_str())),
+                                        |el| el.danger().label("删除").disabled(mounted_anywhere),
+                                    )
+                                    .when(can_delete, |el| el)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.toggle_pending(cx);
+                                    })),
+                                ),
+                        )
+                        .into_any_element()
+                }
+                _ => div()
                     .flex_1()
-                    .min_w_0()
-                    .min_h_0()
-                    .overflow_y_scrollbar()
-                    .gap_3()
-                    .child(div().font_weight(FontWeight::MEDIUM).child(m.display_name.clone()))
-                    .child(div().text_sm().text_color(muted).child(format!("文件：{}（{}）", m.filename, m.formatted_size)))
-                    .child(div().text_sm().text_color(muted).child(format!("路径：{}", m.file_path)))
-                    .child(
-                        v_flex()
-                            .rounded_md()
-                            .border_1()
-                            .border_color(border)
-                            .child(div().p_2().text_sm().text_color(muted).child("挂载状态"))
-                            .children(mounted_rows),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Button::new("grammar-mount")
-                                    .primary()
-                                    .label("批量挂载")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.open_mount_dialog(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("grammar-refresh")
-                                    .outline()
-                                    .label("刷新")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.reload(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("grammar-import")
-                                    .outline()
-                                                                        .label("导入模型")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.import_model(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new(SharedString::from(format!(
-                                    "grammar-del-{}",
-                                    self.selected.unwrap_or(0)
-                                )))
-                                .when(self.pending.is_some() && self.pending.as_deref() == Some(m.filename.as_str()), |el| {
-                                    el.success().label("取消删除")
-                                })
-                                .when(!(self.pending.is_some() && self.pending.as_deref() == Some(m.filename.as_str())), |el| {
-                                    el.danger().label("删除").disabled(mounted_anywhere)
-                                })
-                                .when(can_delete, |el| el)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.toggle_pending(cx);
-                                })),
-                            ),
-                    )
-                    .into_any_element()
-            }
-            _ => div()
-                .flex_1()
-                .text_color(muted)
-                .child("将 .gram 语言模型文件放入 Rime 用户目录后点击刷新")
-                .into_any_element(),
-        };
+                    .text_color(muted)
+                    .child("将 .gram 语言模型文件放入 Rime 用户目录后点击刷新")
+                    .into_any_element(),
+            };
 
         v_flex()
             .size_full()

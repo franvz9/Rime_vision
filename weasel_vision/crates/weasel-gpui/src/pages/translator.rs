@@ -1,10 +1,6 @@
 //! 翻译器子面板（对应 TranslatorSettings.vue，SchemeProfile 内嵌）。
 use gpui_kit::component::{
-    ActiveTheme,
-    button::Button,
-    checkbox::Checkbox,
-    WindowExt as _,
-    h_flex, v_flex,
+    button::Button, checkbox::Checkbox, h_flex, v_flex, ActiveTheme, WindowExt as _,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -12,10 +8,26 @@ use rime_core::service::translator::{self, TranslatorPatch, TranslatorSettings};
 
 /// 4 个开关的字段访问器（读 / 写 / dirty 标记名）。
 const FIELDS: [(&str, &str, &str); 4] = [
-    ("enable_encoder", "启用自动造词", "(enable_encoder) 输入时自动学习并造词"),
-    ("enable_sentence", "启用自动句子输入", "(enable_sentence) 自动对短语进行编码，形成句子"),
-    ("enable_user_dict", "启用用户词典", "(enable_user_dict) 允许使用用户词典"),
-    ("encode_commit_history", "自动编码上屏词语", "(encode_commit_history) 对已上屏的词语进行编码"),
+    (
+        "enable_encoder",
+        "启用自动造词",
+        "(enable_encoder) 输入时自动学习并造词",
+    ),
+    (
+        "enable_sentence",
+        "启用自动句子输入",
+        "(enable_sentence) 自动对短语进行编码，形成句子",
+    ),
+    (
+        "enable_user_dict",
+        "启用用户词典",
+        "(enable_user_dict) 允许使用用户词典",
+    ),
+    (
+        "encode_commit_history",
+        "自动编码上屏词语",
+        "(encode_commit_history) 对已上屏的词语进行编码",
+    ),
 ];
 
 pub struct TranslatorPanel {
@@ -29,7 +41,12 @@ impl TranslatorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut this = Self {
             scope: None,
-            settings: TranslatorSettings { enable_encoder: true, enable_sentence: true, enable_user_dict: true, encode_commit_history: true },
+            settings: TranslatorSettings {
+                enable_encoder: true,
+                enable_sentence: true,
+                enable_user_dict: true,
+                encode_commit_history: true,
+            },
             is_custom: false,
             dirty: [false; 4],
         };
@@ -150,38 +167,35 @@ impl Render for TranslatorPanel {
             })
             .collect();
 
-        v_flex()
-            .gap_3()
-            .child(div().children(rows))
-            .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_xs()
-                            .px_2()
-                            .py_0p5()
-                            .rounded_md()
-                            .bg(cx_theme.secondary)
-                            .text_color(cx_theme.secondary_foreground)
-                            .when(self.is_custom || self.dirty.iter().any(|d| *d), |el| {
-                                el.child("自定义")
-                            })
-                            .when(!(self.is_custom || self.dirty.iter().any(|d| *d)), |el| {
-                                el.child("默认")
-                            }),
+        v_flex().gap_3().child(div().children(rows)).child(
+            h_flex()
+                .gap_2()
+                .items_center()
+                .child(
+                    div()
+                        .text_xs()
+                        .px_2()
+                        .py_0p5()
+                        .rounded_md()
+                        .bg(cx_theme.secondary)
+                        .text_color(cx_theme.secondary_foreground)
+                        .when(self.is_custom || self.dirty.iter().any(|d| *d), |el| {
+                            el.child("自定义")
+                        })
+                        .when(!(self.is_custom || self.dirty.iter().any(|d| *d)), |el| {
+                            el.child("默认")
+                        }),
+                )
+                .when(self.is_custom, |el| {
+                    el.child(
+                        Button::new("translator-reset")
+                            .outline()
+                            .label("恢复默认")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.reset(window, cx);
+                            })),
                     )
-                    .when(self.is_custom, |el| {
-                        el.child(
-                            Button::new("translator-reset")
-                                .outline()
-                                .label("恢复默认")
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.reset(window, cx);
-                                })),
-                        )
-                    }),
-            )
+                }),
+        )
     }
 }

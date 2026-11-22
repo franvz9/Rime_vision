@@ -2,16 +2,16 @@
 //!
 //! 左：备份列表；右：备份详情（文件多选恢复 + 对比 diff 双栏）。
 //! 四个模态：创建备份（7 类别 + 全量 + 备注）、恢复、对比、确认删除。
+use gpui_kit::assets::IconName;
 use gpui_kit::component::{
-    ActiveTheme,
-    scroll::ScrollableElement as _,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
     dialog::DialogButtonProps,
+    h_flex,
     input::{Input, InputState},
-    WindowExt as _, h_flex, v_flex,
+    scroll::ScrollableElement as _,
+    v_flex, ActiveTheme, WindowExt as _,
 };
-use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use rime_core::service::backup::{self, BackupDetail, BackupInfo};
@@ -19,9 +19,17 @@ use std::collections::HashSet;
 
 /// 备份类别（key, 标签, 说明）。
 const CATEGORIES: &[(&str, &str, &str)] = &[
-    ("core", "核心配置", "default.yaml, installation.yaml, user.yaml, squirrel.yaml 等"),
+    (
+        "core",
+        "核心配置",
+        "default.yaml, installation.yaml, user.yaml, squirrel.yaml 等",
+    ),
     ("schemas", "方案定义", "*.schema.yaml 文件"),
-    ("themes", "主题配色", "squirrel.custom.yaml, weasel.custom.yaml 等"),
+    (
+        "themes",
+        "主题配色",
+        "squirrel.custom.yaml, weasel.custom.yaml 等",
+    ),
     ("dicts", "用户词典", "user_dictionaries/*.userdb.txt"),
     ("models", "语言模型", "*.gram 文件"),
     ("opencc", "OpenCC 数据", "opencc/ 目录"),
@@ -90,7 +98,8 @@ impl BackupPage {
     fn open_create_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let weak = cx.weak_entity();
         let note_input = self.note_input.clone();
-        self.note_input.update(cx, |s, cx| s.set_value("", window, cx));
+        self.note_input
+            .update(cx, |s, cx| s.set_value("", window, cx));
         window.open_dialog(cx, move |dialog, _, cx| {
             let weak = weak.clone();
             let note_input = note_input.clone();
@@ -124,7 +133,6 @@ impl BackupPage {
                                     let label = *label;
                                     let desc = *desc;
                                     let weak = weak.clone();
-                                    let i = i;
                                     h_flex()
                                         .gap_2()
                                         .items_start()
@@ -224,7 +232,9 @@ impl BackupPage {
     }
 
     fn open_restore_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(detail) = self.selected.clone() else { return };
+        let Some(detail) = self.selected.clone() else {
+            return;
+        };
         let weak = cx.weak_entity();
         let files: Vec<String> = detail.files.iter().map(|f| f.name.clone()).collect();
         let backup_id = detail.info.id.clone();
@@ -236,7 +246,10 @@ impl BackupPage {
                 .upgrade()
                 .map(|e| {
                     let this = e.read(cx);
-                    files.iter().map(|f| this.restore_files.contains(f)).collect()
+                    files
+                        .iter()
+                        .map(|f| this.restore_files.contains(f))
+                        .collect()
                 })
                 .unwrap_or_default();
             dialog
@@ -244,13 +257,11 @@ impl BackupPage {
                 .child(
                     v_flex()
                         .gap_2()
-                        .child(
-                            div()
-                                .text_sm()
-                                .child("恢复前当前文件会被自动备份到 backups/auto/。请选择要恢复的文件："),
-                        )
-                        .child(
-                            v_flex().gap_1().children(files.iter().enumerate().map(|(i, f)| {
+                        .child(div().text_sm().child(
+                            "恢复前当前文件会被自动备份到 backups/auto/。请选择要恢复的文件：",
+                        ))
+                        .child(v_flex().gap_1().children(files.iter().enumerate().map(
+                            |(i, f)| {
                                 let weak = weak.clone();
                                 let f = f.clone();
                                 let checked = checked.get(i).copied().unwrap_or(false);
@@ -264,23 +275,23 @@ impl BackupPage {
                                             } else {
                                                 this.restore_files.remove(&f);
                                             }
-                                        }).ok();
+                                        })
+                                        .ok();
                                         cx.refresh_windows();
-                                    }).into_any_element()
-                            })),
-                        ),
+                                    })
+                                    .into_any_element()
+                            },
+                        ))),
                 )
-                .button_props(
-                    DialogButtonProps::default().ok_text("确认恢复").on_ok({
-                        let weak = weak.clone();
-                        move |_, window, cx| {
-                            let _ = weak.update(cx, |this, cx| {
-                                this.do_restore(window, cx);
-                            });
-                            true
-                        }
-                    }),
-                )
+                .button_props(DialogButtonProps::default().ok_text("确认恢复").on_ok({
+                    let weak = weak.clone();
+                    move |_, window, cx| {
+                        let _ = weak.update(cx, |this, cx| {
+                            this.do_restore(window, cx);
+                        });
+                        true
+                    }
+                }))
                 .overlay_closable(true)
         });
     }
@@ -452,17 +463,12 @@ impl Render for BackupPage {
                         v_flex()
                             .gap_0p5()
                             .child(div().text_sm().child(b.id.clone()))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(format!(
-                                        "{} · {} 文件 · {}",
-                                        type_name(&b.backup_type),
-                                        b.file_count,
-                                        format_size(b.total_size)
-                                    )),
-                            ),
+                            .child(div().text_xs().text_color(muted).child(format!(
+                                "{} · {} 文件 · {}",
+                                type_name(&b.backup_type),
+                                b.file_count,
+                                format_size(b.total_size)
+                            ))),
                     )
                     .child(
                         Button::new(SharedString::from(format!("bk-del-{ix}")))
@@ -493,12 +499,7 @@ impl Render for BackupPage {
                             .border_b_1()
                             .border_color(border)
                             .child(div().flex_1().text_sm().child(f.name.clone()))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(format_size(f.size)),
-                            )
+                            .child(div().text_xs().text_color(muted).child(format_size(f.size)))
                             .child(
                                 Button::new(SharedString::from(format!("bk-cmp-{i}")))
                                     .ghost()
@@ -537,11 +538,7 @@ impl Render for BackupPage {
                                     .child(type_name(&info.backup_type).to_string()),
                             ),
                     )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(muted)
-                            .child(format!(
+                    .child(div().text_sm().text_color(muted).child(format!(
                                 "时间：{} · 文件数：{} · 大小：{}{}",
                                 info.created_at,
                                 info.file_count,
@@ -550,8 +547,7 @@ impl Render for BackupPage {
                                     .as_ref()
                                     .map(|n| format!(" · 备注：{}", n))
                                     .unwrap_or_default()
-                            )),
-                    )
+                            )))
                     .child(div().children(file_rows))
                     .child(
                         Button::new("bk-restore")
@@ -577,11 +573,7 @@ impl Render for BackupPage {
                 h_flex()
                     .justify_between()
                     .items_center()
-                    .child(
-                        div()
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("备份列表"),
-                    )
+                    .child(div().font_weight(FontWeight::MEDIUM).child("备份列表"))
                     .child(
                         Button::new("bk-create")
                             .primary()
@@ -593,9 +585,11 @@ impl Render for BackupPage {
                     ),
             )
             .child(
-                div().p_3().rounded_md().text_sm().child(
-                    "系统会在每次部署前自动创建部署前备份，最多保留若干份。",
-                ),
+                div()
+                    .p_3()
+                    .rounded_md()
+                    .text_sm()
+                    .child("系统会在每次部署前自动创建部署前备份，最多保留若干份。"),
             )
             .child(
                 h_flex()
@@ -620,9 +614,7 @@ impl Render for BackupPage {
                                     .child(div().children(list_rows)),
                             )
                             .when(self.backups.is_empty(), |el| {
-                                el.child(
-                                    div().p_3().text_sm().text_color(muted).child("暂无备份"),
-                                )
+                                el.child(div().p_3().text_sm().text_color(muted).child("暂无备份"))
                             }),
                     )
                     .child(detail),

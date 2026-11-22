@@ -6,18 +6,16 @@
 use std::collections::HashMap;
 
 use gpui_kit::component::{
-    ActiveTheme,
     button::{Button, ButtonVariants as _},
-    Disableable as _,
-    scroll::ScrollableElement as _,
     checkbox::Checkbox,
     color_picker::{ColorPicker, ColorPickerState},
     dialog::DialogButtonProps,
     form::{Field, Form},
+    h_flex,
     input::{Input, InputEvent, InputState},
+    scroll::ScrollableElement as _,
     select::{Select, SelectEvent, SelectState},
-    IndexPath,
-    WindowExt as _, h_flex, v_flex,
+    v_flex, ActiveTheme, Disableable as _, IndexPath, WindowExt as _,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::StatefulInteractiveElement as _;
@@ -31,15 +29,13 @@ use rime_core::service::style::{self, StyleData};
 fn color_to_hsla(c: &Option<RimeColor>) -> Hsla {
     match c {
         Some(c) => {
-            if c.a >= 255 {
+            if c.a == 255 {
                 rgb(((c.r as u32) << 16) | ((c.g as u32) << 8) | c.b as u32).into()
             } else {
                 // c.r/g/b/a 已由 RimeColor::from_hex 解码为真实通道值；
                 // gpui rgba() 打包顺序为 0xRRGGBBAA（M2：此前按 AABBGGRR 原样重排，四通道全错位）
-                rgba(
-                    ((c.r as u32) << 24) | ((c.g as u32) << 16) | ((c.b as u32) << 8) | c.a as u32,
-                )
-                .into()
+                rgba(((c.r as u32) << 24) | ((c.g as u32) << 16) | ((c.b as u32) << 8) | c.a as u32)
+                    .into()
             }
         }
         None => rgb(0x888888).into(),
@@ -101,7 +97,9 @@ fn candidate_preview(_cx: &App, scheme: &RimeColorScheme) -> AnyElement {
 type StringSelect = Entity<SelectState<Vec<String>>>;
 
 /// 字号预设（当前值不在列表时会自动并入）。
-const FONT_POINT_PRESETS: &[f64] = &[10., 11., 12., 13., 14., 15., 16., 17., 18., 20., 22., 24., 28., 32.];
+const FONT_POINT_PRESETS: &[f64] = &[
+    10., 11., 12., 13., 14., 15., 16., 17., 18., 20., 22., 24., 28., 32.,
+];
 
 fn point_options(current: f64) -> Vec<String> {
     let mut vals: Vec<f64> = FONT_POINT_PRESETS.to_vec();
@@ -109,9 +107,15 @@ fn point_options(current: f64) -> Vec<String> {
         vals.push(current);
         vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
     }
-    vals.iter().map(|v| {
-        if v.fract() == 0.0 { format!("{}", *v as i64) } else { format!("{}", v) }
-    }).collect()
+    vals.iter()
+        .map(|v| {
+            if v.fract() == 0.0 {
+                format!("{}", *v as i64)
+            } else {
+                format!("{}", v)
+            }
+        })
+        .collect()
 }
 
 fn fmt_f64(v: f64) -> String {
@@ -125,7 +129,11 @@ fn fmt_f64(v: f64) -> String {
 fn nearest_index(options: &[String], current: f64) -> Option<IndexPath> {
     options
         .iter()
-        .position(|o| o.parse::<f64>().map(|v| (v - current).abs() < 0.001).unwrap_or(false))
+        .position(|o| {
+            o.parse::<f64>()
+                .map(|v| (v - current).abs() < 0.001)
+                .unwrap_or(false)
+        })
         .map(|row| IndexPath::default().row(row))
 }
 
@@ -231,48 +239,67 @@ impl ThemePage {
         families.sort();
         families.dedup();
         let s = self.style.clone();
-        let mk_font = |current: &str, window: &mut Window, cx: &mut Context<Self>| -> StringSelect {
-            let mut opts = families.clone();
-            if !opts.iter().any(|o| o == current) {
-                opts.insert(0, current.to_string());
-            }
-            let default = opts
-                .iter()
-                .position(|o| o == current)
-                .map(|row| IndexPath::default().row(row));
-            cx.new(|cx| SelectState::new(opts, default, window, cx).searchable(true))
-        };
+        let mk_font =
+            |current: &str, window: &mut Window, cx: &mut Context<Self>| -> StringSelect {
+                let mut opts = families.clone();
+                if !opts.iter().any(|o| o == current) {
+                    opts.insert(0, current.to_string());
+                }
+                let default = opts
+                    .iter()
+                    .position(|o| o == current)
+                    .map(|row| IndexPath::default().row(row));
+                cx.new(|cx| SelectState::new(opts, default, window, cx).searchable(true))
+            };
         self.font_face_select = Some(mk_font(&s.font_face, window, cx));
         self.label_font_select = Some(mk_font(&s.label_font_face, window, cx));
         self.comment_font_select = Some(mk_font(&s.comment_font_face, window, cx));
 
-        let mk_point = |current: f64, window: &mut Window, cx: &mut Context<Self>| -> StringSelect {
-            let opts = point_options(current);
-            let default = nearest_index(&opts, current);
-            cx.new(|cx| SelectState::new(opts, default, window, cx))
-        };
+        let mk_point =
+            |current: f64, window: &mut Window, cx: &mut Context<Self>| -> StringSelect {
+                let opts = point_options(current);
+                let default = nearest_index(&opts, current);
+                cx.new(|cx| SelectState::new(opts, default, window, cx))
+            };
         self.font_point_select = Some(mk_point(s.font_point, window, cx));
         self.label_point_select = Some(mk_point(s.label_font_point, window, cx));
         self.comment_point_select = Some(mk_point(s.comment_font_point, window, cx));
 
-        let mk_choice = |options: &[&str], current: &str, window: &mut Window, cx: &mut Context<Self>| -> StringSelect {
-            let labels: Vec<String> = options
-                .iter()
-                .map(|o| o.to_string())
-                .collect();
+        let mk_choice = |options: &[&str],
+                         current: &str,
+                         window: &mut Window,
+                         cx: &mut Context<Self>|
+         -> StringSelect {
+            let labels: Vec<String> = options.iter().map(|o| o.to_string()).collect();
             let default = options
                 .iter()
                 .position(|o| *o == current)
                 .map(|row| IndexPath::default().row(row));
             cx.new(|cx| SelectState::new(labels, default, window, cx))
         };
-        self.layout_select = Some(mk_choice(&["stacked", "linear"], &s.candidate_list_layout, window, cx));
-        self.orientation_select = Some(mk_choice(&["horizontal", "vertical"], &s.text_orientation, window, cx));
-        self.status_select = Some(mk_choice(&["mix", "long", "short", "never"], &s.status_message_type, window, cx));
+        self.layout_select = Some(mk_choice(
+            &["stacked", "linear"],
+            &s.candidate_list_layout,
+            window,
+            cx,
+        ));
+        self.orientation_select = Some(mk_choice(
+            &["horizontal", "vertical"],
+            &s.text_orientation,
+            window,
+            cx,
+        ));
+        self.status_select = Some(mk_choice(
+            &["mix", "long", "short", "never"],
+            &s.status_message_type,
+            window,
+            cx,
+        ));
 
-        let mk_text = |v: String, window: &mut Window, cx: &mut Context<Self>| -> Entity<InputState> {
-            cx.new(|cx| InputState::new(window, cx).default_value(v))
-        };
+        let mk_text =
+            |v: String, window: &mut Window, cx: &mut Context<Self>| -> Entity<InputState> {
+                cx.new(|cx| InputState::new(window, cx).default_value(v))
+            };
         self.format_input = Some(mk_text(s.candidate_format.clone(), window, cx));
         self.corner_radius_input = Some(mk_text(fmt_f64(s.corner_radius), window, cx));
         self.hilited_radius_input = Some(mk_text(fmt_f64(s.hilited_corner_radius), window, cx));
@@ -288,51 +315,72 @@ impl ThemePage {
         subs.clear();
         macro_rules! sub_select {
             ($sel:expr, $field:ident) => {
-                subs.push(cx.subscribe_in(&$sel.clone(), window, |this, _, ev: &SelectEvent<_>, _, cx| {
-                    if let SelectEvent::Confirm(Some(label)) = ev {
-                        this.style.$field = label.to_string();
-                        cx.notify();
-                    }
-                }));
+                subs.push(cx.subscribe_in(
+                    &$sel.clone(),
+                    window,
+                    |this, _, ev: &SelectEvent<_>, _, cx| {
+                        if let SelectEvent::Confirm(Some(label)) = ev {
+                            this.style.$field = label.to_string();
+                            cx.notify();
+                        }
+                    },
+                ));
             };
         }
         sub_select!(self.font_face_select.as_ref().unwrap(), font_face);
         sub_select!(self.label_font_select.as_ref().unwrap(), label_font_face);
-        sub_select!(self.comment_font_select.as_ref().unwrap(), comment_font_face);
+        sub_select!(
+            self.comment_font_select.as_ref().unwrap(),
+            comment_font_face
+        );
         // 字号：label 解析为 f64 写回
         macro_rules! sub_point {
             ($sel:expr, $field:ident) => {
-                subs.push(cx.subscribe_in(&$sel.clone(), window, |this, _, ev: &SelectEvent<_>, _, cx| {
-                    if let SelectEvent::Confirm(Some(label)) = ev {
-                        if let Ok(v) = label.parse::<f64>() {
-                            this.style.$field = v;
+                subs.push(cx.subscribe_in(
+                    &$sel.clone(),
+                    window,
+                    |this, _, ev: &SelectEvent<_>, _, cx| {
+                        if let SelectEvent::Confirm(Some(label)) = ev {
+                            if let Ok(v) = label.parse::<f64>() {
+                                this.style.$field = v;
+                            }
+                            cx.notify();
                         }
-                        cx.notify();
-                    }
-                }));
+                    },
+                ));
             };
         }
         sub_point!(self.font_point_select.as_ref().unwrap(), font_point);
         sub_point!(self.label_point_select.as_ref().unwrap(), label_font_point);
-        sub_point!(self.comment_point_select.as_ref().unwrap(), comment_font_point);
+        sub_point!(
+            self.comment_point_select.as_ref().unwrap(),
+            comment_font_point
+        );
         sub_select!(self.layout_select.as_ref().unwrap(), candidate_list_layout);
         sub_select!(self.orientation_select.as_ref().unwrap(), text_orientation);
         sub_select!(self.status_select.as_ref().unwrap(), status_message_type);
         // 数值/文本输入
         macro_rules! sub_text_num {
             ($input:expr, $field:ident) => {
-                subs.push(cx.subscribe_in(&$input.clone(), window, |this, input, ev: &InputEvent, _, cx| {
-                    if let InputEvent::Change = ev {
-                        if let Ok(v) = input.read(cx).value().trim().parse::<f64>() {
-                            this.style.$field = v;
-                            cx.notify();
+                subs.push(cx.subscribe_in(
+                    &$input.clone(),
+                    window,
+                    |this, input, ev: &InputEvent, _, cx| {
+                        if let InputEvent::Change = ev {
+                            if let Ok(v) = input.read(cx).value().trim().parse::<f64>() {
+                                this.style.$field = v;
+                                cx.notify();
+                            }
                         }
-                    }
-                }));
+                    },
+                ));
             };
         }
         sub_text_num!(self.corner_radius_input.as_ref().unwrap(), corner_radius);
-        sub_text_num!(self.hilited_radius_input.as_ref().unwrap(), hilited_corner_radius);
+        sub_text_num!(
+            self.hilited_radius_input.as_ref().unwrap(),
+            hilited_corner_radius
+        );
         sub_text_num!(self.line_spacing_input.as_ref().unwrap(), line_spacing);
         sub_text_num!(self.spacing_input.as_ref().unwrap(), spacing);
         sub_text_num!(self.border_height_input.as_ref().unwrap(), border_height);
@@ -340,19 +388,25 @@ impl ThemePage {
         sub_text_num!(self.shadow_size_input.as_ref().unwrap(), shadow_size);
         sub_text_num!(self.alpha_input.as_ref().unwrap(), alpha);
         // 候选格式（文本）
-        subs.push(cx.subscribe_in(&self.format_input.clone().unwrap(), window,
+        subs.push(cx.subscribe_in(
+            &self.format_input.clone().unwrap(),
+            window,
             |this, input, ev: &InputEvent, _, cx| {
                 if let InputEvent::Change = ev {
                     this.style.candidate_format = input.read(cx).value().to_string();
                     cx.notify();
                 }
-            }));
+            },
+        ));
     }
 
     /// 数据重载后把控件值刷成 style 当前值（set_value 不触发 Change，无循环）。
     fn sync_style_controls(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let s = self.style.clone();
-        let set_sel = |sel: &Option<StringSelect>, value: &str, window: &mut Window, cx: &mut Context<Self>| {
+        let set_sel = |sel: &Option<StringSelect>,
+                       value: &str,
+                       window: &mut Window,
+                       cx: &mut Context<Self>| {
             if let Some(sel) = sel {
                 let value = value.to_string();
                 sel.update(cx, |st, cx| {
@@ -364,23 +418,61 @@ impl ThemePage {
         set_sel(&self.label_font_select, &s.label_font_face, window, cx);
         set_sel(&self.comment_font_select, &s.comment_font_face, window, cx);
         set_sel(&self.font_point_select, &fmt_f64(s.font_point), window, cx);
-        set_sel(&self.label_point_select, &fmt_f64(s.label_font_point), window, cx);
-        set_sel(&self.comment_point_select, &fmt_f64(s.comment_font_point), window, cx);
+        set_sel(
+            &self.label_point_select,
+            &fmt_f64(s.label_font_point),
+            window,
+            cx,
+        );
+        set_sel(
+            &self.comment_point_select,
+            &fmt_f64(s.comment_font_point),
+            window,
+            cx,
+        );
         set_sel(&self.layout_select, &s.candidate_list_layout, window, cx);
         set_sel(&self.orientation_select, &s.text_orientation, window, cx);
         set_sel(&self.status_select, &s.status_message_type, window, cx);
-        let set_text = |e: &Option<Entity<InputState>>, v: String, window: &mut Window, cx: &mut Context<Self>| {
+        let set_text = |e: &Option<Entity<InputState>>,
+                        v: String,
+                        window: &mut Window,
+                        cx: &mut Context<Self>| {
             if let Some(e) = e {
                 e.update(cx, |st, cx| st.set_value(v.as_str(), window, cx));
             }
         };
         set_text(&self.format_input, s.candidate_format.clone(), window, cx);
-        set_text(&self.corner_radius_input, fmt_f64(s.corner_radius), window, cx);
-        set_text(&self.hilited_radius_input, fmt_f64(s.hilited_corner_radius), window, cx);
-        set_text(&self.line_spacing_input, fmt_f64(s.line_spacing), window, cx);
+        set_text(
+            &self.corner_radius_input,
+            fmt_f64(s.corner_radius),
+            window,
+            cx,
+        );
+        set_text(
+            &self.hilited_radius_input,
+            fmt_f64(s.hilited_corner_radius),
+            window,
+            cx,
+        );
+        set_text(
+            &self.line_spacing_input,
+            fmt_f64(s.line_spacing),
+            window,
+            cx,
+        );
         set_text(&self.spacing_input, fmt_f64(s.spacing), window, cx);
-        set_text(&self.border_height_input, fmt_f64(s.border_height), window, cx);
-        set_text(&self.border_width_input, fmt_f64(s.border_width), window, cx);
+        set_text(
+            &self.border_height_input,
+            fmt_f64(s.border_height),
+            window,
+            cx,
+        );
+        set_text(
+            &self.border_width_input,
+            fmt_f64(s.border_width),
+            window,
+            cx,
+        );
         set_text(&self.shadow_size_input, fmt_f64(s.shadow_size), window, cx);
         set_text(&self.alpha_input, fmt_f64(s.alpha), window, cx);
         cx.notify();
@@ -517,7 +609,13 @@ impl ThemePage {
         .detach();
     }
 
-    fn open_scheme_editor(&mut self, name: Option<String>, copy: bool, window: &mut Window, cx: &mut Context<Self>) {
+    fn open_scheme_editor(
+        &mut self,
+        name: Option<String>,
+        copy: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // name=None → 编辑当前选中；copy=true → 复制模式
         let source_name = name.or_else(|| self.selected_scheme.clone());
         let source = source_name
@@ -578,31 +676,37 @@ impl ThemePage {
                         .child(
                             v_flex()
                                 .gap_2()
-                                .children(COLOR_FIELDS.iter().enumerate().map(|(i, (_, label))| {
-                                    let picker = pickers.get(i).cloned().unwrap();
-                                    h_flex()
-                                        .gap_2()
-                                        .items_center()
-                                        .child(div().w(px(100.)).text_sm().child(*label))
-                                        .child(ColorPicker::new(&picker))
-                                        .into_any_element()
-                                })),
+                                .children(COLOR_FIELDS.iter().enumerate().map(
+                                    |(i, (_, label))| {
+                                        let picker = pickers.get(i).cloned().unwrap();
+                                        h_flex()
+                                            .gap_2()
+                                            .items_center()
+                                            .child(div().w(px(100.)).text_sm().child(*label))
+                                            .child(ColorPicker::new(&picker))
+                                            .into_any_element()
+                                    },
+                                )),
                         ),
                 )
-                .button_props(
-                    DialogButtonProps::default().ok_text("保存").on_ok({
-                        let weak = weak.clone();
-                        let name_input = name_input.clone();
-                        let author_input = author_input.clone();
-                        let pickers = pickers.clone();
-                        move |_, window, cx| {
-                            let _ = weak.update(cx, |this, cx| {
-                                this.submit_scheme_edit(&name_input, &author_input, &pickers, window, cx);
-                            });
-                            true
-                        }
-                    }),
-                )
+                .button_props(DialogButtonProps::default().ok_text("保存").on_ok({
+                    let weak = weak.clone();
+                    let name_input = name_input.clone();
+                    let author_input = author_input.clone();
+                    let pickers = pickers.clone();
+                    move |_, window, cx| {
+                        let _ = weak.update(cx, |this, cx| {
+                            this.submit_scheme_edit(
+                                &name_input,
+                                &author_input,
+                                &pickers,
+                                window,
+                                cx,
+                            );
+                        });
+                        true
+                    }
+                }))
                 .overlay_closable(true)
         });
     }
@@ -630,8 +734,12 @@ impl ThemePage {
         scheme.name = name.clone();
         scheme.author = author_input.read(cx).value().to_string();
         for (i, (key, _)) in COLOR_FIELDS.iter().enumerate() {
-            let Some(picker) = pickers.get(i) else { continue };
-            let Some(hsla) = picker.read(cx).value() else { continue };
+            let Some(picker) = pickers.get(i) else {
+                continue;
+            };
+            let Some(hsla) = picker.read(cx).value() else {
+                continue;
+            };
             let color = hsla_to_rime_color(hsla);
             set_field_color(&mut scheme, key, Some(color));
         }
@@ -644,7 +752,9 @@ impl ThemePage {
     }
 
     fn toggle_pending(&mut self, cx: &mut Context<Self>) {
-        let Some(name) = self.selected_scheme.clone() else { return };
+        let Some(name) = self.selected_scheme.clone() else {
+            return;
+        };
         match &self.pending {
             Some(p) if *p == name => self.pending = None,
             _ => self.pending = Some(name),
@@ -665,7 +775,7 @@ fn field_color(scheme: &RimeColorScheme, key: &str) -> RimeColor {
         "candidate_label_color" => &scheme.candidate_label_color,
         _ => &None,
     };
-    c.clone().unwrap_or(RimeColor::new(0xff, 0xff, 0xff, 0xff))
+    (*c).unwrap_or(RimeColor::new(0xff, 0xff, 0xff, 0xff))
 }
 
 fn set_field_color(scheme: &mut RimeColorScheme, key: &str, color: Option<RimeColor>) {
@@ -698,19 +808,22 @@ impl Render for ThemePage {
         let danger = cx_theme.danger;
 
         // Tab 条
-        let tabs = h_flex()
-            .gap_2()
-            .children(["亮色主题", "暗色主题", "样式"].iter().enumerate().map(|(ix, label)| {
-                let active = self.active_tab == ix;
-                Button::new(SharedString::from(format!("theme-tab-{ix}")))
-                    .when(active, |el| el.primary())
-                    .when(!active, |el| el.ghost())
-                    .label(*label)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.active_tab = ix;
-                        cx.notify();
-                    }))
-            }));
+        let tabs =
+            h_flex()
+                .gap_2()
+                .children(["亮色主题", "暗色主题", "样式"].iter().enumerate().map(
+                    |(ix, label)| {
+                        let active = self.active_tab == ix;
+                        Button::new(SharedString::from(format!("theme-tab-{ix}")))
+                            .when(active, |el| el.primary())
+                            .when(!active, |el| el.ghost())
+                            .label(*label)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.active_tab = ix;
+                                cx.notify();
+                            }))
+                    },
+                ));
 
         let content: AnyElement = if self.active_tab <= 1 {
             // ── 主题列表 ──
@@ -726,10 +839,13 @@ impl Render for ThemePage {
                 .cloned()
                 .enumerate()
                 .map(|(ix, name)| {
-                    let scheme = self.current_schemes().get(&name).cloned().unwrap_or_default();
+                    let scheme = self
+                        .current_schemes()
+                        .get(&name)
+                        .cloned()
+                        .unwrap_or_default();
                     let is_selected = selected.as_deref() == Some(name.as_str());
-                    let is_current = (self.active_tab == 0
-                        && self.data.selected_light == name)
+                    let is_current = (self.active_tab == 0 && self.data.selected_light == name)
                         || (self.active_tab == 1 && self.data.selected_dark == name);
                     let is_pending = (self.active_tab == 0
                         && self.pending_light.as_deref() == Some(name.as_str()))
@@ -846,14 +962,17 @@ impl Render for ThemePage {
                                 .child(
                                     Button::new("theme-import")
                                         .outline()
-                                                                                .label("导入主题")
+                                        .label("导入主题")
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.import_theme(window, cx);
                                         })),
                                 )
                                 .when(has_pending, |el| {
                                     el.child(
-                                        div().text_sm().text_color(orange).child("主题已保存，待部署后生效"),
+                                        div()
+                                            .text_sm()
+                                            .text_color(orange)
+                                            .child("主题已保存，待部署后生效"),
                                     )
                                 }),
                         )
@@ -876,7 +995,10 @@ impl Render for ThemePage {
                         .border_color(border)
                         .overflow_hidden()
                         .child(
-                            div().h_full().overflow_y_scrollbar().child(div().children(rows)),
+                            div()
+                                .h_full()
+                                .overflow_y_scrollbar()
+                                .child(div().children(rows)),
                         ),
                 )
                 .child(candidate_preview(cx, &preview_scheme))
@@ -907,30 +1029,28 @@ impl Render for ThemePage {
                                     }
                                 })),
                         )
-                        .child(
-                            Button::new("theme-edit")
-                                .outline()
-                                .label("编辑")
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    let name = this.selected_scheme.clone();
-                                    this.open_scheme_editor(name, false, window, cx);
-                                })),
-                        )
-                        .child(
-                            Button::new("theme-copy")
-                                .outline()
-                                .label("复制")
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    let name = this.selected_scheme.clone();
-                                    this.open_scheme_editor(name, true, window, cx);
-                                })),
-                        )
+                        .child(Button::new("theme-edit").outline().label("编辑").on_click(
+                            cx.listener(|this, _, window, cx| {
+                                let name = this.selected_scheme.clone();
+                                this.open_scheme_editor(name, false, window, cx);
+                            }),
+                        ))
+                        .child(Button::new("theme-copy").outline().label("复制").on_click(
+                            cx.listener(|this, _, window, cx| {
+                                let name = this.selected_scheme.clone();
+                                this.open_scheme_editor(name, true, window, cx);
+                            }),
+                        ))
                         .child(
                             Button::new("theme-del")
                                 .danger()
                                 .label("删除")
-                                .disabled(self.selected_scheme.as_deref() == Some(self.data.selected_light.as_str())
-                                    || self.selected_scheme.as_deref() == Some(self.data.selected_dark.as_str()))
+                                .disabled(
+                                    self.selected_scheme.as_deref()
+                                        == Some(self.data.selected_light.as_str())
+                                        || self.selected_scheme.as_deref()
+                                            == Some(self.data.selected_dark.as_str()),
+                                )
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.toggle_pending(cx);
                                 })),
@@ -942,13 +1062,21 @@ impl Render for ThemePage {
             let sel_view = |sel: &Option<StringSelect>, w: Pixels| -> AnyElement {
                 match sel {
                     Some(s) => Select::new(s).w(w).into_any_element(),
-                    None => div().text_sm().text_color(muted).child("加载中…").into_any_element(),
+                    None => div()
+                        .text_sm()
+                        .text_color(muted)
+                        .child("加载中…")
+                        .into_any_element(),
                 }
             };
             let input_view = |input: &Option<Entity<InputState>>, w: Pixels| -> AnyElement {
                 match input {
                     Some(e) => Input::new(e).w(w).into_any_element(),
-                    None => div().text_sm().text_color(muted).child("加载中…").into_any_element(),
+                    None => div()
+                        .text_sm()
+                        .text_color(muted)
+                        .child("加载中…")
+                        .into_any_element(),
                 }
             };
 
@@ -960,27 +1088,36 @@ impl Render for ThemePage {
                         .label_width(px(120.))
                         .columns(2)
                         .child(
-                            Field::new().label("主字体").description("候选窗主文字字体")
+                            Field::new()
+                                .label("主字体")
+                                .description("候选窗主文字字体")
                                 .child(sel_view(&self.font_face_select, px(220.))),
                         )
                         .child(
-                            Field::new().label("主字号")
+                            Field::new()
+                                .label("主字号")
                                 .child(sel_view(&self.font_point_select, px(110.))),
                         )
                         .child(
-                            Field::new().label("序号字体").description("候选序号的字体")
+                            Field::new()
+                                .label("序号字体")
+                                .description("候选序号的字体")
                                 .child(sel_view(&self.label_font_select, px(220.))),
                         )
                         .child(
-                            Field::new().label("序号字号")
+                            Field::new()
+                                .label("序号字号")
                                 .child(sel_view(&self.label_point_select, px(110.))),
                         )
                         .child(
-                            Field::new().label("注释字体").description("候选注释的字体")
+                            Field::new()
+                                .label("注释字体")
+                                .description("候选注释的字体")
                                 .child(sel_view(&self.comment_font_select, px(220.))),
                         )
                         .child(
-                            Field::new().label("注释字号")
+                            Field::new()
+                                .label("注释字号")
                                 .child(sel_view(&self.comment_point_select, px(110.))),
                         ),
                 )
@@ -990,19 +1127,26 @@ impl Render for ThemePage {
                         .label_width(px(120.))
                         .columns(2)
                         .child(
-                            Field::new().label("候选排列").description("候选菜单的排列方向")
+                            Field::new()
+                                .label("候选排列")
+                                .description("候选菜单的排列方向")
                                 .child(sel_view(&self.layout_select, px(180.))),
                         )
                         .child(
-                            Field::new().label("文字方向")
+                            Field::new()
+                                .label("文字方向")
                                 .child(sel_view(&self.orientation_select, px(180.))),
                         )
                         .child(
-                            Field::new().label("候选格式").description("候选行的显示模板")
+                            Field::new()
+                                .label("候选格式")
+                                .description("候选行的显示模板")
                                 .child(input_view(&self.format_input, px(180.))),
                         )
                         .child(
-                            Field::new().label("状态提示").description("编码状态提示的显示方式")
+                            Field::new()
+                                .label("状态提示")
+                                .description("编码状态提示的显示方式")
                                 .child(sel_view(&self.status_select, px(180.))),
                         ),
                 )
@@ -1012,35 +1156,43 @@ impl Render for ThemePage {
                         .label_width(px(150.))
                         .columns(2)
                         .child(
-                            Field::new().label("圆角半径")
+                            Field::new()
+                                .label("圆角半径")
                                 .child(input_view(&self.corner_radius_input, px(110.))),
                         )
                         .child(
-                            Field::new().label("高亮圆角")
+                            Field::new()
+                                .label("高亮圆角")
                                 .child(input_view(&self.hilited_radius_input, px(110.))),
                         )
                         .child(
-                            Field::new().label("行间距")
+                            Field::new()
+                                .label("行间距")
                                 .child(input_view(&self.line_spacing_input, px(110.))),
                         )
                         .child(
-                            Field::new().label("间距")
+                            Field::new()
+                                .label("间距")
                                 .child(input_view(&self.spacing_input, px(110.))),
                         )
                         .child(
-                            Field::new().label("边框高度")
+                            Field::new()
+                                .label("边框高度")
                                 .child(input_view(&self.border_height_input, px(110.))),
                         )
                         .child(
-                            Field::new().label("边框宽度")
+                            Field::new()
+                                .label("边框宽度")
                                 .child(input_view(&self.border_width_input, px(110.))),
                         )
                         .child(
-                            Field::new().label("阴影大小")
+                            Field::new()
+                                .label("阴影大小")
                                 .child(input_view(&self.shadow_size_input, px(110.))),
                         )
                         .child(
-                            Field::new().label("透明度 (0–1)")
+                            Field::new()
+                                .label("透明度 (0–1)")
                                 .child(input_view(&self.alpha_input, px(110.))),
                         ),
                 )
@@ -1110,16 +1262,14 @@ impl Render for ThemePage {
                 .min_h_0()
                 .gap_3()
                 .child(
-                    h_flex()
-                        .justify_end()
-                        .child(
-                            Button::new("style-save")
-                                .primary()
-                                .label("保存样式")
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.save_style(window, cx);
-                                })),
-                        ),
+                    h_flex().justify_end().child(
+                        Button::new("style-save")
+                            .primary()
+                            .label("保存样式")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.save_style(window, cx);
+                            })),
+                    ),
                 )
                 .child(
                     div()

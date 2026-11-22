@@ -3,12 +3,13 @@
 //! 列表行 = 只读配置摘要；点击行弹窗编辑；「+ 新增」弹空白表单。
 //! 弹窗内 5 字段：条件/按键/发送/切换/选择。
 use gpui_kit::component::{
-    ActiveTheme,
     button::{Button, ButtonVariants as _},
-    form::{Field, Form},
-    input::{Input, InputState},
     dialog::DialogButtonProps,
-    select::{Select, SelectState}, IndexPath, WindowExt as _, h_flex, v_flex,
+    form::{Field, Form},
+    h_flex,
+    input::{Input, InputState},
+    select::{Select, SelectState},
+    v_flex, ActiveTheme, IndexPath, WindowExt as _,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -18,12 +19,30 @@ use rime_core::service::keybinding::{self, KeyBinding};
 const WHEN_OPTIONS: &[&str] = &["composing", "always", "has_menu", "paging"];
 /// send 选项（空串 = 不发送）。
 const SEND_OPTIONS: &[&str] = &[
-    "", "Up", "Down", "Left", "Right", "Home", "End", "Page_Up", "Page_Down", "Return",
-    "Escape", "BackSpace", "Delete", "Tab", "Space",
+    "",
+    "Up",
+    "Down",
+    "Left",
+    "Right",
+    "Home",
+    "End",
+    "Page_Up",
+    "Page_Down",
+    "Return",
+    "Escape",
+    "BackSpace",
+    "Delete",
+    "Tab",
+    "Space",
 ];
 /// toggle 开关选项。
 const TOGGLE_OPTIONS: &[&str] = &[
-    "", "ascii_mode", "full_shape", "simplification", "extended_charset", "ascii_punct",
+    "",
+    "ascii_mode",
+    "full_shape",
+    "simplification",
+    "extended_charset",
+    "ascii_punct",
 ];
 /// select 候选选项。
 const SELECT_OPTIONS: &[&str] = &["", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
@@ -33,16 +52,17 @@ type StringSelect = Entity<SelectState<Vec<String>>>;
 fn labels_of(options: &[&str]) -> Vec<String> {
     options
         .iter()
-        .map(|o| if o.is_empty() { "(无)".to_string() } else { o.to_string() })
+        .map(|o| {
+            if o.is_empty() {
+                "(无)".to_string()
+            } else {
+                o.to_string()
+            }
+        })
         .collect()
 }
 
-fn make_select(
-    options: &[&str],
-    value: &str,
-    window: &mut Window,
-    cx: &mut App,
-) -> StringSelect {
+fn make_select(options: &[&str], value: &str, window: &mut Window, cx: &mut App) -> StringSelect {
     let labels = labels_of(options);
     let default = options
         .iter()
@@ -55,7 +75,10 @@ fn select_value(sel: &StringSelect, options: &[&str], cx: &App) -> String {
     let Some(ix) = sel.read(cx).selected_index(cx) else {
         return String::new();
     };
-    options.get(ix.row).map(|s| s.to_string()).unwrap_or_default()
+    options
+        .get(ix.row)
+        .map(|s| s.to_string())
+        .unwrap_or_default()
 }
 
 /// 选中项的文字展示（空值显示「无」）。
@@ -138,7 +161,11 @@ impl KeybindingPanel {
         let send2 = send_select.clone();
         let toggle2 = toggle_select.clone();
         let select2 = select_select.clone();
-        let title = if ix.is_some() { "编辑快捷键" } else { "新增快捷键" };
+        let title = if ix.is_some() {
+            "编辑快捷键"
+        } else {
+            "新增快捷键"
+        };
 
         window.open_dialog(cx, move |dialog, _, _| {
             let weak = weak.clone();
@@ -152,60 +179,61 @@ impl KeybindingPanel {
                     Form::horizontal()
                         .label_width(px(130.))
                         .child(
-                            Field::new().label("条件 (when)").child(
-                                Select::new(&when_select).w(px(220.)),
-                            ),
+                            Field::new()
+                                .label("条件 (when)")
+                                .child(Select::new(&when_select).w(px(220.))),
                         )
                         .child(
-                            Field::new().label("按键 (accept)").child(
-                                Input::new(&accept_input).w(px(220.)),
-                            ),
+                            Field::new()
+                                .label("按键 (accept)")
+                                .child(Input::new(&accept_input).w(px(220.))),
                         )
                         .child(
-                            Field::new().label("发送 (send)").child(
-                                Select::new(&send_select).w(px(220.)),
-                            ),
+                            Field::new()
+                                .label("发送 (send)")
+                                .child(Select::new(&send_select).w(px(220.))),
                         )
                         .child(
-                            Field::new().label("切换 (toggle)").child(
-                                Select::new(&toggle_select).w(px(220.)),
-                            ),
+                            Field::new()
+                                .label("切换 (toggle)")
+                                .child(Select::new(&toggle_select).w(px(220.))),
                         )
                         .child(
-                            Field::new().label("选择 (select)").child(
-                                Select::new(&select_select).w(px(220.)),
-                            ),
+                            Field::new()
+                                .label("选择 (select)")
+                                .child(Select::new(&select_select).w(px(220.))),
                         ),
                 )
-                .button_props(
-                    DialogButtonProps::default().ok_text("保存").on_ok({
-                        let weak = weak.clone();
-                        let (when_select, accept_input) = (when_select.clone(), accept_input.clone());
-                        let (send_select, toggle_select, select_select) =
-                            (send_select.clone(), toggle_select.clone(), select_select.clone());
-                        move |_, _, cx| {
-                            let _ = weak.update(cx, |this, cx| {
-                                let binding = KeyBinding {
-                                    when: select_value(&when_select, WHEN_OPTIONS, cx),
-                                    accept: accept_input.read(cx).value().trim().to_string(),
-                                    send: select_value(&send_select, SEND_OPTIONS, cx),
-                                    toggle: select_value(&toggle_select, TOGGLE_OPTIONS, cx),
-                                    select: select_value(&select_select, SELECT_OPTIONS, cx),
-                                };
-                                match ix {
-                                    Some(i) => {
-                                        if let Some(slot) = this.bindings.get_mut(i) {
-                                            *slot = binding;
-                                        }
+                .button_props(DialogButtonProps::default().ok_text("保存").on_ok({
+                    let weak = weak.clone();
+                    let (when_select, accept_input) = (when_select.clone(), accept_input.clone());
+                    let (send_select, toggle_select, select_select) = (
+                        send_select.clone(),
+                        toggle_select.clone(),
+                        select_select.clone(),
+                    );
+                    move |_, _, cx| {
+                        let _ = weak.update(cx, |this, cx| {
+                            let binding = KeyBinding {
+                                when: select_value(&when_select, WHEN_OPTIONS, cx),
+                                accept: accept_input.read(cx).value().trim().to_string(),
+                                send: select_value(&send_select, SEND_OPTIONS, cx),
+                                toggle: select_value(&toggle_select, TOGGLE_OPTIONS, cx),
+                                select: select_value(&select_select, SELECT_OPTIONS, cx),
+                            };
+                            match ix {
+                                Some(i) => {
+                                    if let Some(slot) = this.bindings.get_mut(i) {
+                                        *slot = binding;
                                     }
-                                    None => this.bindings.push(binding),
                                 }
-                                cx.notify();
-                            });
-                            true
-                        }
-                    }),
-                )
+                                None => this.bindings.push(binding),
+                            }
+                            cx.notify();
+                        });
+                        true
+                    }
+                }))
                 .overlay_closable(true)
         });
     }

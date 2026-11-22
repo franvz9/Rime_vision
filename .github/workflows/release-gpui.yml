@@ -1,0 +1,122 @@
+# WeaselVision v0.5.0+（GPUI 原生版）发版构建：4 系统产物
+#
+#   macOS arm64   WeaselVision_<ver>_arm64.dmg
+#   macOS x64     WeaselVision_<ver>_x64.dmg
+#   Windows x64   WeaselVision_<ver>_Windows_x64.zip   (便携版，单 exe)
+#   Windows arm64 WeaselVision_<ver>_Windows_arm64.zip (便携版，单 exe)
+#
+# 触发：push tag v*（自动建 GitHub Release 草稿）或手动 workflow_dispatch（仅传 artifact）。
+# 版本号从 tag 提取（v0.5.0 → 0.5.0）；与 crates/weasel-gpui/Cargo.toml 的 version 保持一致。
+
+name: Release (GPUI)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14        # Apple Silicon 原生
+          - arch: x64
+            runner: macos-13        # Intel 原生
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust 1.100
+        uses: dtolnay/rust-toolchain@1.100
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: weasel_vision
+
+      - name: Build
+        working-directory: weasel_vision
+        run: cargo build --release -p weasel-gpui
+
+      - name: Package dmg
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          [ "$VER" = "$GITHUB_REF_NAME" ] && VER="0.5.0"
+          bash scripts/package-macos-gpui.sh "$VER" ${{ matrix.arch }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeaselVision-macos-${{ matrix.arch }}
+          path: weasel_vision/dist/WeaselVision_*.dmg
+          retention-days: 30
+
+      - name: Upload to release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: weasel_vision/dist/WeaselVision_*.dmg
+          draft: true
+
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            target: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - arch: arm64
+            target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust 1.100
+        uses: dtolnay/rust-toolchain@1.100
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: weasel_vision
+
+      - name: Build
+        working-directory: weasel_vision
+        run: cargo build --release -p weasel-gpui --target ${{ matrix.target }}
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $ver = if ("$env:GITHUB_REF_NAME" -like "v*") { "$env:GITHUB_REF_NAME".Substring(1) } else { "0.5.0" }
+          $bin = "weasel_vision/target/${{ matrix.target }}/release/weasel-gpui.exe"
+          if (-not (Test-Path $bin)) { throw "未找到构建产物：$bin" }
+          $dst = "weasel_vision/dist/WeaselVision_${ver}_Windows_${{ matrix.arch }}.zip"
+          New-Item -ItemType Directory -Force -Path weasel_vision/dist | Out-Null
+          Compress-Archive -Path $bin -DestinationPath $dst -Force
+          Write-Host "-> $dst"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeaselVision-windows-${{ matrix.arch }}
+          path: weasel_vision/dist/WeaselVision_*_Windows_*.zip
+          retention-days: 30
+
+      - name: Upload to release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: weasel_vision/dist/WeaselVision_*_Windows_*.zip
+          draft: true

@@ -108,12 +108,17 @@ fn cleanup_timestamped_backups(original_path: &Path) {
     if let Ok(entries) = std::fs::read_dir(parent) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
-            
+
             // Skip the original file itself (exact match)
-            if name == original_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default() {
+            if name
+                == original_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default()
+            {
                 continue;
             }
-            
+
             // Pattern: stem.YYYYMMDD-HHMMSSmmm.ext
             if name.starts_with(&format!("{}.", stem))
                 && (ext.is_empty() || name.ends_with(&format!(".{}", ext)))
@@ -124,7 +129,7 @@ fn cleanup_timestamped_backups(original_path: &Path) {
                     &name[stem.len() + 1..]
                 } else {
                     // Ensure we have enough length to extract the timestamp part
-                    let end_pos = name.len().checked_sub(ext.len() + 1).unwrap_or(0);
+                    let end_pos = name.len().saturating_sub(ext.len() + 1);
                     if end_pos <= stem.len() + 1 {
                         continue; // Not a valid backup file
                     }

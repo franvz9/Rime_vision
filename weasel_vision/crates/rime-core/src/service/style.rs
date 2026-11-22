@@ -39,7 +39,11 @@ fn fix_decimal_colors(file_path: &std::path::Path) {
     let content = match std::fs::read_to_string(file_path) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("Warning: fix_decimal_colors: failed to read {}: {}", file_path.display(), e);
+            eprintln!(
+                "Warning: fix_decimal_colors: failed to read {}: {}",
+                file_path.display(),
+                e
+            );
             return;
         }
     };
@@ -84,9 +88,16 @@ fn fix_decimal_colors(file_path: &std::path::Path) {
 
     if changed {
         if let Err(e) = std::fs::write(file_path, &new_content) {
-            eprintln!("Warning: fix_decimal_colors: failed to write {}: {}", file_path.display(), e);
+            eprintln!(
+                "Warning: fix_decimal_colors: failed to write {}: {}",
+                file_path.display(),
+                e
+            );
         } else {
-            eprintln!("WeaselVision: fix_decimal_colors – converted decimal colour values to hex in {}", file_path.display());
+            eprintln!(
+                "WeaselVision: fix_decimal_colors – converted decimal colour values to hex in {}",
+                file_path.display()
+            );
         }
     }
 }
@@ -225,7 +236,11 @@ pub fn get_style_data() -> Result<StyleData, RimeError> {
 pub fn save_style(new_style: RimeStyle) -> Result<(), RimeError> {
     let cfg = RimeConfig::detect();
     cfg.save_patch(&cfg.style_custom_path(), |patch| {
-        set_style_patch_value(patch, "color_scheme", Value::String(new_style.color_scheme_name));
+        set_style_patch_value(
+            patch,
+            "color_scheme",
+            Value::String(new_style.color_scheme_name),
+        );
         set_style_patch_value(
             patch,
             "color_scheme_dark",
@@ -246,10 +261,22 @@ pub fn save_style(new_style: RimeStyle) -> Result<(), RimeError> {
             "text_orientation",
             Value::String(new_style.text_orientation),
         );
-        set_style_patch_value(patch, "inline_preedit", Value::Bool(new_style.inline_preedit));
-        set_style_patch_value(patch, "inline_candidate", Value::Bool(new_style.inline_candidate));
+        set_style_patch_value(
+            patch,
+            "inline_preedit",
+            Value::Bool(new_style.inline_preedit),
+        );
+        set_style_patch_value(
+            patch,
+            "inline_candidate",
+            Value::Bool(new_style.inline_candidate),
+        );
         set_style_patch_value(patch, "translucency", Value::Bool(new_style.translucency));
-        set_style_patch_value(patch, "mutual_exclusive", Value::Bool(new_style.mutual_exclusive));
+        set_style_patch_value(
+            patch,
+            "mutual_exclusive",
+            Value::Bool(new_style.mutual_exclusive),
+        );
         set_style_patch_value(patch, "memorize_size", Value::Bool(new_style.memorize_size));
         set_style_patch_value(patch, "show_paging", Value::Bool(new_style.show_paging));
         #[cfg(target_os = "windows")]
@@ -490,4 +517,3 @@ pub fn import_color_scheme(file_path: String) -> Result<(), RimeError> {
 
     Err(RimeError::NotFound("No color schemes found in file".into()))
 }
-
