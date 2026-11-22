@@ -4,6 +4,23 @@ use anyhow::Result;
 fn find_weasel_deployer() -> Option<std::path::PathBuf> {
     let mut deployer_paths: Vec<std::path::PathBuf> = Vec::new();
 
+    // Method 0: Registry — Weasel 安装器（NSIS）记录的实际安装目录，自定义路径也在此。
+    // 写入见官方 install.nsi: `WriteRegStr HKLM SOFTWARE\Rime\Weasel "InstallDir" "$INSTDIR"`。
+    // 32 位 NSIS 在 64 位系统上的 HKLM\SOFTWARE 写入会被重定向到 WOW6432Node，两个视图都查。
+    use winreg::enums::HKEY_LOCAL_MACHINE;
+    for key_path in ["SOFTWARE\\Rime\\Weasel", "SOFTWARE\\WOW6432Node\\Rime\\Weasel"] {
+        let hklm = winreg::RegKey::predef(HKEY_LOCAL_MACHINE);
+        if let Ok(key) = hklm.open_subkey(key_path) {
+            let install_dir: Result<String, _> = key.get_value("InstallDir");
+            if let Ok(dir) = install_dir {
+                let dir = dir.trim().trim_matches('"').trim();
+                if !dir.is_empty() {
+                    deployer_paths.push(std::path::PathBuf::from(dir).join("WeaselDeployer.exe"));
+                }
+            }
+        }
+    }
+
     // Method 1: Use environment variables - check Rime\* subdirectories
     if let Ok(pf) = std::env::var("ProgramFiles") {
         let rime_base = std::path::PathBuf::from(&pf).join("Rime");
