@@ -29,6 +29,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      # dtolnay action 对版本化 tag 可能不安装 components，显式补装（在 weasel_vision 内解析到 1.100）
+      - name: Ensure fmt/clippy components
+        working-directory: weasel_vision
+        run: rustup component add rustfmt clippy
+
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
