@@ -166,7 +166,7 @@ pub fn sync() -> Result<bool> {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("WeaselDeployer /sync failed: {}", stderr);
         }
-        return Ok(true);
+        Ok(true)
     }
 
     #[cfg(target_os = "macos")]

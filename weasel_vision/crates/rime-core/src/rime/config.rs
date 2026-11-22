@@ -99,7 +99,7 @@ impl RimeConfig {
             let build_dir_path = base_dir.join("build");
             let has_build_dir = build_dir_path.exists();
 
-            return Self {
+            Self {
                 user_dir: base_dir,
                 build_dir: if has_build_dir {
                     Some(build_dir_path)
@@ -110,7 +110,7 @@ impl RimeConfig {
                 style_custom: "weasel.custom.yaml".into(),
                 default_yaml: "default.yaml".into(),
                 default_custom: "default.custom.yaml".into(),
-            };
+            }
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
