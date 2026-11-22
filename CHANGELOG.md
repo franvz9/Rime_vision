@@ -32,6 +32,7 @@
 
 #### 修复
 
+- **Windows 自定义安装路径下找不到 WeaselDeployer.exe**：部署/同步现在优先读注册表 `HKLM\SOFTWARE\Rime\Weasel\InstallDir`（[#4](https://github.com/franvz9/Rime_vision/issues/4)）。
 - 同步设置弹窗保存真正落盘（此前仅更新内存，重启丢失）。
 - 词典管理工具条（搜索/排序/新增/导出/清空）正确挂载。
 - 词典排序「词频 ↑」生效（排序键与 service 对齐）。
