@@ -313,10 +313,9 @@ impl GrammarPage {
                 if grammar::mount_grammar(model.filename.clone(), sid.clone(), config).is_ok() {
                     mounted += 1;
                 }
-            } else if !want && have
-                && grammar::unmount_grammar(sid.clone()).is_ok() {
-                    unmounted += 1;
-                }
+            } else if !want && have && grammar::unmount_grammar(sid.clone()).is_ok() {
+                unmounted += 1;
+            }
         }
         self.reload(window, cx);
         window.push_notification(
