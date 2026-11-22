@@ -8,7 +8,10 @@ fn find_weasel_deployer() -> Option<std::path::PathBuf> {
     // 写入见官方 install.nsi: `WriteRegStr HKLM SOFTWARE\Rime\Weasel "InstallDir" "$INSTDIR"`。
     // 32 位 NSIS 在 64 位系统上的 HKLM\SOFTWARE 写入会被重定向到 WOW6432Node，两个视图都查。
     use winreg::enums::HKEY_LOCAL_MACHINE;
-    for key_path in ["SOFTWARE\\Rime\\Weasel", "SOFTWARE\\WOW6432Node\\Rime\\Weasel"] {
+    for key_path in [
+        "SOFTWARE\\Rime\\Weasel",
+        "SOFTWARE\\WOW6432Node\\Rime\\Weasel",
+    ] {
         let hklm = winreg::RegKey::predef(HKEY_LOCAL_MACHINE);
         if let Ok(key) = hklm.open_subkey(key_path) {
             let install_dir: Result<String, _> = key.get_value("InstallDir");
